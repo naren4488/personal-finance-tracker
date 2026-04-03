@@ -1,0 +1,136 @@
+import { zodResolver } from "@hookform/resolvers/zod"
+import { useForm } from "react-hook-form"
+import { useNavigate } from "react-router-dom"
+import { toast } from "sonner"
+import { Button } from "@/components/ui/button"
+import {
+  Form,
+  FormControl,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage,
+} from "@/components/ui/form"
+import { Input } from "@/components/ui/input"
+import { Separator } from "@/components/ui/separator"
+import { registerRequestSchema, type RegisterRequest } from "@/lib/api/auth-schemas"
+import { getAuthErrorMessage } from "@/lib/api/errors"
+import { useRegisterMutation } from "@/store/api/base-api"
+import { isAuthApiDebugEnabled } from "@/lib/debug/auth-api-log"
+
+export function RegisterForm() {
+  const navigate = useNavigate()
+  const [registerUser, { isLoading }] = useRegisterMutation()
+
+  const form = useForm<RegisterRequest>({
+    resolver: zodResolver(registerRequestSchema),
+    defaultValues: { name: "", email: "", password: "" },
+  })
+
+  const onSubmit = form.handleSubmit(async (values) => {
+    const body: RegisterRequest = {
+      name: values.name.trim(),
+      email: values.email.trim(),
+      password: values.password,
+    }
+    if (isAuthApiDebugEnabled()) {
+      console.groupCollapsed("[Koin auth] Register form — submit clicked")
+      console.log("Step: Zod validation passed; calling register mutation")
+      console.log("Payload:", body)
+      console.log("Keys:", Object.keys(body).sort().join(", "))
+      console.groupEnd()
+    }
+    try {
+      await registerUser(body).unwrap()
+      if (isAuthApiDebugEnabled()) {
+        console.log("[Koin auth] Register form — mutation succeeded → redirect to login")
+      }
+      toast.success("Account created — sign in to continue")
+      navigate("/login", { replace: true })
+    } catch (err) {
+      const msg = getAuthErrorMessage(err)
+      if (isAuthApiDebugEnabled()) {
+        console.groupCollapsed("[Koin auth] Register form — mutation failed")
+        console.error("Shown in UI:", msg)
+        console.error("Raw error:", err)
+        console.groupEnd()
+      }
+      toast.error(msg)
+    }
+  })
+
+  return (
+    <Form {...form}>
+      <form onSubmit={onSubmit} className="space-y-6">
+        <div className="space-y-4">
+          <FormField
+            control={form.control}
+            name="name"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Full name</FormLabel>
+                <FormControl>
+                  <Input
+                    placeholder="Jane Doe"
+                    autoComplete="name"
+                    className="h-11 rounded-lg bg-muted/30 dark:bg-input/30"
+                    {...field}
+                  />
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+          <FormField
+            control={form.control}
+            name="email"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Email</FormLabel>
+                <FormControl>
+                  <Input
+                    type="email"
+                    placeholder="you@example.com"
+                    autoComplete="email"
+                    className="h-11 rounded-lg bg-muted/30 dark:bg-input/30"
+                    {...field}
+                  />
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+          <FormField
+            control={form.control}
+            name="password"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Password</FormLabel>
+                <FormControl>
+                  <Input
+                    type="password"
+                    placeholder="••••••••"
+                    autoComplete="new-password"
+                    className="h-11 rounded-lg bg-muted/30 dark:bg-input/30"
+                    {...field}
+                  />
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+        </div>
+
+        <Separator className="bg-border/60" />
+
+        <Button
+          type="submit"
+          className="h-11 w-full rounded-lg text-base font-semibold"
+          disabled={isLoading}
+        >
+          {isLoading ? "Creating account…" : "Create account"}
+        </Button>
+      </form>
+    </Form>
+  )
+}

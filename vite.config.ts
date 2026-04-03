@@ -9,6 +9,16 @@ const analyze = process.env.ANALYZE === "true"
 
 // https://vite.dev/config/
 export default defineConfig({
+  server: {
+    proxy: {
+      // Dev: same-origin `/api/*` → backend `http://localhost:8080/api/v1/*` (avoids CORS)
+      "/api": {
+        target: "http://localhost:8080",
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/api/, "/api/v1"),
+      },
+    },
+  },
   plugins: [
     react(),
     tailwindcss(),

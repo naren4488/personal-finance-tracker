@@ -17,8 +17,3 @@ export const mockTransactions: Transaction[] = [
     date: "2026-03-30",
   },
 ]
-
-export function resetMockTransactions(seed: Transaction[]) {
-  mockTransactions.length = 0
-  mockTransactions.push(...seed)
-}
