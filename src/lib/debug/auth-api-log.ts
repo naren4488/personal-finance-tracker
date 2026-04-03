@@ -70,7 +70,7 @@ export function logAuthResponseParsed(operation: "register" | "login", result: A
     "| preview:",
     previewSecret(result.refreshToken)
   )
-  console.log("Step: tokens → localStorage; user → Redux (onQueryStarted)")
+  console.log("Step: tokens → localStorage; user → Redux (in mutation handler)")
   console.groupEnd()
 }
 

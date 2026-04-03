@@ -8,8 +8,8 @@
     "build": "tsc -b && vite build",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
-    "format": "prettier --write .",
-    "format:check": "prettier --check .",
+    "format": "npx --yes prettier@3.8.1 --write .",
+    "format:check": "npx --yes prettier@3.8.1 --check .",
     "typecheck": "tsc -b --noEmit",
     "analyze": "ANALYZE=true vite build",
     "preview": "vite preview",
@@ -18,10 +18,10 @@
   "lint-staged": {
     "*.{ts,tsx}": [
       "eslint --fix --max-warnings 0",
-      "prettier --write"
+      "npx --yes prettier@3.8.1 --write"
     ],
     "*.{json,css,html,md}": [
-      "prettier --write"
+      "npx --yes prettier@3.8.1 --write"
     ]
   },
   "dependencies": {
@@ -58,13 +58,11 @@
     "babel-plugin-react-compiler": "^1.0.0",
     "eslint": "^9.39.4",
     "eslint-config-prettier": "^10.1.8",
-    "eslint-plugin-prettier": "^5.5.5",
     "eslint-plugin-react-hooks": "^7.0.1",
     "eslint-plugin-react-refresh": "^0.5.2",
     "globals": "^17.4.0",
     "husky": "^9.1.7",
     "lint-staged": "^16.4.0",
-    "prettier": "^3.8.1",
     "rollup-plugin-visualizer": "^7.0.1",
     "typescript": "~5.9.3",
     "typescript-eslint": "^8.57.0",

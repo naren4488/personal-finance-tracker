@@ -1,12 +1,12 @@
 import { Suspense } from "react"
-import { Link, NavLink, Outlet, useLocation, useNavigate } from "react-router-dom"
-import { BarChart3, Home, LayoutGrid, LogOut, Plus, Wallet } from "lucide-react"
+import { Link, NavLink, Outlet, useLocation } from "react-router-dom"
+import { BarChart3, Home, LayoutGrid, Plus, Wallet } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import { HeaderProfileMenu } from "@/components/header-profile-menu"
 import { ThemeToggle } from "@/components/theme-toggle"
 import { ErrorBoundary } from "@/components/error-boundary"
 import { PageLoader } from "@/components/page-loader"
 import { cn } from "@/lib/utils"
-import { clearToken } from "@/lib/auth/token"
 
 const tabs = [
   { to: "/", label: "Home", icon: Home, end: true },
@@ -17,13 +17,7 @@ const tabs = [
 
 export function AppShell() {
   const { pathname } = useLocation()
-  const navigate = useNavigate()
   const showFab = pathname !== "/analytics" && pathname !== "/accounts"
-
-  function handleLogout() {
-    clearToken()
-    navigate("/login", { replace: true })
-  }
 
   return (
     <div className="relative mx-auto flex min-h-dvh max-w-lg flex-col bg-background">
@@ -41,17 +35,8 @@ export function AppShell() {
             </div>
           </Link>
           <div className="flex shrink-0 items-center gap-1">
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon"
-              className="text-primary-foreground hover:bg-primary-foreground/10 hover:text-primary-foreground"
-              aria-label="Log out"
-              onClick={handleLogout}
-            >
-              <LogOut className="size-5" strokeWidth={1.5} />
-            </Button>
             <ThemeToggle />
+            <HeaderProfileMenu />
           </div>
         </div>
       </header>

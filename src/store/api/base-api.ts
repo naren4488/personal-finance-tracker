@@ -54,11 +54,6 @@ function normalizeFetchError(error: FetchBaseQueryError): FetchBaseQueryError {
   return error
 }
 
-async function persistAuthSession(dispatch: (action: unknown) => void, data: AuthResult) {
-  setAuthTokens(data.accessToken, data.refreshToken)
-  dispatch(setUser(data.user))
-}
-
 export const baseApi = createApi({
   reducerPath: "api",
   baseQuery: fetchBaseQuery({
@@ -75,7 +70,7 @@ export const baseApi = createApi({
   tagTypes: ["Transaction"],
   endpoints: (build) => ({
     register: build.mutation<AuthResult, RegisterRequest>({
-      async queryFn(body, _api, _extraOptions, baseQuery) {
+      async queryFn(body, api, _extraOptions, baseQuery) {
         logAuthRequestStart("register", AUTH_PATHS.register, "POST", body)
         const res = await baseQuery({
           url: AUTH_PATHS.register,
@@ -105,20 +100,14 @@ export const baseApi = createApi({
           return { error: { status: 422, data: parsed.error } }
         }
         logAuthResponseParsed("register", parsed.result)
+        setAuthTokens(parsed.result.accessToken, parsed.result.refreshToken)
+        api.dispatch(setUser(parsed.result.user))
         return { data: parsed.result }
-      },
-      async onQueryStarted(_arg, { dispatch, queryFulfilled }) {
-        try {
-          const { data } = await queryFulfilled
-          persistAuthSession(dispatch, data)
-        } catch {
-          /* surfaced in UI */
-        }
       },
     }),
 
     login: build.mutation<AuthResult, LoginRequest>({
-      async queryFn(body, _api, _extraOptions, baseQuery) {
+      async queryFn(body, api, _extraOptions, baseQuery) {
         logAuthRequestStart("login", AUTH_PATHS.login, "POST", body)
         const res = await baseQuery({
           url: AUTH_PATHS.login,
@@ -148,15 +137,9 @@ export const baseApi = createApi({
           return { error: { status: 422, data: parsed.error } }
         }
         logAuthResponseParsed("login", parsed.result)
+        setAuthTokens(parsed.result.accessToken, parsed.result.refreshToken)
+        api.dispatch(setUser(parsed.result.user))
         return { data: parsed.result }
-      },
-      async onQueryStarted(_arg, { dispatch, queryFulfilled }) {
-        try {
-          const { data } = await queryFulfilled
-          persistAuthSession(dispatch, data)
-        } catch {
-          /* surfaced in UI */
-        }
       },
     }),
 

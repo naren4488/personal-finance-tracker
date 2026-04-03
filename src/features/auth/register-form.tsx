@@ -41,12 +41,15 @@ export function RegisterForm() {
       console.groupEnd()
     }
     try {
-      await registerUser(body).unwrap()
+      const data = await registerUser(body).unwrap()
       if (isAuthApiDebugEnabled()) {
-        console.log("[Koin auth] Register form — mutation succeeded → redirect to login")
+        console.log(
+          "[Koin auth] Register form — mutation succeeded → auto-login → dashboard",
+          data.user
+        )
       }
-      toast.success("Account created — sign in to continue")
-      navigate("/login", { replace: true })
+      toast.success(data.user.name ? `Welcome, ${data.user.name}!` : "Account created")
+      navigate("/", { replace: true })
     } catch (err) {
       const msg = getAuthErrorMessage(err)
       if (isAuthApiDebugEnabled()) {
