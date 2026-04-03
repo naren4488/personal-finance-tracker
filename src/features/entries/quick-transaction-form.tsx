@@ -18,9 +18,15 @@ import {
   type QuickTransactionFormValues,
 } from "@/lib/api/schemas"
 import { getErrorMessage } from "@/lib/api/errors"
+import { cn } from "@/lib/utils"
 import { useAddTransactionMutation } from "@/store/api/base-api"
 
-export function QuickTransactionForm() {
+type QuickTransactionFormProps = {
+  onSuccess?: () => void
+  className?: string
+}
+
+export function QuickTransactionForm({ onSuccess, className }: QuickTransactionFormProps) {
   const [addTransaction, { isLoading }] = useAddTransactionMutation()
 
   const form = useForm<QuickTransactionFormValues>({
@@ -39,13 +45,14 @@ export function QuickTransactionForm() {
       await addTransaction(toQuickTransactionPayload(values)).unwrap()
       toast.success("Transaction added")
       form.reset({ title: "", amount: "", type: values.type })
+      onSuccess?.()
     } catch (err) {
       toast.error(getErrorMessage(err))
     }
   })
 
   return (
-    <Card className="rounded-2xl border-border/80 shadow-sm">
+    <Card className={cn("rounded-2xl border-border/80 shadow-sm", className)}>
       <CardHeader>
         <CardTitle className="text-base">Quick add</CardTitle>
         <CardDescription>Validated with Zod and saved via RTK Query (mock API).</CardDescription>

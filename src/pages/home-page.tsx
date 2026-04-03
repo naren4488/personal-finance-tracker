@@ -1,42 +1,11 @@
-import { memo } from "react"
-import { TrendingDown, TrendingUp } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
-import { formatCurrency, formatDate } from "@/lib/format"
+import { TransactionRow } from "@/features/entries/transaction-row"
+import { formatCurrency } from "@/lib/format"
 import { getErrorMessage } from "@/lib/api/errors"
-import type { Transaction } from "@/lib/api/schemas"
 import { useGetTransactionsQuery } from "@/store/api/base-api"
-
-const TransactionRow = memo(function TransactionRow({ tx }: { tx: Transaction }) {
-  const isIncome = tx.type === "income"
-  return (
-    <div className="flex items-center justify-between gap-3 rounded-xl bg-muted/30 p-2">
-      <div className="flex min-w-0 items-center gap-2">
-        <div
-          className={`flex size-8 shrink-0 items-center justify-center rounded-lg ${isIncome ? "bg-income/15" : "bg-expense/15"}`}
-        >
-          {isIncome ? (
-            <TrendingUp className="size-3.5 text-income" strokeWidth={2} />
-          ) : (
-            <TrendingDown className="size-3.5 text-expense" strokeWidth={2} />
-          )}
-        </div>
-        <div className="min-w-0">
-          <p className="truncate text-sm font-medium">{tx.title}</p>
-          <p className="truncate text-[10px] text-muted-foreground">{formatDate(tx.date)}</p>
-        </div>
-      </div>
-      <span
-        className={`shrink-0 text-sm font-bold tabular-nums ${isIncome ? "text-income" : "text-expense"}`}
-      >
-        {isIncome ? "+" : "−"}
-        {formatCurrency(tx.amount)}
-      </span>
-    </div>
-  )
-})
 
 export default function HomePage() {
   const { data: transactions, isLoading, isError, error, refetch } = useGetTransactionsQuery()

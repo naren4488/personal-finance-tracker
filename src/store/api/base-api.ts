@@ -5,6 +5,7 @@ import type {
   FetchArgs,
   FetchBaseQueryError,
 } from "@reduxjs/toolkit/query"
+import { ACCOUNT_PATHS } from "@/api/account-paths"
 import { AUTH_PATHS } from "@/api/auth-paths"
 import { PEOPLE_PATHS } from "@/api/people-paths"
 import { getApiBaseUrl } from "@/lib/env"
@@ -17,6 +18,7 @@ import {
   type LoginRequest,
   type RegisterRequest,
 } from "@/lib/api/auth-schemas"
+import { parseGetAccountsSuccess, type Account } from "@/lib/api/account-schemas"
 import {
   parseCreatePersonSuccess,
   parseGetPeopleSuccess,
@@ -26,7 +28,7 @@ import {
 import {
   transactionListSchema,
   transactionSchema,
-  type QuickTransactionPayload,
+  type CreateTransactionPayload,
   type Transaction,
 } from "@/lib/api/schemas"
 import { mockTransactions } from "@/lib/api/mock-transactions"
@@ -152,8 +154,30 @@ const baseQueryWithReauth: BaseQueryFn<string | FetchArgs, unknown, FetchBaseQue
 export const baseApi = createApi({
   reducerPath: "api",
   baseQuery: baseQueryWithReauth,
-  tagTypes: ["Transaction", "People"],
+  tagTypes: ["Transaction", "People", "Account"],
   endpoints: (build) => ({
+    getAccounts: build.query<Account[], void>({
+      async queryFn(_arg, _api, _extraOptions, baseQuery) {
+        const res = await baseQuery({
+          url: ACCOUNT_PATHS.list,
+          method: "GET",
+        })
+        if (res.error) {
+          return { error: normalizeFetchError(res.error) }
+        }
+        const failMsg = parseApiFailureMessage(res.data)
+        if (failMsg) {
+          return { error: { status: 400, data: failMsg } }
+        }
+        const parsed = parseGetAccountsSuccess(res.data)
+        if (!parsed.ok) {
+          return { error: { status: 422, data: parsed.error } }
+        }
+        return { data: parsed.accounts }
+      },
+      providesTags: [{ type: "Account", id: "LIST" }],
+    }),
+
     getPeople: build.query<Person[], void>({
       async queryFn(_arg, api, _extraOptions, baseQuery) {
         console.log("Fetching people...")
@@ -381,7 +405,7 @@ export const baseApi = createApi({
           : [{ type: "Transaction", id: "LIST" }],
     }),
 
-    addTransaction: build.mutation<Transaction, QuickTransactionPayload>({
+    addTransaction: build.mutation<Transaction, CreateTransactionPayload>({
       async queryFn(body) {
         await delay(150)
         const next: Transaction = {
@@ -389,7 +413,10 @@ export const baseApi = createApi({
           title: body.title,
           amount: body.amount,
           type: body.type,
-          date: new Date().toISOString().slice(0, 10),
+          date: body.date,
+          category: body.category,
+          accountId: body.accountId,
+          accountName: body.accountName,
         }
         const parsed = transactionSchema.safeParse(next)
         if (!parsed.success) {
@@ -408,6 +435,7 @@ export const {
   useLoginMutation,
   useLogoutMutation,
   useRefreshTokenMutation,
+  useGetAccountsQuery,
   useGetPeopleQuery,
   useCreatePersonMutation,
   useGetTransactionsQuery,

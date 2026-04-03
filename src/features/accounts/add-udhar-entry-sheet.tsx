@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useId, useState, type ReactNode } from "react"
+import { useCallback, useEffect, useId, useState } from "react"
 import { useNavigate } from "react-router-dom"
 import {
   ArrowDown,
@@ -12,6 +12,7 @@ import {
   X,
 } from "lucide-react"
 import { toast } from "sonner"
+import { ToggleTile } from "@/components/toggle-tile"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -73,38 +74,10 @@ function initialFormState(): UdharFormState {
   }
 }
 
-function ToggleTile({
-  selected,
-  onClick,
-  children,
-  className,
-}: {
-  selected: boolean
-  onClick: () => void
-  children: ReactNode
-  className?: string
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={cn(
-        "flex min-h-13 items-center justify-center gap-1.5 rounded-xl border-2 px-2 py-2 text-center text-xs font-medium leading-tight transition-colors sm:text-[13px]",
-        selected
-          ? "border-primary bg-sky-50 text-primary dark:bg-primary/15"
-          : "border-border bg-card text-muted-foreground hover:border-muted-foreground/30 hover:text-foreground",
-        className
-      )}
-    >
-      {children}
-    </button>
-  )
-}
-
 function SelectChevron() {
   return (
     <ChevronDown
-      className="pointer-events-none absolute right-3 top-1/2 size-5 -translate-y-1/2 text-muted-foreground"
+      className="pointer-events-none absolute right-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground"
       aria-hidden
     />
   )
@@ -235,8 +208,11 @@ function AddUdharEntrySheetMounted({ onOpenChange }: MountedProps) {
     dismiss()
   }
 
+  const fieldClass =
+    "h-9 rounded-xl border border-border bg-card px-3 text-sm text-foreground shadow-sm outline-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/50"
+
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6">
+    <div className="fixed inset-0 z-50 flex max-h-dvh items-start justify-center overflow-hidden pt-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] sm:items-center sm:py-4">
       <button
         type="button"
         className="absolute inset-0 bg-black/50 backdrop-blur-[2px]"
@@ -248,12 +224,12 @@ function AddUdharEntrySheetMounted({ onOpenChange }: MountedProps) {
         aria-modal="true"
         aria-labelledby={titleId}
         className={cn(
-          "relative flex max-h-[min(90dvh,calc(100dvh-2rem))] w-full max-w-lg flex-col overflow-hidden rounded-2xl border border-border bg-card shadow-2xl",
+          "relative flex max-h-[calc(100dvh-0.75rem-env(safe-area-inset-bottom))] w-full max-w-lg flex-col overflow-hidden rounded-2xl border border-border bg-card shadow-2xl sm:max-h-[min(92dvh,calc(100dvh-2rem))]",
           "animate-in fade-in zoom-in-95 duration-200"
         )}
       >
-        <header className="flex shrink-0 items-start justify-between gap-3 border-b border-border px-5 pb-3 pt-4">
-          <h2 id={titleId} className="text-lg font-bold text-primary">
+        <header className="flex shrink-0 items-start justify-between gap-2 border-b border-border px-4 py-2.5">
+          <h2 id={titleId} className="text-base font-bold text-primary sm:text-lg">
             Add Udhar Entry
           </h2>
           <Button
@@ -269,10 +245,10 @@ function AddUdharEntrySheetMounted({ onOpenChange }: MountedProps) {
         </header>
 
         <form onSubmit={handleSubmit} className="flex min-h-0 flex-1 flex-col overflow-hidden">
-          <div className="min-h-0 flex-1 space-y-5 overflow-y-auto overscroll-contain px-5 py-4">
+          <div className="min-h-0 flex-1 space-y-2 overflow-hidden px-4 py-2">
             <section>
-              <Label className="mb-2 block text-sm font-bold text-primary">Type</Label>
-              <div className="grid grid-cols-2 gap-2">
+              <Label className="mb-0.5 block text-xs font-bold text-primary">Type</Label>
+              <div className="grid grid-cols-2 gap-1.5">
                 {ENTRY_TYPES.map(({ id, label, Icon }) => (
                   <ToggleTile
                     key={id}
@@ -287,12 +263,12 @@ function AddUdharEntrySheetMounted({ onOpenChange }: MountedProps) {
             </section>
 
             <section>
-              <div className="mb-2 flex items-center justify-between gap-2">
-                <Label className="text-sm font-bold text-primary">Person</Label>
+              <div className="mb-0.5 flex items-center justify-between gap-2">
+                <Label className="text-xs font-bold text-primary">Person</Label>
                 {form.personMode === "existing" ? (
                   <button
                     type="button"
-                    className="text-sm font-semibold text-primary hover:underline"
+                    className="text-xs font-semibold text-primary hover:underline"
                     onClick={() =>
                       setForm((f) => ({ ...f, personMode: "new", selectedPersonId: "" }))
                     }
@@ -302,7 +278,7 @@ function AddUdharEntrySheetMounted({ onOpenChange }: MountedProps) {
                 ) : (
                   <button
                     type="button"
-                    className="text-sm font-semibold text-primary hover:underline"
+                    className="text-xs font-semibold text-primary hover:underline"
                     onClick={() =>
                       setForm((f) => ({
                         ...f,
@@ -329,8 +305,8 @@ function AddUdharEntrySheetMounted({ onOpenChange }: MountedProps) {
                       disabled={peopleListLoading && people.length === 0}
                       onChange={(e) => setForm((f) => ({ ...f, selectedPersonId: e.target.value }))}
                       className={cn(
-                        "h-11 w-full appearance-none rounded-xl border border-border bg-muted/50 px-3.5 pr-10 text-base text-foreground outline-none",
-                        "focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/50",
+                        fieldClass,
+                        "w-full appearance-none pr-9",
                         "disabled:cursor-not-allowed disabled:opacity-60",
                         !form.selectedPersonId && "text-muted-foreground"
                       )}
@@ -347,20 +323,20 @@ function AddUdharEntrySheetMounted({ onOpenChange }: MountedProps) {
                   </div>
                 </div>
               ) : (
-                <div className="space-y-2">
+                <div className="grid grid-cols-2 gap-1.5">
                   <Input
                     placeholder="Person's name"
                     value={form.personName}
                     onChange={(e) => setForm((f) => ({ ...f, personName: e.target.value }))}
-                    className="h-11 rounded-xl border-border bg-muted/50 px-3.5 text-base"
+                    className="rounded-xl border-border bg-muted/50 px-3 text-sm h-9"
                     autoComplete="name"
                   />
                   <Input
                     type="tel"
-                    placeholder="Phone number (optional)"
+                    placeholder="Phone (optional)"
                     value={form.personPhone}
                     onChange={(e) => setForm((f) => ({ ...f, personPhone: e.target.value }))}
-                    className="h-11 rounded-xl border-border bg-muted/50 px-3.5 text-base"
+                    className="rounded-xl border-border bg-muted/50 px-3 text-sm h-9"
                     autoComplete="tel"
                   />
                 </div>
@@ -368,7 +344,7 @@ function AddUdharEntrySheetMounted({ onOpenChange }: MountedProps) {
             </section>
 
             <section>
-              <Label htmlFor="udhar-amount" className="mb-2 block text-sm font-bold text-primary">
+              <Label htmlFor="udhar-amount" className="mb-0.5 block text-xs font-bold text-primary">
                 Amount (₹)
               </Label>
               <Input
@@ -379,25 +355,29 @@ function AddUdharEntrySheetMounted({ onOpenChange }: MountedProps) {
                 onChange={(e) =>
                   setForm((f) => ({ ...f, amount: e.target.value.replace(/[^\d]/g, "") }))
                 }
-                className="h-16 rounded-xl border-border bg-muted/60 text-center text-3xl font-semibold tabular-nums text-primary/80 placeholder:text-primary/40"
+                className="h-12 rounded-xl border-border bg-muted/60 text-center text-2xl font-semibold tabular-nums text-primary/80 placeholder:text-primary/40"
               />
             </section>
 
             <section>
-              <Label className="mb-2 block text-sm font-bold text-primary">Payment Method</Label>
-              <div className="grid grid-cols-2 gap-2">
+              <Label className="mb-0.5 block text-xs font-bold text-primary">Payment Method</Label>
+              <div className="grid grid-cols-2 gap-1.5">
                 <ToggleTile
                   selected={form.paymentMethod === "account"}
                   onClick={() => setForm((f) => ({ ...f, paymentMethod: "account" }))}
                 >
-                  <CreditCard className="size-4 shrink-0" strokeWidth={2} aria-hidden />
+                  <CreditCard
+                    className="size-4 shrink-0 text-primary"
+                    strokeWidth={2}
+                    aria-hidden
+                  />
                   <span>Account / Cash / UPI</span>
                 </ToggleTile>
                 <ToggleTile
                   selected={form.paymentMethod === "card"}
                   onClick={() => setForm((f) => ({ ...f, paymentMethod: "card" }))}
                 >
-                  <Gem className="size-4 shrink-0" strokeWidth={2} aria-hidden />
+                  <Gem className="size-4 shrink-0 text-primary" strokeWidth={2} aria-hidden />
                   <span>Credit Card</span>
                 </ToggleTile>
               </div>
@@ -406,7 +386,7 @@ function AddUdharEntrySheetMounted({ onOpenChange }: MountedProps) {
             <section>
               <Label
                 htmlFor="udhar-paid-from"
-                className="mb-2 block text-sm font-bold text-primary"
+                className="mb-0.5 block text-xs font-bold text-primary"
               >
                 Paid From
               </Label>
@@ -416,8 +396,8 @@ function AddUdharEntrySheetMounted({ onOpenChange }: MountedProps) {
                   value={form.paidFrom}
                   onChange={(e) => setForm((f) => ({ ...f, paidFrom: e.target.value }))}
                   className={cn(
-                    "h-11 w-full appearance-none rounded-xl border border-border bg-muted/50 px-3.5 pr-10 text-base text-foreground outline-none",
-                    "focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/50",
+                    fieldClass,
+                    "w-full appearance-none pr-9",
                     !form.paidFrom && "text-muted-foreground"
                   )}
                 >
@@ -432,59 +412,63 @@ function AddUdharEntrySheetMounted({ onOpenChange }: MountedProps) {
               </div>
             </section>
 
-            <section>
-              <Label htmlFor="udhar-date" className="mb-2 block text-sm font-bold text-primary">
-                Date
-              </Label>
-              <div className="relative">
-                <Input
-                  id="udhar-date"
-                  type="date"
-                  value={form.date}
-                  onChange={(e) => setForm((f) => ({ ...f, date: e.target.value }))}
-                  className="h-11 rounded-xl border-border bg-muted/50 px-3.5 pr-11 text-base scheme-light dark:scheme-dark"
-                />
-                <CalendarDays
-                  className="pointer-events-none absolute right-3 top-1/2 size-5 -translate-y-1/2 text-muted-foreground"
-                  aria-hidden
-                />
-              </div>
-            </section>
+            <div className="grid grid-cols-2 gap-2">
+              <section>
+                <Label htmlFor="udhar-date" className="mb-0.5 block text-xs font-bold text-primary">
+                  Date
+                </Label>
+                <div className="relative">
+                  <Input
+                    id="udhar-date"
+                    type="date"
+                    value={form.date}
+                    onChange={(e) => setForm((f) => ({ ...f, date: e.target.value }))}
+                    className={cn(fieldClass, "pr-9 scheme-light dark:scheme-dark")}
+                  />
+                  <CalendarDays
+                    className="pointer-events-none absolute right-2 top-1/2 size-4 -translate-y-1/2 text-muted-foreground"
+                    aria-hidden
+                  />
+                </div>
+              </section>
+              <section>
+                <Label
+                  htmlFor="udhar-ask-back"
+                  className="mb-0.5 block text-xs font-bold text-primary"
+                >
+                  Ask money back by
+                </Label>
+                <div className="relative">
+                  <Input
+                    id="udhar-ask-back"
+                    type="date"
+                    value={form.askBackBy}
+                    onChange={(e) => setForm((f) => ({ ...f, askBackBy: e.target.value }))}
+                    className={cn(fieldClass, "pr-9 scheme-light dark:scheme-dark")}
+                  />
+                  <CalendarDays
+                    className="pointer-events-none absolute right-2 top-1/2 size-4 -translate-y-1/2 text-muted-foreground"
+                    aria-hidden
+                  />
+                </div>
+              </section>
+            </div>
+            <p className="-mt-1 text-[10px] text-muted-foreground sm:text-[11px]">
+              When should this person return the money?
+            </p>
 
             <section>
-              <Label htmlFor="udhar-ask-back" className="mb-2 block text-sm font-bold text-primary">
-                Ask money back by
-              </Label>
-              <div className="relative">
-                <Input
-                  id="udhar-ask-back"
-                  type="date"
-                  value={form.askBackBy}
-                  onChange={(e) => setForm((f) => ({ ...f, askBackBy: e.target.value }))}
-                  className="h-11 rounded-xl border-border bg-muted/50 px-3.5 pr-11 text-base scheme-light dark:scheme-dark"
-                />
-                <CalendarDays
-                  className="pointer-events-none absolute right-3 top-1/2 size-5 -translate-y-1/2 text-muted-foreground"
-                  aria-hidden
-                />
-              </div>
-              <p className="mt-1.5 text-xs text-muted-foreground">
-                When should this person return the money?
-              </p>
-            </section>
-
-            <section>
-              <Label htmlFor="udhar-note" className="mb-2 block text-sm font-bold text-primary">
+              <Label htmlFor="udhar-note" className="mb-0.5 block text-xs font-bold text-primary">
                 Note
               </Label>
               <textarea
                 id="udhar-note"
-                rows={3}
+                rows={1}
                 placeholder="What was this for?"
                 value={form.note}
                 onChange={(e) => setForm((f) => ({ ...f, note: e.target.value }))}
                 className={cn(
-                  "w-full resize-none rounded-xl border border-border bg-muted/50 px-3.5 py-2.5 text-base text-foreground outline-none",
+                  "min-h-9 w-full resize-none rounded-xl border border-border bg-card px-3 py-1.5 text-sm text-foreground shadow-sm outline-none",
                   "placeholder:text-muted-foreground/80",
                   "focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/50"
                 )}
@@ -492,11 +476,11 @@ function AddUdharEntrySheetMounted({ onOpenChange }: MountedProps) {
             </section>
           </div>
 
-          <div className="shrink-0 border-t border-border bg-card px-5 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
+          <div className="shrink-0 border-t border-border bg-card px-4 py-2 pb-[max(0.5rem,env(safe-area-inset-bottom))]">
             <Button
               type="submit"
               disabled={isCreatingPerson}
-              className="h-12 w-full rounded-xl bg-[hsl(230_22%_62%)] text-base font-bold text-white hover:bg-[hsl(230_22%_56%)] disabled:opacity-60"
+              className="h-10 w-full rounded-xl bg-[hsl(230_22%_62%)] text-sm font-bold text-white hover:bg-[hsl(230_22%_56%)] disabled:opacity-60 sm:h-11 sm:text-base"
             >
               {isCreatingPerson ? "Saving…" : "Add Entry"}
             </Button>

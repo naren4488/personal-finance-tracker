@@ -8,6 +8,9 @@ export const transactionSchema = z.object({
   amount: z.number(),
   type: transactionTypeSchema,
   date: z.string(),
+  category: z.string().optional(),
+  accountId: z.string().optional(),
+  accountName: z.string().optional(),
 })
 
 export const transactionListSchema = z.array(transactionSchema)
@@ -30,18 +33,24 @@ export const quickTransactionFormSchema = z.object({
 
 export type QuickTransactionFormValues = z.infer<typeof quickTransactionFormSchema>
 
-export type QuickTransactionPayload = {
+/** Full create payload (Txns modal + quick add). */
+export type CreateTransactionPayload = {
   title: string
   amount: number
-  type: "income" | "expense"
+  type: "income" | "expense" | "transfer"
+  date: string
+  category?: string
+  accountId?: string
+  accountName?: string
 }
 
 export function toQuickTransactionPayload(
   values: QuickTransactionFormValues
-): QuickTransactionPayload {
+): CreateTransactionPayload {
   return {
     title: values.title.trim(),
     amount: Number(values.amount.replace(/,/g, "")),
     type: values.type,
+    date: new Date().toISOString().slice(0, 10),
   }
 }

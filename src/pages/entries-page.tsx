@@ -1,13 +1,582 @@
+import { useMemo, useRef, useState } from "react"
+import {
+  ArrowLeftRight,
+  Banknote,
+  ChevronDown,
+  ChevronLeft,
+  ChevronRight,
+  CreditCard,
+  FileText,
+  IndianRupee,
+  Landmark,
+  Users,
+} from "lucide-react"
+import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
+import { Skeleton } from "@/components/ui/skeleton"
+import { AddCreditCardSheet } from "@/features/accounts/add-credit-card-sheet"
+import { AddLoanSheet } from "@/features/accounts/add-loan-sheet"
+import { AddUdharEntrySheet } from "@/features/accounts/add-udhar-entry-sheet"
+import { AddTransactionModal } from "@/features/entries/add-transaction-modal"
 import { QuickTransactionForm } from "@/features/entries/quick-transaction-form"
+import { TransactionRow } from "@/features/entries/transaction-row"
+import { getErrorMessage } from "@/lib/api/errors"
+import type { Transaction, TransactionType } from "@/lib/api/schemas"
+import { formatCurrency } from "@/lib/format"
+import { cn } from "@/lib/utils"
+import { useGetAccountsQuery, useGetTransactionsQuery } from "@/store/api/base-api"
+
+type EntrySegment = "txns" | "expenses" | "udhar" | "loans" | "cards"
+type TimePreset = "7d" | "month" | "3m" | "year" | "all"
+
+const ENTRY_SEGMENTS: {
+  id: EntrySegment
+  label: string
+  icon: typeof Banknote
+}[] = [
+  { id: "txns", label: "Txns", icon: ArrowLeftRight },
+  { id: "expenses", label: "Expenses", icon: Banknote },
+  { id: "udhar", label: "Udhar", icon: Users },
+  { id: "loans", label: "Loans", icon: Landmark },
+  { id: "cards", label: "Cards", icon: CreditCard },
+]
+
+const TIME_PRESETS: { id: TimePreset; label: string }[] = [
+  { id: "7d", label: "7d" },
+  { id: "month", label: "Month" },
+  { id: "3m", label: "3M" },
+  { id: "year", label: "Year" },
+  { id: "all", label: "All" },
+]
+
+function startOfLocalDay(d: Date): Date {
+  const x = new Date(d)
+  x.setHours(0, 0, 0, 0)
+  return x
+}
+
+function transactionInTimeRange(dateStr: string, preset: TimePreset, now: Date): boolean {
+  if (preset === "all") return true
+  const txDay = startOfLocalDay(new Date(`${dateStr}T12:00:00`))
+  const today = startOfLocalDay(now)
+
+  if (preset === "7d") {
+    const start = new Date(today)
+    start.setDate(start.getDate() - 6)
+    return txDay >= start && txDay <= today
+  }
+  if (preset === "month") {
+    return txDay.getMonth() === today.getMonth() && txDay.getFullYear() === today.getFullYear()
+  }
+  if (preset === "3m") {
+    const start = new Date(today)
+    start.setMonth(start.getMonth() - 3)
+    return txDay >= start && txDay <= today
+  }
+  if (preset === "year") {
+    return txDay.getFullYear() === today.getFullYear()
+  }
+  return true
+}
+
+function filterBySegment(list: Transaction[], segment: EntrySegment): Transaction[] {
+  if (segment === "txns") return list
+  if (segment === "expenses") return list.filter((t) => t.type === "expense")
+  if (segment === "cards") return []
+  return []
+}
+
+function headerTotalLabel(
+  segment: EntrySegment,
+  list: Transaction[]
+): { text: string; className: string } {
+  if (segment === "expenses") {
+    const total = list.reduce((s, t) => s + (t.type === "expense" ? t.amount : 0), 0)
+    return {
+      text: formatCurrency(total),
+      className: "font-bold tabular-nums text-destructive",
+    }
+  }
+  if (segment === "txns") {
+    const net = list.reduce(
+      (acc, t) => acc + (t.type === "income" ? t.amount : t.type === "expense" ? -t.amount : 0),
+      0
+    )
+    return {
+      text: formatCurrency(net),
+      className: cn(
+        "font-bold tabular-nums",
+        net > 0 ? "text-income" : net < 0 ? "text-destructive" : "text-destructive"
+      ),
+    }
+  }
+  return {
+    text: formatCurrency(0),
+    className: "font-bold tabular-nums text-destructive",
+  }
+}
 
 export default function EntriesPage() {
+  const tabsScrollRef = useRef<HTMLDivElement>(null)
+  const addFormRef = useRef<HTMLDivElement>(null)
+
+  const [segment, setSegment] = useState<EntrySegment>("expenses")
+  const [timePreset, setTimePreset] = useState<TimePreset>("month")
+  const [search, setSearch] = useState("")
+  const [showAddForm, setShowAddForm] = useState(false)
+  const [txModalOpen, setTxModalOpen] = useState(false)
+  const [expenseModalOpen, setExpenseModalOpen] = useState(false)
+  const [udharSheetOpen, setUdharSheetOpen] = useState(false)
+  const [loanSheetOpen, setLoanSheetOpen] = useState(false)
+  const [cardSheetOpen, setCardSheetOpen] = useState(false)
+  const [txTypeFilter, setTxTypeFilter] = useState<"all" | TransactionType>("all")
+  const [txAccountFilter, setTxAccountFilter] = useState<string>("all")
+
+  const { data: transactions = [], isLoading, isError, error, refetch } = useGetTransactionsQuery()
+  const { data: accountOptions = [] } = useGetAccountsQuery(undefined, {
+    skip: segment !== "txns" && !expenseModalOpen,
+  })
+
+  const filtered = useMemo(() => {
+    const now = new Date()
+    const q = search.trim().toLowerCase()
+    let list = filterBySegment(transactions, segment)
+    list = list.filter((t) => transactionInTimeRange(t.date, timePreset, now))
+    if (q) list = list.filter((t) => t.title.toLowerCase().includes(q))
+
+    if (segment === "txns") {
+      if (txTypeFilter !== "all") {
+        list = list.filter((t) => t.type === txTypeFilter)
+      }
+      if (txAccountFilter !== "all") {
+        list = list.filter((t) => t.accountId === txAccountFilter)
+      }
+    }
+
+    return list.sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0))
+  }, [transactions, segment, timePreset, search, txTypeFilter, txAccountFilter])
+
+  const totalDisplay = headerTotalLabel(segment, filtered)
+
+  function scrollTabs(dir: -1 | 1) {
+    tabsScrollRef.current?.scrollBy({ left: dir * 140, behavior: "smooth" })
+  }
+
+  function openAddForm() {
+    setShowAddForm(true)
+    requestAnimationFrame(() => {
+      addFormRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" })
+    })
+  }
+
+  const pageTitle =
+    segment === "txns"
+      ? "Transactions"
+      : segment === "expenses"
+        ? "All Expenses"
+        : segment === "udhar"
+          ? "Udhar (Lend & Borrow)"
+          : segment === "loans"
+            ? "Bank Loans"
+            : segment === "cards"
+              ? "Credit Cards"
+              : "All Entries"
+  const showHeaderTotal = segment === "txns" || segment === "expenses"
+  const showTimeAndSearch = segment !== "udhar" && segment !== "loans" && segment !== "cards"
+  const searchPlaceholder =
+    segment === "expenses"
+      ? "Search expenses…"
+      : segment === "txns"
+        ? "Search transactions…"
+        : "Search entries…"
+  const emptyTitle =
+    segment === "txns"
+      ? "No transactions found"
+      : segment === "expenses"
+        ? "No expenses found"
+        : segment === "udhar"
+          ? "No udhar entries"
+          : segment === "loans"
+            ? "No loans"
+            : segment === "cards"
+              ? "No credit cards"
+              : "No entries found"
+  const emptySubtitle =
+    segment === "txns"
+      ? "No transactions match your filters"
+      : segment === "expenses"
+        ? "No expenses match your filters"
+        : segment === "udhar"
+          ? "Add a person and start tracking lent or borrowed money"
+          : segment === "loans"
+            ? "Add a loan to track EMIs and payments"
+            : segment === "cards"
+              ? "Add your credit card to track spending and bills"
+              : "No entries match your filters"
+
   return (
-    <main className="space-y-4 px-4 py-4 pb-24">
-      <div>
-        <h2 className="text-sm font-semibold">Entries</h2>
-        <p className="text-xs text-muted-foreground">Manage transactions and categories.</p>
+    <main className="min-h-0 flex-1 bg-background px-4 py-4 pb-28">
+      <AddTransactionModal open={txModalOpen} onOpenChange={setTxModalOpen} />
+      <AddTransactionModal open={expenseModalOpen} onOpenChange={setExpenseModalOpen} expenseFlow />
+      <AddUdharEntrySheet open={udharSheetOpen} onOpenChange={setUdharSheetOpen} />
+      <AddLoanSheet open={loanSheetOpen} onOpenChange={setLoanSheetOpen} />
+      <AddCreditCardSheet open={cardSheetOpen} onOpenChange={setCardSheetOpen} />
+
+      <div className="relative mb-3">
+        <button
+          type="button"
+          className="absolute top-1/2 left-0 z-10 flex size-7 -translate-y-1/2 items-center justify-center rounded-full border border-border/80 bg-card text-muted-foreground shadow-sm hover:bg-muted/60"
+          aria-label="Scroll tabs left"
+          onClick={() => scrollTabs(-1)}
+        >
+          <ChevronLeft className="size-4" strokeWidth={2} />
+        </button>
+        <button
+          type="button"
+          className="absolute top-1/2 right-0 z-10 flex size-7 -translate-y-1/2 items-center justify-center rounded-full border border-border/80 bg-card text-muted-foreground shadow-sm hover:bg-muted/60"
+          aria-label="Scroll tabs right"
+          onClick={() => scrollTabs(1)}
+        >
+          <ChevronRight className="size-4" strokeWidth={2} />
+        </button>
+        <div
+          ref={tabsScrollRef}
+          className="scrollbar-thin flex gap-2 overflow-x-auto scroll-smooth px-9 py-0.5 [-ms-overflow-style:none] [scrollbar-width:thin] [&::-webkit-scrollbar]:h-1.5 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-border [&::-webkit-scrollbar-track]:rounded-full [&::-webkit-scrollbar-track]:bg-muted/80"
+          role="tablist"
+          aria-label="Entry categories"
+        >
+          {ENTRY_SEGMENTS.map(({ id, label, icon: Icon }) => {
+            const active = segment === id
+            return (
+              <button
+                key={id}
+                type="button"
+                role="tab"
+                aria-selected={active}
+                id={`entries-tab-${id}`}
+                className={cn(
+                  "flex shrink-0 items-center gap-1.5 rounded-full px-3.5 py-2 text-xs font-semibold transition-colors sm:text-[13px]",
+                  active
+                    ? "bg-primary text-primary-foreground shadow-sm"
+                    : "bg-muted/80 text-muted-foreground hover:bg-muted hover:text-foreground"
+                )}
+                onClick={() => setSegment(id)}
+              >
+                <Icon className="size-4 shrink-0" strokeWidth={active ? 2.25 : 2} aria-hidden />
+                {label}
+              </button>
+            )
+          })}
+        </div>
       </div>
-      <QuickTransactionForm />
+
+      <div className="mb-3 flex items-baseline justify-between gap-3">
+        <h1
+          className={cn(
+            "text-lg font-bold tracking-tight",
+            segment === "loans" || segment === "cards" ? "text-primary" : "text-foreground"
+          )}
+        >
+          {pageTitle}
+        </h1>
+        {showHeaderTotal && !isLoading && !isError ? (
+          <span className={totalDisplay.className}>{totalDisplay.text}</span>
+        ) : showHeaderTotal && isLoading ? (
+          <Skeleton className="h-6 w-16 rounded-md" />
+        ) : null}
+      </div>
+
+      {segment === "txns" && (
+        <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-stretch">
+          <div className="relative min-w-0 flex-1 sm:max-w-[11rem]">
+            <select
+              value={txTypeFilter}
+              onChange={(e) => setTxTypeFilter(e.target.value as "all" | TransactionType)}
+              className="h-10 w-full appearance-none rounded-full border border-border/80 bg-muted/70 px-3.5 pr-9 text-xs font-semibold text-foreground outline-none"
+              aria-label="Filter by type"
+            >
+              <option value="all">All types</option>
+              <option value="expense">Expense</option>
+              <option value="income">Income</option>
+              <option value="transfer">Transfer</option>
+            </select>
+            <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+          </div>
+          <div className="relative min-w-0 flex-1 sm:max-w-[11rem]">
+            <select
+              value={txAccountFilter}
+              onChange={(e) => setTxAccountFilter(e.target.value)}
+              className="h-10 w-full appearance-none rounded-full border border-border/80 bg-muted/70 px-3.5 pr-9 text-xs font-semibold text-foreground outline-none"
+              aria-label="Filter by account"
+            >
+              <option value="all">All accounts</option>
+              {accountOptions.map((a) => (
+                <option key={a.id} value={a.id}>
+                  {a.name}
+                </option>
+              ))}
+            </select>
+            <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+          </div>
+          <Button
+            type="button"
+            className="h-10 shrink-0 rounded-full px-5 text-sm font-semibold sm:ml-auto"
+            onClick={() => setTxModalOpen(true)}
+          >
+            Add Transaction
+          </Button>
+        </div>
+      )}
+
+      {segment === "expenses" && !isLoading && !isError && filtered.length > 0 && (
+        <div className="mb-3 flex justify-end">
+          <Button
+            type="button"
+            className="h-10 rounded-full px-5 text-sm font-semibold"
+            onClick={() => setExpenseModalOpen(true)}
+          >
+            Add Expense
+          </Button>
+        </div>
+      )}
+
+      {showTimeAndSearch && (
+        <>
+          <div
+            className="mb-3 flex flex-wrap gap-2 sm:flex-nowrap sm:overflow-x-auto sm:pb-0.5"
+            role="group"
+            aria-label="Time range"
+          >
+            {TIME_PRESETS.map(({ id, label }) => {
+              const active = timePreset === id
+              return (
+                <button
+                  key={id}
+                  type="button"
+                  className={cn(
+                    "shrink-0 rounded-full px-3 py-1.5 text-xs font-semibold transition-colors",
+                    active
+                      ? "bg-primary text-primary-foreground shadow-sm"
+                      : "bg-muted/70 text-muted-foreground hover:bg-muted hover:text-foreground"
+                  )}
+                  onClick={() => setTimePreset(id)}
+                >
+                  {label}
+                </button>
+              )
+            })}
+          </div>
+
+          <label className="sr-only" htmlFor="entries-search">
+            {searchPlaceholder.replace("…", "")}
+          </label>
+          <Input
+            id="entries-search"
+            type="search"
+            placeholder={searchPlaceholder}
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="mb-4 h-11 rounded-xl border-border/80 bg-muted/40"
+            autoComplete="off"
+          />
+        </>
+      )}
+
+      {isError && (
+        <div className="mb-4 space-y-3 rounded-2xl border border-destructive/30 bg-destructive/5 px-4 py-4">
+          <p className="text-sm text-destructive">{getErrorMessage(error)}</p>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="rounded-xl"
+            onClick={() => refetch()}
+          >
+            Retry
+          </Button>
+        </div>
+      )}
+
+      {isLoading && !isError && (
+        <div className="space-y-2">
+          <Skeleton className="h-18 w-full rounded-2xl" />
+          <Skeleton className="h-18 w-full rounded-2xl" />
+          <Skeleton className="h-18 w-full rounded-2xl" />
+        </div>
+      )}
+
+      {!isLoading && !isError && filtered.length === 0 && (
+        <div className="flex min-h-[min(52vh,22rem)] flex-col items-center justify-center rounded-2xl border border-dashed border-border/90 bg-card px-6 py-12 text-center">
+          <div className="mb-4 flex size-14 items-center justify-center rounded-2xl bg-muted/80">
+            {segment === "expenses" ? (
+              <div className="relative flex size-10 items-center justify-center">
+                <FileText className="size-8 text-primary" strokeWidth={2} aria-hidden />
+                <IndianRupee
+                  className="absolute -right-0.5 -bottom-0.5 size-4 text-primary"
+                  strokeWidth={2.5}
+                  aria-hidden
+                />
+              </div>
+            ) : segment === "udhar" ? (
+              <Users className="size-7 text-primary" strokeWidth={2} aria-hidden />
+            ) : segment === "loans" ? (
+              <Landmark className="size-7 text-primary" strokeWidth={2} aria-hidden />
+            ) : segment === "cards" ? (
+              <CreditCard className="size-7 text-primary" strokeWidth={2} aria-hidden />
+            ) : (
+              <Banknote className="size-7 text-primary" strokeWidth={2} aria-hidden />
+            )}
+          </div>
+          <p className="text-base font-bold text-primary">{emptyTitle}</p>
+          <p className="mt-1 max-w-xs text-sm text-muted-foreground">{emptySubtitle}</p>
+          {segment === "txns" ? (
+            <Button
+              type="button"
+              className="mt-6 h-11 rounded-xl px-8 text-base font-semibold"
+              onClick={() => setTxModalOpen(true)}
+            >
+              Add Transaction
+            </Button>
+          ) : segment === "expenses" ? (
+            <Button
+              type="button"
+              className="mt-6 h-11 rounded-xl px-8 text-base font-semibold"
+              onClick={() => setExpenseModalOpen(true)}
+            >
+              Add Expense
+            </Button>
+          ) : segment === "udhar" ? (
+            <Button
+              type="button"
+              className="mt-6 h-11 rounded-xl px-8 text-base font-semibold"
+              onClick={() => setUdharSheetOpen(true)}
+            >
+              Add Udhar Entry
+            </Button>
+          ) : segment === "loans" ? (
+            <Button
+              type="button"
+              className="mt-6 h-11 rounded-xl px-8 text-base font-semibold"
+              onClick={() => setLoanSheetOpen(true)}
+            >
+              Add Loan
+            </Button>
+          ) : segment === "cards" ? (
+            <Button
+              type="button"
+              className="mt-6 h-11 rounded-xl px-8 text-base font-semibold"
+              onClick={() => setCardSheetOpen(true)}
+            >
+              Add Card
+            </Button>
+          ) : (
+            <Button
+              type="button"
+              className="mt-6 h-11 rounded-xl px-8 text-base font-semibold"
+              onClick={openAddForm}
+            >
+              Add Entry
+            </Button>
+          )}
+        </div>
+      )}
+
+      {!isLoading && !isError && filtered.length > 0 && (
+        <ul className="flex list-none flex-col gap-2.5" aria-label="Entries list">
+          {filtered.map((tx) => (
+            <li key={tx.id}>
+              <TransactionRow tx={tx} />
+            </li>
+          ))}
+        </ul>
+      )}
+
+      {!isLoading && !isError && filtered.length > 0 && segment === "expenses" && (
+        <Button
+          type="button"
+          variant="outline"
+          className="mt-4 h-11 w-full rounded-xl text-base font-semibold"
+          onClick={() => setExpenseModalOpen(true)}
+        >
+          Add Expense
+        </Button>
+      )}
+
+      {!isLoading && !isError && filtered.length > 0 && segment === "udhar" && (
+        <Button
+          type="button"
+          variant="outline"
+          className="mt-4 h-11 w-full rounded-xl text-base font-semibold"
+          onClick={() => setUdharSheetOpen(true)}
+        >
+          Add Udhar Entry
+        </Button>
+      )}
+
+      {!isLoading && !isError && filtered.length > 0 && segment === "loans" && (
+        <Button
+          type="button"
+          variant="outline"
+          className="mt-4 h-11 w-full rounded-xl text-base font-semibold"
+          onClick={() => setLoanSheetOpen(true)}
+        >
+          Add Loan
+        </Button>
+      )}
+
+      {!isLoading &&
+        !isError &&
+        filtered.length > 0 &&
+        segment !== "txns" &&
+        segment !== "expenses" &&
+        segment !== "udhar" &&
+        segment !== "loans" &&
+        segment !== "cards" && (
+          <Button
+            type="button"
+            variant="outline"
+            className="mt-4 h-11 w-full rounded-xl text-base font-semibold"
+            onClick={openAddForm}
+          >
+            Add entry
+          </Button>
+        )}
+
+      {!isLoading && !isError && filtered.length > 0 && segment === "cards" && (
+        <Button
+          type="button"
+          variant="outline"
+          className="mt-4 h-11 w-full rounded-xl text-base font-semibold"
+          onClick={() => setCardSheetOpen(true)}
+        >
+          Add Card
+        </Button>
+      )}
+
+      {!isLoading && !isError && filtered.length > 0 && segment === "txns" && (
+        <Button
+          type="button"
+          variant="outline"
+          className="mt-4 h-11 w-full rounded-xl text-base font-semibold"
+          onClick={() => setTxModalOpen(true)}
+        >
+          Add Transaction
+        </Button>
+      )}
+
+      {showAddForm &&
+        segment !== "txns" &&
+        segment !== "expenses" &&
+        segment !== "udhar" &&
+        segment !== "loans" &&
+        segment !== "cards" && (
+          <div ref={addFormRef} className="mt-6">
+            <QuickTransactionForm
+              onSuccess={() => setShowAddForm(false)}
+              className="border-border/80"
+            />
+          </div>
+        )}
     </main>
   )
 }

@@ -1,0 +1,558 @@
+import { useId, useState } from "react"
+import { useNavigate } from "react-router-dom"
+import { CalendarDays, ChevronDown, CreditCard, Gem, Landmark, Tag, X } from "lucide-react"
+import { toast } from "sonner"
+import { ToggleTile } from "@/components/toggle-tile"
+import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import { Skeleton } from "@/components/ui/skeleton"
+import { getErrorMessage } from "@/lib/api/errors"
+import type { TransactionType } from "@/lib/api/schemas"
+import { cn } from "@/lib/utils"
+import { useAddTransactionMutation, useGetAccountsQuery } from "@/store/api/base-api"
+
+const TX_CATEGORIES = [
+  "Food & dining",
+  "Transport",
+  "Shopping",
+  "Bills & utilities",
+  "Health",
+  "Entertainment",
+  "Salary",
+  "Investments",
+  "Transfer",
+  "Other",
+] as const
+
+type PaymentMethod = "account" | "card"
+
+function todayIsoDate(): string {
+  const d = new Date()
+  const y = d.getFullYear()
+  const m = String(d.getMonth() + 1).padStart(2, "0")
+  const day = String(d.getDate()).padStart(2, "0")
+  return `${y}-${m}-${day}`
+}
+
+function SelectChevron() {
+  return (
+    <ChevronDown
+      className="pointer-events-none absolute right-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground"
+      aria-hidden
+    />
+  )
+}
+
+export type AddTransactionModalProps = {
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  /** Expenses tab flow: locked expense type, “Add Expense”, note-first title. */
+  expenseFlow?: boolean
+}
+
+type MountedProps = {
+  onOpenChange: (open: boolean) => void
+  expenseFlow: boolean
+}
+
+function AddTransactionModalMounted({ onOpenChange, expenseFlow }: MountedProps) {
+  const titleId = useId()
+  const categoryId = useId()
+  const accountIdField = useId()
+  const navigate = useNavigate()
+
+  const { data: accounts = [], isLoading, isError, error, refetch } = useGetAccountsQuery()
+  const [addTransaction, { isLoading: isSubmitting }] = useAddTransactionMutation()
+
+  const [txType, setTxType] = useState<TransactionType>("expense")
+  const [amount, setAmount] = useState("")
+  const [description, setDescription] = useState("")
+  const [date, setDate] = useState(todayIsoDate)
+  const [category, setCategory] = useState("")
+  const [accountId, setAccountId] = useState("")
+  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("account")
+  const [paidOnBehalf, setPaidOnBehalf] = useState(false)
+  const [scheduleUpcoming, setScheduleUpcoming] = useState(false)
+  const [note, setNote] = useState("")
+  const [tags, setTags] = useState<string[]>([])
+  const [tagPreset, setTagPreset] = useState("")
+  const [newTag, setNewTag] = useState("")
+
+  const effectiveType: TransactionType = expenseFlow ? "expense" : txType
+  const hasAccounts = accounts.length > 0
+  const modalTitle = expenseFlow ? "Add Expense" : "Add Transaction"
+  const submitLabel = expenseFlow ? "Add Expense" : "Add Transaction"
+
+  function dismiss() {
+    onOpenChange(false)
+  }
+
+  function addTagFromInputs() {
+    const fromPreset = tagPreset.trim()
+    const fromNew = newTag.trim()
+    const next = fromPreset || fromNew
+    if (!next) return
+    if (!tags.includes(next)) setTags((t) => [...t, next])
+    setNewTag("")
+    setTagPreset("")
+  }
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault()
+    if (!hasAccounts) return
+
+    let titleBase: string
+    if (expenseFlow) {
+      titleBase = note.trim()
+      if (!titleBase) {
+        toast.error("Add a note (what was this for?)")
+        return
+      }
+    } else {
+      titleBase = description.trim()
+      if (!titleBase) {
+        toast.error("Add a description")
+        return
+      }
+    }
+
+    const n = amount.replace(/\D/g, "")
+    if (!n || Number(n) <= 0) {
+      toast.error("Enter a valid amount")
+      return
+    }
+    if (!category) {
+      toast.error("Select a category")
+      return
+    }
+    if (!accountId) {
+      toast.error("Select an account")
+      return
+    }
+
+    const acc = accounts.find((a) => a.id === accountId)
+    const tagSuffix = tags.length ? ` · ${tags.join(" · ")}` : ""
+    const noteExtra = !expenseFlow && note.trim() ? ` — ${note.trim()}` : ""
+    const title = `${titleBase}${noteExtra}${tagSuffix}`
+
+    try {
+      await addTransaction({
+        title,
+        amount: Number(n),
+        type: effectiveType,
+        date,
+        category,
+        accountId,
+        accountName: acc?.name,
+      }).unwrap()
+      toast.success(expenseFlow ? "Expense added" : "Transaction added")
+      dismiss()
+    } catch (err) {
+      toast.error(getErrorMessage(err))
+    }
+  }
+
+  const accountLabel = expenseFlow
+    ? "Paying From"
+    : effectiveType === "income"
+      ? "Receiving to"
+      : effectiveType === "transfer"
+        ? "Account"
+        : "Paying From"
+
+  const selectFieldClass = cn(
+    "h-9 w-full appearance-none rounded-xl border border-border bg-card px-3 pr-9 text-sm text-foreground shadow-sm outline-none",
+    "focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/50"
+  )
+
+  return (
+    <div className="fixed inset-0 z-[60] flex max-h-dvh items-start justify-center overflow-hidden pt-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] sm:items-center sm:py-4">
+      <button
+        type="button"
+        className="absolute inset-0 bg-black/50 backdrop-blur-[2px]"
+        aria-label="Close overlay"
+        onClick={dismiss}
+      />
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
+        className={cn(
+          "relative flex max-h-[calc(100dvh-0.75rem-env(safe-area-inset-bottom))] w-full max-w-lg flex-col overflow-hidden rounded-2xl border border-border bg-card shadow-2xl sm:max-h-[min(92dvh,calc(100dvh-2rem))]",
+          "animate-in fade-in zoom-in-95 duration-200"
+        )}
+      >
+        <header className="flex shrink-0 items-start justify-between gap-2 border-b border-border px-4 py-2.5">
+          <h2 id={titleId} className="text-base font-bold text-primary sm:text-lg">
+            {modalTitle}
+          </h2>
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon-sm"
+            className="shrink-0 rounded-full text-muted-foreground hover:text-foreground"
+            aria-label="Close"
+            onClick={dismiss}
+          >
+            <X className="size-5" strokeWidth={2} />
+          </Button>
+        </header>
+
+        <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+          {isLoading && (
+            <div className="space-y-2 px-4 py-3">
+              <Skeleton className="h-14 w-full rounded-xl" />
+              <Skeleton className="h-9 w-full rounded-xl" />
+              <Skeleton className="h-9 w-full rounded-xl" />
+            </div>
+          )}
+
+          {isError && !isLoading && (
+            <div className="flex flex-col items-center gap-2 px-4 py-4 text-center">
+              <p className="text-xs text-destructive">{getErrorMessage(error)}</p>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="rounded-xl"
+                onClick={() => refetch()}
+              >
+                Retry
+              </Button>
+            </div>
+          )}
+
+          {!isLoading && !isError && !hasAccounts && (
+            <div className="flex flex-col items-center justify-center px-4 py-6 text-center">
+              <div className="mb-2 flex size-11 items-center justify-center rounded-2xl bg-muted/80">
+                <Landmark className="size-6 text-primary" strokeWidth={2} aria-hidden />
+              </div>
+              <p className="text-sm font-bold text-foreground">No account found</p>
+              <p className="mt-0.5 max-w-[16rem] text-xs text-muted-foreground">
+                Add a bank account, cash, or wallet to start tracking
+              </p>
+              <Button
+                type="button"
+                className="mt-3 h-9 rounded-xl px-6 text-sm font-semibold"
+                onClick={() => {
+                  dismiss()
+                  navigate("/accounts")
+                }}
+              >
+                Add Account
+              </Button>
+            </div>
+          )}
+
+          {!isLoading && !isError && hasAccounts && (
+            <form
+              id="add-transaction-form"
+              onSubmit={handleSubmit}
+              className="flex min-h-0 flex-1 flex-col overflow-hidden"
+            >
+              <div className="min-h-0 flex-1 space-y-1.5 overflow-hidden px-4 py-2">
+                {!expenseFlow && (
+                  <section>
+                    <Label className="mb-0.5 block text-xs font-bold text-primary">Type</Label>
+                    <div className="grid grid-cols-3 gap-1.5">
+                      {(
+                        [
+                          { id: "expense" as const, label: "Expense" },
+                          { id: "income" as const, label: "Income" },
+                          { id: "transfer" as const, label: "Transfer" },
+                        ] as const
+                      ).map(({ id, label }) => (
+                        <ToggleTile
+                          key={id}
+                          selected={txType === id}
+                          onClick={() => setTxType(id)}
+                          className={cn(
+                            txType === id &&
+                              id === "expense" &&
+                              "border-primary bg-sky-50 text-destructive dark:bg-primary/10 dark:text-destructive",
+                            txType === id &&
+                              id === "income" &&
+                              "border-primary bg-sky-50 text-income dark:bg-primary/10",
+                            txType === id &&
+                              id === "transfer" &&
+                              "border-primary bg-sky-50 text-primary dark:bg-primary/15"
+                          )}
+                        >
+                          <span>{label}</span>
+                        </ToggleTile>
+                      ))}
+                    </div>
+                  </section>
+                )}
+
+                <section>
+                  <Label
+                    htmlFor="at-amount"
+                    className="mb-0.5 block text-xs font-bold text-primary"
+                  >
+                    Amount (₹)
+                  </Label>
+                  <Input
+                    id="at-amount"
+                    inputMode="numeric"
+                    placeholder="0"
+                    value={amount}
+                    onChange={(e) => setAmount(e.target.value.replace(/[^\d]/g, ""))}
+                    className="h-12 rounded-xl border-border bg-muted/60 text-center text-2xl font-semibold tabular-nums text-primary/80 placeholder:text-primary/40"
+                  />
+                </section>
+
+                <div className="grid grid-cols-2 gap-2">
+                  <section>
+                    <Label
+                      htmlFor={categoryId}
+                      className="mb-0.5 block text-xs font-bold text-primary"
+                    >
+                      Category
+                    </Label>
+                    <div className="relative">
+                      <select
+                        id={categoryId}
+                        value={category}
+                        onChange={(e) => setCategory(e.target.value)}
+                        className={cn(selectFieldClass, !category && "text-muted-foreground")}
+                      >
+                        <option value="">Select category</option>
+                        {TX_CATEGORIES.map((c) => (
+                          <option key={c} value={c}>
+                            {c}
+                          </option>
+                        ))}
+                      </select>
+                      <SelectChevron />
+                    </div>
+                  </section>
+                  <section>
+                    <Label
+                      htmlFor="at-date"
+                      className="mb-0.5 block text-xs font-bold text-primary"
+                    >
+                      Date
+                    </Label>
+                    <div className="relative">
+                      <Input
+                        id="at-date"
+                        type="date"
+                        value={date}
+                        onChange={(e) => setDate(e.target.value)}
+                        className="h-9 rounded-xl border-border bg-card px-3 pr-9 text-sm shadow-sm scheme-light dark:scheme-dark"
+                      />
+                      <CalendarDays
+                        className="pointer-events-none absolute right-2 top-1/2 size-4 -translate-y-1/2 text-muted-foreground"
+                        aria-hidden
+                      />
+                    </div>
+                  </section>
+                </div>
+
+                <section>
+                  <Label className="mb-0.5 block text-xs font-bold text-primary">
+                    Payment Method
+                  </Label>
+                  <div className="grid grid-cols-2 gap-1.5">
+                    <ToggleTile
+                      selected={paymentMethod === "account"}
+                      onClick={() => setPaymentMethod("account")}
+                    >
+                      <CreditCard
+                        className="size-3.5 shrink-0 text-primary sm:size-4"
+                        strokeWidth={2}
+                        aria-hidden
+                      />
+                      <span>Account / Cash / UPI</span>
+                    </ToggleTile>
+                    <ToggleTile
+                      selected={paymentMethod === "card"}
+                      onClick={() => setPaymentMethod("card")}
+                    >
+                      <Gem
+                        className="size-3.5 shrink-0 text-primary sm:size-4"
+                        strokeWidth={2}
+                        aria-hidden
+                      />
+                      <span>Credit Card</span>
+                    </ToggleTile>
+                  </div>
+                </section>
+
+                <section>
+                  <Label
+                    htmlFor={accountIdField}
+                    className="mb-0.5 block text-xs font-bold text-primary"
+                  >
+                    {accountLabel}
+                  </Label>
+                  <div className="relative">
+                    <select
+                      id={accountIdField}
+                      value={accountId}
+                      onChange={(e) => setAccountId(e.target.value)}
+                      className={cn(selectFieldClass, !accountId && "text-muted-foreground")}
+                    >
+                      <option value="">Select account</option>
+                      {accounts.map((a) => (
+                        <option key={a.id} value={a.id}>
+                          {a.name}
+                        </option>
+                      ))}
+                    </select>
+                    <SelectChevron />
+                  </div>
+                </section>
+
+                <label className="flex cursor-pointer items-center gap-2 rounded-lg py-0.5">
+                  <input
+                    type="checkbox"
+                    checked={paidOnBehalf}
+                    onChange={(e) => setPaidOnBehalf(e.target.checked)}
+                    className="size-3.5 rounded border-border"
+                  />
+                  <span className="text-[11px] leading-tight text-foreground sm:text-xs">
+                    Paid on behalf of someone (add to their dues)
+                  </span>
+                </label>
+
+                <div className="rounded-xl border border-border/80 bg-muted/30 p-2">
+                  <label className="flex cursor-pointer items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <span className="text-xs font-semibold text-foreground">
+                        Schedule as upcoming expense
+                      </span>
+                      <p className="mt-0.5 text-[10px] leading-tight text-muted-foreground sm:text-[11px]">
+                        Mark as planned; won&apos;t affect balances until it happens.
+                      </p>
+                    </div>
+                    <input
+                      type="checkbox"
+                      checked={scheduleUpcoming}
+                      onChange={(e) => setScheduleUpcoming(e.target.checked)}
+                      className="mt-0.5 size-3.5 shrink-0 rounded border-border"
+                    />
+                  </label>
+                </div>
+
+                {!expenseFlow && (
+                  <section>
+                    <Label
+                      htmlFor="at-desc"
+                      className="mb-0.5 block text-xs font-bold text-primary"
+                    >
+                      Description
+                    </Label>
+                    <Input
+                      id="at-desc"
+                      value={description}
+                      onChange={(e) => setDescription(e.target.value)}
+                      placeholder="Short description"
+                      className="h-9 rounded-xl border-border bg-card px-3 text-sm shadow-sm"
+                    />
+                  </section>
+                )}
+
+                <section>
+                  <Label htmlFor="at-note" className="mb-0.5 block text-xs font-bold text-primary">
+                    Note
+                  </Label>
+                  <textarea
+                    id="at-note"
+                    rows={1}
+                    placeholder={expenseFlow ? "What was this for?" : "Optional details…"}
+                    value={note}
+                    onChange={(e) => setNote(e.target.value)}
+                    className={cn(
+                      "min-h-9 w-full resize-none rounded-xl border border-border bg-card px-3 py-1.5 text-sm text-foreground shadow-sm outline-none",
+                      "placeholder:text-muted-foreground/80",
+                      "focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/50"
+                    )}
+                  />
+                </section>
+
+                <section>
+                  <Label className="mb-0.5 flex items-center gap-1 text-xs font-bold text-primary">
+                    <Tag className="size-3.5" strokeWidth={2} aria-hidden />
+                    Tags
+                  </Label>
+                  <div className="flex flex-wrap gap-1.5">
+                    <div className="relative min-w-0 flex-1 basis-[40%]">
+                      <select
+                        value={tagPreset}
+                        onChange={(e) => setTagPreset(e.target.value)}
+                        className={cn(selectFieldClass, !tagPreset && "text-muted-foreground")}
+                      >
+                        <option value="">Add tag…</option>
+                        {TX_CATEGORIES.map((c) => (
+                          <option key={c} value={c}>
+                            {c}
+                          </option>
+                        ))}
+                      </select>
+                      <ChevronDown className="pointer-events-none absolute right-2 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
+                    </div>
+                    <Input
+                      value={newTag}
+                      onChange={(e) => setNewTag(e.target.value)}
+                      placeholder="New tag"
+                      className="h-9 min-w-[5rem] flex-1 rounded-xl border-border bg-card px-2 text-xs shadow-sm"
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") {
+                          e.preventDefault()
+                          addTagFromInputs()
+                        }
+                      }}
+                    />
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      size="icon"
+                      className="size-9 shrink-0 rounded-xl text-sm"
+                      aria-label="Add tag"
+                      onClick={addTagFromInputs}
+                    >
+                      +
+                    </Button>
+                  </div>
+                  {tags.length > 0 && (
+                    <p className="mt-0.5 truncate text-[10px] text-muted-foreground sm:text-[11px]">
+                      {tags.join(" · ")}
+                    </p>
+                  )}
+                </section>
+              </div>
+
+              <div className="shrink-0 border-t border-border bg-card px-4 py-2 pb-[max(0.5rem,env(safe-area-inset-bottom))]">
+                <Button
+                  type="submit"
+                  disabled={isSubmitting}
+                  className="h-10 w-full rounded-xl bg-[hsl(230_22%_62%)] text-sm font-bold text-white hover:bg-[hsl(230_22%_56%)] disabled:opacity-60 sm:h-11 sm:text-base"
+                >
+                  {isSubmitting ? "Saving…" : submitLabel}
+                </Button>
+              </div>
+            </form>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+export function AddTransactionModal({
+  open,
+  onOpenChange,
+  expenseFlow = false,
+}: AddTransactionModalProps) {
+  if (!open) return null
+  return (
+    <AddTransactionModalMounted
+      key={expenseFlow ? "expense" : "transaction"}
+      expenseFlow={expenseFlow}
+      onOpenChange={onOpenChange}
+    />
+  )
+}
