@@ -23,6 +23,9 @@ export const peopleSlice = createSlice({
   name: "people",
   initialState,
   reducers: {
+    setPeople(state, action: PayloadAction<Person[]>) {
+      state.items = action.payload
+    },
     addPerson(state, action: PayloadAction<Person>) {
       const exists = state.items.some((p) => p.id === action.payload.id)
       if (!exists) {
@@ -32,4 +35,4 @@ export const peopleSlice = createSlice({
   },
 })
 
-export const { addPerson } = peopleSlice.actions
+export const { setPeople, addPerson } = peopleSlice.actions

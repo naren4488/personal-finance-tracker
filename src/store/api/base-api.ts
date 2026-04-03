@@ -18,6 +18,7 @@ import {
 } from "@/lib/api/auth-schemas"
 import {
   parseCreatePersonSuccess,
+  parseGetPeopleSuccess,
   type CreatePersonRequest,
   type Person,
 } from "@/lib/api/people-schemas"
@@ -38,7 +39,7 @@ import {
   logAuthResponseSuccess,
 } from "@/lib/debug/auth-api-log"
 import { clearUser, setUser } from "@/store/auth-slice"
-import { addPerson } from "@/store/people-slice"
+import { addPerson, setPeople } from "@/store/people-slice"
 
 function delay(ms: number) {
   return new Promise((r) => setTimeout(r, ms))
@@ -145,8 +146,39 @@ const baseQueryWithReauth: BaseQueryFn<string | FetchArgs, unknown, FetchBaseQue
 export const baseApi = createApi({
   reducerPath: "api",
   baseQuery: baseQueryWithReauth,
-  tagTypes: ["Transaction"],
+  tagTypes: ["Transaction", "People"],
   endpoints: (build) => ({
+    getPeople: build.query<Person[], void>({
+      async queryFn(_arg, api, _extraOptions, baseQuery) {
+        console.log("Fetching people...")
+        const res = await baseQuery({
+          url: PEOPLE_PATHS.list,
+          method: "GET",
+        })
+        console.log("API response:", res.data)
+        if (res.error) {
+          console.error("Error:", res.error)
+          return { error: normalizeFetchError(res.error) }
+        }
+        const failMsg = parseApiFailureMessage(res.data)
+        if (failMsg) {
+          console.error(failMsg)
+          return { error: { status: 401, data: failMsg } }
+        }
+        const parsed = parseGetPeopleSuccess(res.data)
+        if (!parsed.ok) {
+          console.error(parsed.error)
+          return { error: { status: 422, data: parsed.error } }
+        }
+        const people = parsed.data.people
+        console.log("People fetched successfully", parsed.data)
+        console.log("People:", people)
+        api.dispatch(setPeople(people))
+        return { data: people }
+      },
+      providesTags: [{ type: "People", id: "LIST" }],
+    }),
+
     createPerson: build.mutation<Person, CreatePersonRequest>({
       async queryFn(body, api, _extraOptions, baseQuery) {
         const payload = {
@@ -172,6 +204,7 @@ export const baseApi = createApi({
         api.dispatch(addPerson(parsed.person))
         return { data: parsed.person }
       },
+      invalidatesTags: [{ type: "People", id: "LIST" }],
     }),
 
     register: build.mutation<AuthResult, RegisterRequest>({
@@ -344,6 +377,7 @@ export const {
   useRegisterMutation,
   useLoginMutation,
   useRefreshTokenMutation,
+  useGetPeopleQuery,
   useCreatePersonMutation,
   useGetTransactionsQuery,
   useAddTransactionMutation,

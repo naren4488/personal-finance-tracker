@@ -37,3 +37,23 @@ export function parseCreatePersonSuccess(
   }
   return { ok: true, person: parsed.data.data.person }
 }
+
+export const getPeopleSuccessResponseSchema = z.object({
+  success: z.literal(true),
+  message: z.string(),
+  data: z.object({
+    people: z.array(personSchema),
+  }),
+})
+
+export type GetPeopleSuccessData = z.infer<typeof getPeopleSuccessResponseSchema>["data"]
+
+export function parseGetPeopleSuccess(
+  raw: unknown
+): { ok: true; data: GetPeopleSuccessData } | { ok: false; error: string } {
+  const parsed = getPeopleSuccessResponseSchema.safeParse(raw)
+  if (!parsed.success) {
+    return { ok: false, error: "Invalid response from server." }
+  }
+  return { ok: true, data: parsed.data.data }
+}
