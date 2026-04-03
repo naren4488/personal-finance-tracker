@@ -1,7 +1,8 @@
-import { useState } from "react"
+import { useMemo, useState } from "react"
 import { ChevronRight, CreditCard, Landmark, Users, Wallet } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
+import { AddUdharEntrySheet } from "@/features/accounts/add-udhar-entry-sheet"
 import {
   ACCOUNTS_MOCK_BY_SEGMENT,
   ACCOUNTS_SEGMENT_META,
@@ -9,6 +10,7 @@ import {
   type AccountListItem,
 } from "@/features/accounts/accounts-mock-data"
 import { cn } from "@/lib/utils"
+import { useAppSelector } from "@/store/hooks"
 
 const SEGMENT_ORDER: AccountsSegmentId[] = ["accounts", "people", "loans", "cards"]
 
@@ -82,11 +84,28 @@ function AccountRowCard({ item }: { item: AccountListItem }) {
 
 export default function AccountsPage() {
   const [segment, setSegment] = useState<AccountsSegmentId>("people")
+  const [udharOpen, setUdharOpen] = useState(false)
   const meta = ACCOUNTS_SEGMENT_META[segment]
-  const items = ACCOUNTS_MOCK_BY_SEGMENT[segment]
+  const peopleFromStore = useAppSelector((s) => s.people.items)
+
+  const peopleRows = useMemo((): AccountListItem[] => {
+    const mockById = Object.fromEntries(ACCOUNTS_MOCK_BY_SEGMENT.people.map((p) => [p.id, p]))
+    return peopleFromStore.map(
+      (p) =>
+        mockById[p.id] ?? {
+          id: p.id,
+          name: p.name,
+          entryCount: 0,
+          amountInr: 0,
+        }
+    )
+  }, [peopleFromStore])
+
+  const items = segment === "people" ? peopleRows : ACCOUNTS_MOCK_BY_SEGMENT[segment]
 
   return (
     <main className="min-h-0 flex-1 bg-background px-4 py-4 pb-28">
+      <AddUdharEntrySheet open={udharOpen} onOpenChange={setUdharOpen} />
       <div
         className="mb-4 flex gap-1 rounded-2xl bg-muted/70 p-1 dark:bg-muted/50"
         role="tablist"
@@ -128,8 +147,9 @@ export default function AccountsPage() {
           type="button"
           variant="link"
           className="h-auto shrink-0 p-0 text-sm font-semibold text-primary"
+          onClick={() => setUdharOpen(true)}
         >
-          + Add
+          {segment === "people" ? "+ Add People" : "+ Add Entry"}
         </Button>
       </div>
 

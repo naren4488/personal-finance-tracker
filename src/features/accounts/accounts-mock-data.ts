@@ -100,3 +100,7 @@ export const ACCOUNTS_MOCK_BY_SEGMENT: Record<AccountsSegmentId, AccountListItem
     },
   ],
 }
+
+/** Names for Udhar “select existing person” dropdown (from People mock list). */
+export const UDHAR_EXISTING_PERSONS: { id: string; name: string }[] =
+  ACCOUNTS_MOCK_BY_SEGMENT.people.map(({ id, name }) => ({ id, name }))

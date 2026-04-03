@@ -6,6 +6,7 @@ import type {
   FetchBaseQueryError,
 } from "@reduxjs/toolkit/query"
 import { AUTH_PATHS } from "@/api/auth-paths"
+import { PEOPLE_PATHS } from "@/api/people-paths"
 import { getApiBaseUrl } from "@/lib/env"
 import { clearToken, getRefreshToken, setAuthTokens } from "@/lib/auth/token"
 import {
@@ -15,6 +16,11 @@ import {
   type LoginRequest,
   type RegisterRequest,
 } from "@/lib/api/auth-schemas"
+import {
+  parseCreatePersonSuccess,
+  type CreatePersonRequest,
+  type Person,
+} from "@/lib/api/people-schemas"
 import {
   transactionListSchema,
   transactionSchema,
@@ -32,6 +38,7 @@ import {
   logAuthResponseSuccess,
 } from "@/lib/debug/auth-api-log"
 import { clearUser, setUser } from "@/store/auth-slice"
+import { addPerson } from "@/store/people-slice"
 
 function delay(ms: number) {
   return new Promise((r) => setTimeout(r, ms))
@@ -140,6 +147,33 @@ export const baseApi = createApi({
   baseQuery: baseQueryWithReauth,
   tagTypes: ["Transaction"],
   endpoints: (build) => ({
+    createPerson: build.mutation<Person, CreatePersonRequest>({
+      async queryFn(body, api, _extraOptions, baseQuery) {
+        const payload = {
+          name: body.name.trim(),
+          phoneNumber: body.phoneNumber?.trim() ?? "",
+        }
+        const res = await baseQuery({
+          url: PEOPLE_PATHS.create,
+          method: "POST",
+          body: payload,
+        })
+        if (res.error) {
+          return { error: normalizeFetchError(res.error) }
+        }
+        const failMsg = parseApiFailureMessage(res.data)
+        if (failMsg) {
+          return { error: { status: 400, data: failMsg } }
+        }
+        const parsed = parseCreatePersonSuccess(res.data)
+        if (!parsed.ok) {
+          return { error: { status: 422, data: parsed.error } }
+        }
+        api.dispatch(addPerson(parsed.person))
+        return { data: parsed.person }
+      },
+    }),
+
     register: build.mutation<AuthResult, RegisterRequest>({
       async queryFn(body, api, _extraOptions, baseQuery) {
         logAuthRequestStart("register", AUTH_PATHS.register, "POST", body)
@@ -310,6 +344,7 @@ export const {
   useRegisterMutation,
   useLoginMutation,
   useRefreshTokenMutation,
+  useCreatePersonMutation,
   useGetTransactionsQuery,
   useAddTransactionMutation,
 } = baseApi
