@@ -2,4 +2,5 @@
 export const AUTH_PATHS = {
   register: "/auth/register",
   login: "/auth/login",
+  refreshToken: "/auth/refresh-token",
 } as const

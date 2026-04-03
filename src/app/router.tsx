@@ -1,14 +1,16 @@
 import { lazy, Suspense, type ReactNode } from "react"
-import { createBrowserRouter } from "react-router-dom"
+import { createBrowserRouter, Navigate } from "react-router-dom"
 import { AppShell } from "@/components/app-shell"
 import { PageLoader } from "@/components/page-loader"
 import { RouteErrorFallback } from "@/components/route-error-fallback"
 import { RequireAuth } from "@/features/auth/require-auth"
+import { UnmatchedPathRedirect } from "@/features/auth/unmatched-path-redirect"
 
 const HomePage = lazy(() => import("@/pages/home-page"))
 const EntriesPage = lazy(() => import("@/pages/entries-page"))
 const AccountsPage = lazy(() => import("@/pages/accounts-page"))
 const AnalyticsPage = lazy(() => import("@/pages/analytics-page"))
+const ProfilePage = lazy(() => import("@/pages/profile-page"))
 const LoginPage = lazy(() => import("@/pages/login-page"))
 const RegisterPage = lazy(() => import("@/pages/register-page"))
 
@@ -38,6 +40,13 @@ export const router = createBrowserRouter([
       { path: "entries", element: suspense(<EntriesPage />) },
       { path: "accounts", element: suspense(<AccountsPage />) },
       { path: "analytics", element: suspense(<AnalyticsPage />) },
+      { path: "profile", element: suspense(<ProfilePage />) },
+      { path: "*", element: <Navigate to="/" replace /> },
     ],
+  },
+  {
+    path: "*",
+    element: <UnmatchedPathRedirect />,
+    errorElement: <RouteErrorFallback />,
   },
 ])

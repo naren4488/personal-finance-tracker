@@ -1,13 +1,16 @@
-import { Link } from "react-router-dom"
+import { Link, useLocation } from "react-router-dom"
 import { cn } from "@/lib/utils"
 
 type Mode = "login" | "register"
 
 export function AuthModeToggle({ mode }: { mode: Mode }) {
+  const location = useLocation()
+
   return (
     <div className="flex w-full rounded-full bg-muted/80 p-1 ring-1 ring-border/40">
       <Link
         to="/login"
+        state={location.state}
         className={cn(
           "flex-1 rounded-full py-2.5 text-center text-sm font-medium transition-all",
           mode === "login"
@@ -19,6 +22,7 @@ export function AuthModeToggle({ mode }: { mode: Mode }) {
       </Link>
       <Link
         to="/register"
+        state={location.state}
         className={cn(
           "flex-1 rounded-full py-2.5 text-center text-sm font-medium transition-all",
           mode === "register"

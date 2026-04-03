@@ -1,6 +1,6 @@
 import { zodResolver } from "@hookform/resolvers/zod"
 import { useForm } from "react-hook-form"
-import { useNavigate } from "react-router-dom"
+import { useLocation, useNavigate } from "react-router-dom"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import {
@@ -17,9 +17,11 @@ import { loginRequestSchema, type LoginRequest } from "@/lib/api/auth-schemas"
 import { getAuthErrorMessage } from "@/lib/api/errors"
 import { useLoginMutation } from "@/store/api/base-api"
 import { isAuthApiDebugEnabled } from "@/lib/debug/auth-api-log"
+import { safeReturnPath } from "@/features/auth/safe-return-path"
 
 export function LoginForm() {
   const navigate = useNavigate()
+  const location = useLocation()
   const [login, { isLoading }] = useLoginMutation()
 
   const form = useForm<LoginRequest>({
@@ -45,7 +47,8 @@ export function LoginForm() {
         console.log("[Koin auth] Login form — mutation succeeded → redirect to dashboard")
       }
       toast.success("Welcome back")
-      navigate("/", { replace: true })
+      const next = safeReturnPath((location.state as { from?: string } | null)?.from) ?? "/"
+      navigate(next, { replace: true })
     } catch (err) {
       const msg = getAuthErrorMessage(err)
       if (isAuthApiDebugEnabled()) {

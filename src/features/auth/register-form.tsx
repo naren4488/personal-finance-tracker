@@ -1,6 +1,6 @@
 import { zodResolver } from "@hookform/resolvers/zod"
 import { useForm } from "react-hook-form"
-import { useNavigate } from "react-router-dom"
+import { useLocation, useNavigate } from "react-router-dom"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import {
@@ -17,9 +17,11 @@ import { registerRequestSchema, type RegisterRequest } from "@/lib/api/auth-sche
 import { getAuthErrorMessage } from "@/lib/api/errors"
 import { useRegisterMutation } from "@/store/api/base-api"
 import { isAuthApiDebugEnabled } from "@/lib/debug/auth-api-log"
+import { safeReturnPath } from "@/features/auth/safe-return-path"
 
 export function RegisterForm() {
   const navigate = useNavigate()
+  const location = useLocation()
   const [registerUser, { isLoading }] = useRegisterMutation()
 
   const form = useForm<RegisterRequest>({
@@ -49,7 +51,8 @@ export function RegisterForm() {
         )
       }
       toast.success(data.user.name ? `Welcome, ${data.user.name}!` : "Account created")
-      navigate("/", { replace: true })
+      const next = safeReturnPath((location.state as { from?: string } | null)?.from) ?? "/"
+      navigate(next, { replace: true })
     } catch (err) {
       const msg = getAuthErrorMessage(err)
       if (isAuthApiDebugEnabled()) {

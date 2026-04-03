@@ -18,8 +18,10 @@ export function resolveAuthRequestUrl(path: string): string {
   return `${origin}${base.startsWith("/") ? base : `/${base}`}${path}`
 }
 
+export type AuthLogOperation = "register" | "login" | "refreshToken"
+
 export function logAuthRequestStart(
-  operation: "register" | "login",
+  operation: AuthLogOperation,
   path: string,
   method: string,
   body: unknown
@@ -38,12 +40,14 @@ export function logAuthRequestStart(
     "Expected shape:",
     operation === "register"
       ? '{ "name": string, "email": string, "password": string }'
-      : '{ "email": string, "password": string }'
+      : operation === "login"
+        ? '{ "email": string, "password": string }'
+        : '{ "refreshToken": string }'
   )
   console.groupEnd()
 }
 
-export function logAuthResponseSuccess(operation: "register" | "login", rawData: unknown): void {
+export function logAuthResponseSuccess(operation: AuthLogOperation, rawData: unknown): void {
   if (!isAuthApiDebugEnabled()) return
 
   console.groupCollapsed(`${PREFIX} ${operation} — after API success`)
@@ -53,7 +57,7 @@ export function logAuthResponseSuccess(operation: "register" | "login", rawData:
   console.groupEnd()
 }
 
-export function logAuthResponseParsed(operation: "register" | "login", result: AuthResult): void {
+export function logAuthResponseParsed(operation: AuthLogOperation, result: AuthResult): void {
   if (!isAuthApiDebugEnabled()) return
 
   console.groupCollapsed(`${PREFIX} ${operation} — parsed result (tokens redacted)`)
@@ -75,7 +79,7 @@ export function logAuthResponseParsed(operation: "register" | "login", result: A
 }
 
 export function logAuthFailure(
-  operation: "register" | "login",
+  operation: AuthLogOperation,
   phase: "http" | "success-false" | "parse",
   error: unknown,
   userMessage?: string

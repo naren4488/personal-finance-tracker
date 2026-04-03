@@ -1,8 +1,13 @@
 import { createApi, fetchBaseQuery } from "@reduxjs/toolkit/query/react"
-import type { FetchBaseQueryError } from "@reduxjs/toolkit/query"
+import type {
+  BaseQueryApi,
+  BaseQueryFn,
+  FetchArgs,
+  FetchBaseQueryError,
+} from "@reduxjs/toolkit/query"
 import { AUTH_PATHS } from "@/api/auth-paths"
 import { getApiBaseUrl } from "@/lib/env"
-import { setAuthTokens } from "@/lib/auth/token"
+import { clearToken, getRefreshToken, setAuthTokens } from "@/lib/auth/token"
 import {
   parseApiFailureMessage,
   parseAuthSuccessResponse,
@@ -26,7 +31,7 @@ import {
   logAuthResponseParsed,
   logAuthResponseSuccess,
 } from "@/lib/debug/auth-api-log"
-import { setUser } from "@/store/auth-slice"
+import { clearUser, setUser } from "@/store/auth-slice"
 
 function delay(ms: number) {
   return new Promise((r) => setTimeout(r, ms))
@@ -54,19 +59,85 @@ function normalizeFetchError(error: FetchBaseQueryError): FetchBaseQueryError {
   return error
 }
 
+function isRefreshRequest(args: string | FetchArgs): boolean {
+  const url = typeof args === "string" ? args : args.url
+  return url === AUTH_PATHS.refreshToken
+}
+
+function tryApplyAuthResponse(data: unknown, api: BaseQueryApi): boolean {
+  const failMsg = parseApiFailureMessage(data)
+  if (failMsg) return false
+  const parsed = parseAuthSuccessResponse(data)
+  if (!parsed.ok) return false
+  setAuthTokens(parsed.result.accessToken, parsed.result.refreshToken)
+  api.dispatch(setUser(parsed.result.user))
+  return true
+}
+
+const rawBaseQuery = fetchBaseQuery({
+  baseUrl: getApiBaseUrl(),
+  prepareHeaders: (headers) => {
+    const token = getToken()
+    if (token) {
+      headers.set("Authorization", `Bearer ${token}`)
+    }
+    headers.set("Content-Type", "application/json")
+    return headers
+  },
+})
+
+let refreshInFlight: Promise<boolean> | null = null
+
+function performTokenRefresh(api: BaseQueryApi): Promise<boolean> {
+  const rt = getRefreshToken()
+  if (!rt) return Promise.resolve(false)
+
+  if (!refreshInFlight) {
+    refreshInFlight = (async () => {
+      try {
+        const res = await rawBaseQuery(
+          {
+            url: AUTH_PATHS.refreshToken,
+            method: "POST",
+            body: { refreshToken: rt },
+          },
+          api,
+          {}
+        )
+        if (res.error) return false
+        return tryApplyAuthResponse(res.data, api)
+      } finally {
+        refreshInFlight = null
+      }
+    })()
+  }
+
+  return refreshInFlight
+}
+
+const baseQueryWithReauth: BaseQueryFn<string | FetchArgs, unknown, FetchBaseQueryError> = async (
+  args,
+  api,
+  extraOptions
+) => {
+  let result = await rawBaseQuery(args, api, extraOptions)
+
+  if (result.error?.status === 401 && !isRefreshRequest(args)) {
+    const refreshed = await performTokenRefresh(api)
+    if (refreshed) {
+      result = await rawBaseQuery(args, api, extraOptions)
+    } else {
+      api.dispatch(clearUser())
+      clearToken()
+    }
+  }
+
+  return result
+}
+
 export const baseApi = createApi({
   reducerPath: "api",
-  baseQuery: fetchBaseQuery({
-    baseUrl: getApiBaseUrl(),
-    prepareHeaders: (headers) => {
-      const token = getToken()
-      if (token) {
-        headers.set("Authorization", `Bearer ${token}`)
-      }
-      headers.set("Content-Type", "application/json")
-      return headers
-    },
-  }),
+  baseQuery: baseQueryWithReauth,
   tagTypes: ["Transaction"],
   endpoints: (build) => ({
     register: build.mutation<AuthResult, RegisterRequest>({
@@ -143,6 +214,53 @@ export const baseApi = createApi({
       },
     }),
 
+    refreshToken: build.mutation<AuthResult, void>({
+      async queryFn(_arg, api, extraOptions) {
+        const rt = getRefreshToken()
+        if (!rt) {
+          return { error: { status: 401, data: "No refresh token" } }
+        }
+        logAuthRequestStart("refreshToken", AUTH_PATHS.refreshToken, "POST", {
+          refreshToken: "[redacted]",
+        })
+        const res = await rawBaseQuery(
+          {
+            url: AUTH_PATHS.refreshToken,
+            method: "POST",
+            body: { refreshToken: rt },
+          },
+          api,
+          extraOptions
+        )
+        if (res.error) {
+          const normalized = normalizeFetchError(res.error)
+          if (isAuthApiDebugEnabled()) {
+            logAuthFailure("refreshToken", "http", res.error, getErrorMessage(normalized))
+          }
+          return { error: normalized }
+        }
+        const failMsg = parseApiFailureMessage(res.data)
+        if (failMsg) {
+          if (isAuthApiDebugEnabled()) {
+            logAuthFailure("refreshToken", "success-false", res.data, failMsg)
+          }
+          return { error: { status: 401, data: failMsg } }
+        }
+        logAuthResponseSuccess("refreshToken", res.data)
+        const parsed = parseAuthSuccessResponse(res.data)
+        if (!parsed.ok) {
+          if (isAuthApiDebugEnabled()) {
+            logAuthFailure("refreshToken", "parse", res.data, parsed.error)
+          }
+          return { error: { status: 422, data: parsed.error } }
+        }
+        logAuthResponseParsed("refreshToken", parsed.result)
+        setAuthTokens(parsed.result.accessToken, parsed.result.refreshToken)
+        api.dispatch(setUser(parsed.result.user))
+        return { data: parsed.result }
+      },
+    }),
+
     getTransactions: build.query<Transaction[], void>({
       async queryFn() {
         await delay(200)
@@ -191,6 +309,7 @@ export const baseApi = createApi({
 export const {
   useRegisterMutation,
   useLoginMutation,
+  useRefreshTokenMutation,
   useGetTransactionsQuery,
   useAddTransactionMutation,
 } = baseApi

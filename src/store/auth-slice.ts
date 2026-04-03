@@ -16,10 +16,15 @@ export const authSlice = createSlice({
     setUser(state, action: PayloadAction<AuthUser>) {
       state.user = action.payload
     },
+    patchUser(state, action: PayloadAction<Partial<AuthUser>>) {
+      if (state.user) {
+        state.user = { ...state.user, ...action.payload }
+      }
+    },
     clearUser(state) {
       state.user = null
     },
   },
 })
 
-export const { setUser, clearUser } = authSlice.actions
+export const { setUser, patchUser, clearUser } = authSlice.actions
