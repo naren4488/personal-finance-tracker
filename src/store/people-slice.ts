@@ -32,7 +32,8 @@ export const peopleSlice = createSlice({
         state.items.push(action.payload)
       }
     },
+    resetPeople: () => initialState,
   },
 })
 
-export const { setPeople, addPerson } = peopleSlice.actions
+export const { setPeople, addPerson, resetPeople } = peopleSlice.actions

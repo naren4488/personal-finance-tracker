@@ -7,16 +7,19 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { clearToken } from "@/lib/auth/token"
+import { getErrorMessage } from "@/lib/api/errors"
 import type { AuthUser } from "@/lib/api/auth-schemas"
+import { clearToken } from "@/lib/auth/token"
 import {
   loadProfileDraft,
   saveProfileDraft,
   type IncomeType,
   type ProfileDraft,
 } from "@/lib/profile/local-profile-draft"
+import { baseApi, useLogoutMutation } from "@/store/api/base-api"
 import { useAppDispatch, useAppSelector } from "@/store/hooks"
 import { clearUser, patchUser } from "@/store/auth-slice"
+import { resetPeople } from "@/store/people-slice"
 import { cn } from "@/lib/utils"
 
 function initialsFromName(name: string): string {
@@ -35,6 +38,7 @@ const incomeOptions: { value: IncomeType; label: string }[] = [
 function ProfileContent({ user }: { user: AuthUser }) {
   const navigate = useNavigate()
   const dispatch = useAppDispatch()
+  const [logout, { isLoading: isLogoutLoading }] = useLogoutMutation()
 
   const [name, setName] = useState(user.name ?? "")
   const [draft, setDraft] = useState<ProfileDraft>(() => loadProfileDraft(user.id))
@@ -61,10 +65,27 @@ function ProfileContent({ user }: { user: AuthUser }) {
     toast.success("Profile saved locally. Income & phone will sync when your API is ready.")
   }
 
-  function handleSignOut() {
+  function clearSessionAndRedirect() {
     clearToken()
     dispatch(clearUser())
+    dispatch(baseApi.util.resetApiState())
+    dispatch(resetPeople())
     navigate("/login", { replace: true })
+  }
+
+  async function handleSignOut() {
+    console.log("Logging out...")
+    console.log("Logout request sent")
+    try {
+      const res = await logout().unwrap()
+      console.log("Logout success:", res)
+      clearSessionAndRedirect()
+    } catch (error) {
+      console.error("Logout error:", error)
+      console.error("Logout failed", error)
+      toast.error(getErrorMessage(error))
+      clearSessionAndRedirect()
+    }
   }
 
   function handleDeleteAccount() {
@@ -229,9 +250,10 @@ function ProfileContent({ user }: { user: AuthUser }) {
           type="button"
           variant="secondary"
           className="h-11 w-full rounded-xl text-base font-semibold"
-          onClick={handleSignOut}
+          disabled={isLogoutLoading}
+          onClick={() => void handleSignOut()}
         >
-          Sign out
+          {isLogoutLoading ? "Signing out…" : "Sign out"}
         </Button>
         <button
           type="button"

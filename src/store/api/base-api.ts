@@ -12,6 +12,7 @@ import { clearToken, getRefreshToken, setAuthTokens } from "@/lib/auth/token"
 import {
   parseApiFailureMessage,
   parseAuthSuccessResponse,
+  parseLogoutSuccess,
   type AuthResult,
   type LoginRequest,
   type RegisterRequest,
@@ -72,6 +73,11 @@ function isRefreshRequest(args: string | FetchArgs): boolean {
   return url === AUTH_PATHS.refreshToken
 }
 
+function isLogoutRequest(args: string | FetchArgs): boolean {
+  const url = typeof args === "string" ? args : args.url
+  return url === AUTH_PATHS.logout
+}
+
 function tryApplyAuthResponse(data: unknown, api: BaseQueryApi): boolean {
   const failMsg = parseApiFailureMessage(data)
   if (failMsg) return false
@@ -130,7 +136,7 @@ const baseQueryWithReauth: BaseQueryFn<string | FetchArgs, unknown, FetchBaseQue
 ) => {
   let result = await rawBaseQuery(args, api, extraOptions)
 
-  if (result.error?.status === 401 && !isRefreshRequest(args)) {
+  if (result.error?.status === 401 && !isRefreshRequest(args) && !isLogoutRequest(args)) {
     const refreshed = await performTokenRefresh(api)
     if (refreshed) {
       result = await rawBaseQuery(args, api, extraOptions)
@@ -281,6 +287,30 @@ export const baseApi = createApi({
       },
     }),
 
+    logout: build.mutation<{ message: string }, void>({
+      async queryFn(_arg, _api, _extraOptions, baseQuery) {
+        const res = await baseQuery({
+          url: AUTH_PATHS.logout,
+          method: "POST",
+          body: {},
+        })
+        if (res.error) {
+          console.error("Logout failed", res.error)
+          return { error: normalizeFetchError(res.error) }
+        }
+        const failMsg = parseApiFailureMessage(res.data)
+        if (failMsg) {
+          console.error(failMsg)
+          return { error: { status: 400, data: failMsg } }
+        }
+        const parsed = parseLogoutSuccess(res.data)
+        if (!parsed.ok) {
+          return { error: { status: 422, data: parsed.error } }
+        }
+        return { data: { message: parsed.message } }
+      },
+    }),
+
     refreshToken: build.mutation<AuthResult, void>({
       async queryFn(_arg, api, extraOptions) {
         const rt = getRefreshToken()
@@ -376,6 +406,7 @@ export const baseApi = createApi({
 export const {
   useRegisterMutation,
   useLoginMutation,
+  useLogoutMutation,
   useRefreshTokenMutation,
   useGetPeopleQuery,
   useCreatePersonMutation,

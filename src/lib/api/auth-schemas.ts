@@ -89,3 +89,21 @@ export function parseApiFailureMessage(data: unknown): string | null {
   const p = apiFailureSchema.safeParse(data)
   return p.success ? p.data.message : null
 }
+
+/** POST /auth/logout — success envelope */
+export const logoutSuccessResponseSchema = z.object({
+  success: z.literal(true),
+  message: z.string(),
+})
+
+export type LogoutSuccess = z.infer<typeof logoutSuccessResponseSchema>
+
+export function parseLogoutSuccess(
+  raw: unknown
+): { ok: true; message: string } | { ok: false; error: string } {
+  const parsed = logoutSuccessResponseSchema.safeParse(raw)
+  if (!parsed.success) {
+    return { ok: false, error: "Invalid response from server." }
+  }
+  return { ok: true, message: parsed.data.message }
+}
