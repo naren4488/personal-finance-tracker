@@ -42,11 +42,14 @@ export function QuickTransactionForm({ onSuccess, className }: QuickTransactionF
 
   const onSubmit = form.handleSubmit(async (values) => {
     try {
-      await addTransaction(toQuickTransactionPayload(values)).unwrap()
+      const payload = toQuickTransactionPayload(values)
+      await addTransaction(payload).unwrap()
+      console.log("[transactions] quick add success", payload)
       toast.success("Transaction added")
       form.reset({ title: "", amount: "", type: values.type })
       onSuccess?.()
     } catch (err) {
+      console.error("[transactions] quick add error", err)
       toast.error(getErrorMessage(err))
     }
   })
@@ -55,7 +58,7 @@ export function QuickTransactionForm({ onSuccess, className }: QuickTransactionF
     <Card className={cn("rounded-2xl border-border/80 shadow-sm", className)}>
       <CardHeader>
         <CardTitle className="text-base">Quick add</CardTitle>
-        <CardDescription>Validated with Zod and saved via RTK Query (mock API).</CardDescription>
+        <CardDescription>Validated with Zod and sent to POST /transactions.</CardDescription>
       </CardHeader>
       <form onSubmit={onSubmit}>
         <CardContent>

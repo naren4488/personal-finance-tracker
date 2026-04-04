@@ -1,21 +1,46 @@
+import { useEffect } from "react"
+import { useNavigate } from "react-router-dom"
+import { toast } from "sonner"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
-import { TransactionRow } from "@/features/entries/transaction-row"
-import { formatCurrency } from "@/lib/format"
+import { RecentTransactionRow } from "@/features/entries/recent-transaction-row"
 import { getErrorMessage } from "@/lib/api/errors"
-import { useGetTransactionsQuery } from "@/store/api/base-api"
+import { parseSignedAmountString } from "@/lib/api/transaction-schemas"
+import { formatCurrency } from "@/lib/format"
+import { useGetRecentTransactionsQuery } from "@/store/api/base-api"
+
+const HOME_RECENT_LIMIT = 100
 
 export default function HomePage() {
-  const { data: transactions, isLoading, isError, error, refetch } = useGetTransactionsQuery()
+  const navigate = useNavigate()
+  const {
+    data: recent = [],
+    isLoading,
+    isError,
+    error,
+    refetch,
+  } = useGetRecentTransactionsQuery(HOME_RECENT_LIMIT)
 
-  const totalBalance =
-    transactions?.reduce((acc, tx) => acc + (tx.type === "income" ? tx.amount : -tx.amount), 0) ?? 0
-  const income =
-    transactions?.filter((t) => t.type === "income").reduce((acc, t) => acc + t.amount, 0) ?? 0
-  const expenses =
-    transactions?.filter((t) => t.type === "expense").reduce((acc, t) => acc + t.amount, 0) ?? 0
+  useEffect(() => {
+    if (!isError || !error) return
+    const msg = getErrorMessage(error)
+    if (/authorization token is required/i.test(msg)) {
+      toast.error(msg)
+      navigate("/login", { replace: true })
+    }
+  }, [isError, error, navigate])
+
+  const homeRecentRows = recent.slice(0, 5)
+
+  const totalBalance = recent.reduce((acc, tx) => acc + parseSignedAmountString(tx.signedAmount), 0)
+  const income = recent
+    .filter((t) => t.type === "income")
+    .reduce((acc, t) => acc + Math.abs(parseSignedAmountString(t.signedAmount)), 0)
+  const expenses = recent
+    .filter((t) => t.type === "expense")
+    .reduce((acc, t) => acc + Math.abs(parseSignedAmountString(t.signedAmount)), 0)
 
   return (
     <main className="flex-1 space-y-4 px-4 py-4 pb-24">
@@ -73,9 +98,12 @@ export default function HomePage() {
             <Skeleton className="h-14 w-full rounded-xl" />
           </div>
         )}
+        {!isLoading && !isError && homeRecentRows.length === 0 && (
+          <p className="text-sm text-muted-foreground">No recent transactions yet.</p>
+        )}
         {!isLoading &&
           !isError &&
-          transactions?.map((tx) => <TransactionRow key={tx.id} tx={tx} />)}
+          homeRecentRows.map((tx) => <RecentTransactionRow key={tx.id} tx={tx} />)}
       </section>
 
       <section className="space-y-2">

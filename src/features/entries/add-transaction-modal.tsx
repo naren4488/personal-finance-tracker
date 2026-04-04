@@ -158,23 +158,32 @@ function AddTransactionModalMounted({ onOpenChange, expenseFlow, onOpenAddAccoun
     }
 
     const acc = accounts.find((a) => a.id === accountId)
-    const tagSuffix = tags.length ? ` · ${tags.join(" · ")}` : ""
-    const noteExtra = !expenseFlow && note.trim() ? ` — ${note.trim()}` : ""
-    const title = `${titleBase}${noteExtra}${tagSuffix}`
+    const displayTitle = [titleBase, ...tags].filter(Boolean).join(" · ")
+    const noteForApi = expenseFlow
+      ? note.trim()
+      : [description.trim(), note.trim()].filter(Boolean).join(" — ")
 
     try {
       await addTransaction({
-        title,
-        amount: Number(n),
         type: effectiveType,
-        date,
+        amount: Number(n),
         category,
+        paymentMethod,
+        sourceName: acc?.name ?? "",
+        feeAmount: "0",
+        paidOnBehalf,
+        scheduled: scheduleUpcoming,
+        date,
+        note: noteForApi,
+        tags,
+        displayTitle,
         accountId,
         accountName: acc?.name,
       }).unwrap()
       toast.success(expenseFlow ? "Expense added" : "Transaction added")
       dismiss()
     } catch (err) {
+      console.error("[transactions] submit error", err)
       toast.error(getErrorMessage(err))
     }
   }

@@ -12,6 +12,7 @@ import {
 } from "@/features/accounts/loan-emi-model"
 import type { CreateAccountRequest } from "@/lib/api/account-schemas"
 import { getErrorMessage } from "@/lib/api/errors"
+import { isAccountCreateApiDisabled } from "@/lib/feature-flags"
 import { FORM_OVERLAY_FOOTER, FORM_OVERLAY_SCROLL_BODY } from "@/lib/form-overlay-scroll"
 import { cn } from "@/lib/utils"
 import { useCreateAccountMutation } from "@/store/api/base-api"
@@ -92,6 +93,7 @@ function AddAccountSheetMounted({ onOpenChange }: MountedProps) {
   const [emi, setEmi] = useState<LoanEmiFormModel>(() => createInitialLoanEmiModel())
 
   const [createAccount, { isLoading: isSubmitting }] = useCreateAccountMutation()
+  const accountCreateDisabled = isAccountCreateApiDisabled()
 
   const dismiss = useCallback(() => {
     document.body.style.overflow = ""
@@ -123,6 +125,12 @@ function AddAccountSheetMounted({ onOpenChange }: MountedProps) {
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
+    if (accountCreateDisabled) {
+      toast.message("Coming soon", {
+        description: "Account creation will work once the server API is enabled.",
+      })
+      return
+    }
     const n = name.trim()
     if (!n) {
       toast.error("Give your account a name")
@@ -223,6 +231,27 @@ function AddAccountSheetMounted({ onOpenChange }: MountedProps) {
               "space-y-1.5 px-3 py-1.5 sm:space-y-2 sm:px-4 sm:py-2"
             )}
           >
+            {accountCreateDisabled ? (
+              <div
+                role="status"
+                className="rounded-xl border border-amber-500/35 bg-amber-500/10 px-3 py-2.5 text-xs text-foreground sm:text-sm"
+              >
+                <p className="font-semibold text-amber-950 dark:text-amber-100">
+                  Account creation is turned off
+                </p>
+                <p className="mt-1 text-[11px] leading-snug text-muted-foreground sm:text-xs">
+                  Nothing is sent to the server while this mode is on. Delete{" "}
+                  <code className="rounded bg-muted px-1 py-0.5 font-mono text-[10px]">
+                    VITE_DISABLE_ACCOUNT_CREATE
+                  </code>{" "}
+                  from{" "}
+                  <code className="rounded bg-muted px-1 py-0.5 font-mono text-[10px]">
+                    .env.local
+                  </code>{" "}
+                  (or set it to false) after the add-account API is deployed.
+                </p>
+              </div>
+            ) : null}
             <div
               className={cn(
                 "transition-transform duration-200",
@@ -367,10 +396,14 @@ function AddAccountSheetMounted({ onOpenChange }: MountedProps) {
           <div className={FORM_OVERLAY_FOOTER}>
             <Button
               type="submit"
-              disabled={isSubmitting}
+              disabled={isSubmitting || accountCreateDisabled}
               className="h-9 w-full rounded-xl bg-[hsl(230_22%_62%)] text-sm font-bold text-white hover:bg-[hsl(230_22%_56%)] disabled:opacity-60 sm:h-10 sm:text-base"
             >
-              {isSubmitting ? "Saving…" : submitLabelFor(accountType)}
+              {accountCreateDisabled
+                ? "Unavailable"
+                : isSubmitting
+                  ? "Saving…"
+                  : submitLabelFor(accountType)}
             </Button>
           </div>
         </form>

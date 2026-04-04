@@ -6,8 +6,10 @@ import type {
   FetchBaseQueryError,
 } from "@reduxjs/toolkit/query"
 import { ACCOUNT_PATHS } from "@/api/account-paths"
+import { TRANSACTION_PATHS } from "@/api/transaction-paths"
 import { AUTH_PATHS } from "@/api/auth-paths"
 import { PEOPLE_PATHS } from "@/api/people-paths"
+import { isAccountCreateApiDisabled } from "@/lib/feature-flags"
 import { getApiBaseUrl } from "@/lib/env"
 import { clearToken, getRefreshToken, setAuthTokens } from "@/lib/auth/token"
 import {
@@ -19,6 +21,7 @@ import {
   type RegisterRequest,
 } from "@/lib/api/auth-schemas"
 import {
+  buildCreateAccountPostBody,
   parseCreateAccountSuccess,
   parseGetAccountsSuccess,
   type Account,
@@ -31,11 +34,14 @@ import {
   type Person,
 } from "@/lib/api/people-schemas"
 import {
-  transactionListSchema,
-  transactionSchema,
-  type CreateTransactionPayload,
-  type Transaction,
-} from "@/lib/api/schemas"
+  mapApiTransactionToClient,
+  parseCreateTransactionSuccess,
+  parseGetRecentTransactionsSuccess,
+  payloadToApiBody,
+  createTransactionApiBodySchema,
+  type RecentTransaction,
+} from "@/lib/api/transaction-schemas"
+import { type CreateTransactionPayload, type Transaction } from "@/lib/api/schemas"
 import { mockTransactions } from "@/lib/api/mock-transactions"
 import { getToken } from "@/lib/auth/token"
 import { getErrorMessage } from "@/lib/api/errors"
@@ -48,10 +54,6 @@ import {
 } from "@/lib/debug/auth-api-log"
 import { clearUser, setUser } from "@/store/auth-slice"
 import { addPerson, setPeople } from "@/store/people-slice"
-
-function delay(ms: number) {
-  return new Promise((r) => setTimeout(r, ms))
-}
 
 function normalizeFetchError(error: FetchBaseQueryError): FetchBaseQueryError {
   if (typeof error.status !== "number") {
@@ -185,17 +187,30 @@ export const baseApi = createApi({
 
     createAccount: build.mutation<Account, CreateAccountRequest>({
       async queryFn(body, _api, _extraOptions, baseQuery) {
+        if (isAccountCreateApiDisabled()) {
+          return {
+            error: {
+              status: 503,
+              data: "Adding accounts isn’t available yet. Remove VITE_DISABLE_ACCOUNT_CREATE when the API is ready.",
+            },
+          }
+        }
+        const postBody = buildCreateAccountPostBody(body)
         const res = await baseQuery({
           url: ACCOUNT_PATHS.create,
           method: "POST",
-          body: {
-            name: body.name.trim(),
-            accountType: body.accountType,
-            initialBalanceInr: body.initialBalanceInr,
-            ...(body.emiLoan ? { emiLoan: body.emiLoan } : {}),
-          },
+          body: postBody,
         })
         if (res.error) {
+          const fe = res.error as { status?: unknown; data?: unknown }
+          if (import.meta.env.DEV) {
+            console.error("[accounts] create failed HTTP status:", fe.status)
+            console.error(
+              "[accounts] create failed response body:",
+              JSON.stringify(fe.data, null, 2)
+            )
+            console.error("[accounts] create request body sent:", JSON.stringify(postBody, null, 2))
+          }
           return { error: normalizeFetchError(res.error) }
         }
         const failMsg = parseApiFailureMessage(res.data)
@@ -415,50 +430,82 @@ export const baseApi = createApi({
       },
     }),
 
-    getTransactions: build.query<Transaction[], void>({
-      async queryFn() {
-        await delay(200)
-        const parsed = transactionListSchema.safeParse(mockTransactions)
-        if (!parsed.success) {
-          return {
-            error: {
-              status: 422,
-              data: "Response did not match transaction schema",
-            },
-          }
+    getRecentTransactions: build.query<RecentTransaction[], number | undefined>({
+      async queryFn(limitArg, _api, _extraOptions, baseQuery) {
+        const limit =
+          typeof limitArg === "number" && Number.isFinite(limitArg) && limitArg > 0
+            ? Math.min(Math.floor(limitArg), 200)
+            : 50
+        const res = await baseQuery({
+          url: TRANSACTION_PATHS.recent,
+          method: "GET",
+          params: { limit: String(limit) },
+        })
+        if (res.error) {
+          return { error: normalizeFetchError(res.error) }
         }
-        return { data: parsed.data }
+        const failMsg = parseApiFailureMessage(res.data)
+        if (failMsg) {
+          return { error: { status: 400, data: failMsg } }
+        }
+        const parsed = parseGetRecentTransactionsSuccess(res.data)
+        if (!parsed.ok) {
+          return { error: { status: 422, data: parsed.error } }
+        }
+        return { data: parsed.transactions }
       },
-      providesTags: (result) =>
-        result
-          ? [
-              ...result.map(({ id }) => ({ type: "Transaction" as const, id })),
-              { type: "Transaction", id: "LIST" },
-            ]
-          : [{ type: "Transaction", id: "LIST" }],
+      providesTags: [{ type: "Transaction", id: "RECENT" }],
     }),
 
     addTransaction: build.mutation<Transaction, CreateTransactionPayload>({
-      async queryFn(body) {
-        await delay(150)
-        const next: Transaction = {
-          id: crypto.randomUUID(),
-          title: body.title,
-          amount: body.amount,
-          type: body.type,
-          date: body.date,
-          category: body.category,
-          accountId: body.accountId,
-          accountName: body.accountName,
+      async queryFn(body, _api, _extraOptions, baseQuery) {
+        const apiBody = payloadToApiBody(body)
+        const validated = createTransactionApiBodySchema.safeParse(apiBody)
+        if (!validated.success) {
+          console.error("[transactions] invalid payload", validated.error.flatten(), apiBody)
+          return { error: { status: 422, data: "Invalid transaction payload" } }
         }
-        const parsed = transactionSchema.safeParse(next)
-        if (!parsed.success) {
-          return { error: { status: 400, data: "Invalid transaction payload" } }
+
+        const res = await baseQuery({
+          url: TRANSACTION_PATHS.create,
+          method: "POST",
+          body: validated.data,
+        })
+
+        if (res.error) {
+          const err = normalizeFetchError(res.error)
+          console.error("[transactions] request failed", err)
+          return { error: err }
         }
-        mockTransactions.unshift(parsed.data)
-        return { data: parsed.data }
+
+        const failMsg = parseApiFailureMessage(res.data)
+        if (failMsg) {
+          console.error("[transactions] API error envelope", failMsg, res.data)
+          return { error: { status: 400, data: failMsg } }
+        }
+
+        const parsed = parseCreateTransactionSuccess(res.data)
+        if (!parsed.ok) {
+          console.warn(
+            "[transactions] unexpected success shape, using fallback client row",
+            parsed.error,
+            res.data
+          )
+          const tx = mapApiTransactionToClient({}, body)
+          mockTransactions.unshift(tx)
+          console.log("[transactions] created (fallback)", tx)
+          return { data: tx }
+        }
+
+        const tx = mapApiTransactionToClient(parsed.transaction, body)
+        mockTransactions.unshift(tx)
+        console.log("[transactions] created OK", res.data, tx)
+        return { data: tx }
       },
-      invalidatesTags: [{ type: "Transaction", id: "LIST" }],
+      invalidatesTags: [
+        { type: "Transaction", id: "LIST" },
+        { type: "Transaction", id: "RECENT" },
+      ],
     }),
   }),
 })
@@ -472,6 +519,6 @@ export const {
   useCreateAccountMutation,
   useGetPeopleQuery,
   useCreatePersonMutation,
-  useGetTransactionsQuery,
+  useGetRecentTransactionsQuery,
   useAddTransactionMutation,
 } = baseApi

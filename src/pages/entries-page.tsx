@@ -1,4 +1,6 @@
-import { useMemo, useRef, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
+import { useNavigate } from "react-router-dom"
+import { toast } from "sonner"
 import {
   ArrowLeftRight,
   Banknote,
@@ -20,20 +22,24 @@ import { AccountRowCard, PeopleApiRow } from "@/features/accounts/account-list-r
 import { ACCOUNTS_MOCK_BY_SEGMENT } from "@/features/accounts/accounts-mock-data"
 import { AddTransactionModal } from "@/features/entries/add-transaction-modal"
 import { QuickTransactionForm } from "@/features/entries/quick-transaction-form"
-import { TransactionRow } from "@/features/entries/transaction-row"
+import { RecentTransactionRow } from "@/features/entries/recent-transaction-row"
 import { getErrorMessage } from "@/lib/api/errors"
-import type { Transaction, TransactionType } from "@/lib/api/schemas"
+import type { TransactionType } from "@/lib/api/schemas"
+import { parseSignedAmountString, type RecentTransaction } from "@/lib/api/transaction-schemas"
 import { formatCurrency } from "@/lib/format"
 import { cn } from "@/lib/utils"
 import {
   useGetAccountsQuery,
   useGetPeopleQuery,
-  useGetTransactionsQuery,
+  useGetRecentTransactionsQuery,
 } from "@/store/api/base-api"
 import { useAppSelector } from "@/store/hooks"
 
 type EntrySegment = "txns" | "expenses" | "udhar" | "loans" | "cards"
 type TimePreset = "7d" | "month" | "3m" | "year" | "all"
+
+/** Recent list cap for entries (time range + filters apply on the client). */
+const RECENT_TX_LIMIT = 100
 
 const ENTRY_SEGMENTS: {
   id: EntrySegment
@@ -85,29 +91,31 @@ function transactionInTimeRange(dateStr: string, preset: TimePreset, now: Date):
   return true
 }
 
-function filterBySegment(list: Transaction[], segment: EntrySegment): Transaction[] {
+function filterBySegmentRecent(
+  list: RecentTransaction[],
+  segment: EntrySegment
+): RecentTransaction[] {
   if (segment === "txns") return list
   if (segment === "expenses") return list.filter((t) => t.type === "expense")
-  if (segment === "cards") return []
   return []
 }
 
 function headerTotalLabel(
   segment: EntrySegment,
-  list: Transaction[]
+  list: RecentTransaction[]
 ): { text: string; className: string } {
   if (segment === "expenses") {
-    const total = list.reduce((s, t) => s + (t.type === "expense" ? t.amount : 0), 0)
+    const total = list.reduce((s, t) => {
+      if (t.type !== "expense") return s
+      return s + Math.abs(parseSignedAmountString(t.signedAmount))
+    }, 0)
     return {
       text: formatCurrency(total),
       className: "font-bold tabular-nums text-destructive",
     }
   }
   if (segment === "txns") {
-    const net = list.reduce(
-      (acc, t) => acc + (t.type === "income" ? t.amount : t.type === "expense" ? -t.amount : 0),
-      0
-    )
+    const net = list.reduce((acc, t) => acc + parseSignedAmountString(t.signedAmount), 0)
     return {
       text: formatCurrency(net),
       className: cn(
@@ -123,6 +131,7 @@ function headerTotalLabel(
 }
 
 export default function EntriesPage() {
+  const navigate = useNavigate()
   const addFormRef = useRef<HTMLDivElement>(null)
 
   const [segment, setSegment] = useState<EntrySegment>("expenses")
@@ -138,7 +147,22 @@ export default function EntriesPage() {
   const [txTypeFilter, setTxTypeFilter] = useState<"all" | TransactionType>("all")
   const [txAccountFilter, setTxAccountFilter] = useState<string>("all")
 
-  const { data: transactions = [], isLoading, isError, error, refetch } = useGetTransactionsQuery()
+  const {
+    data: recentTransactions = [],
+    isLoading,
+    isError,
+    error,
+    refetch,
+  } = useGetRecentTransactionsQuery(RECENT_TX_LIMIT)
+
+  useEffect(() => {
+    if (!isError || !error) return
+    const msg = getErrorMessage(error)
+    if (/authorization token is required/i.test(msg)) {
+      toast.error(msg)
+      navigate("/login", { replace: true })
+    }
+  }, [isError, error, navigate])
   const { data: accounts = [] } = useGetAccountsQuery()
   const {
     isLoading: peopleLoading,
@@ -159,21 +183,28 @@ export default function EntriesPage() {
   const filtered = useMemo(() => {
     const now = new Date()
     const q = search.trim().toLowerCase()
-    let list = filterBySegment(transactions, segment)
+    let list = filterBySegmentRecent(recentTransactions, segment)
     list = list.filter((t) => transactionInTimeRange(t.date, timePreset, now))
-    if (q) list = list.filter((t) => t.title.toLowerCase().includes(q))
+    if (q) {
+      list = list.filter(
+        (t) => t.title.toLowerCase().includes(q) || t.subtitle.toLowerCase().includes(q)
+      )
+    }
 
     if (segment === "txns") {
       if (txTypeFilter !== "all") {
         list = list.filter((t) => t.type === txTypeFilter)
       }
       if (txAccountFilter !== "all") {
-        list = list.filter((t) => t.accountId === txAccountFilter)
+        list = list.filter((t) => {
+          if (t.accountId) return t.accountId === txAccountFilter
+          return true
+        })
       }
     }
 
     return list.sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0))
-  }, [transactions, segment, timePreset, search, txTypeFilter, txAccountFilter])
+  }, [recentTransactions, segment, timePreset, search, txTypeFilter, txAccountFilter])
 
   const entriesHasList = useMemo(() => {
     if (segment === "txns" || segment === "expenses") {
@@ -549,7 +580,7 @@ export default function EntriesPage() {
           <ul className="flex list-none flex-col gap-2.5" aria-label="Entries list">
             {filtered.map((tx) => (
               <li key={tx.id}>
-                <TransactionRow tx={tx} />
+                <RecentTransactionRow tx={tx} />
               </li>
             ))}
           </ul>
