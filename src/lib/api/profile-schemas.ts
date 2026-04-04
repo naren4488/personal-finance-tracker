@@ -101,3 +101,18 @@ export function profileUserToFormDefaults(user: ProfileUser): {
     monthlySalary,
   }
 }
+
+const deleteAccountSuccessSchema = z.object({
+  success: z.literal(true),
+  message: z.string(),
+})
+
+export function parseDeleteAccountSuccess(
+  raw: unknown
+): { ok: true; message: string } | { ok: false; error: string } {
+  const parsed = deleteAccountSuccessSchema.safeParse(raw)
+  if (!parsed.success) {
+    return { ok: false, error: "Invalid delete account response." }
+  }
+  return { ok: true, message: parsed.data.message }
+}

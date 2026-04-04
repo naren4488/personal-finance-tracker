@@ -192,8 +192,10 @@ function ProfileForm({
     try {
       const { message } = await deleteMe().unwrap()
       toast.success(message || "Your account has been deleted.")
-      endUserSession(dispatch)
-      navigate("/login", { replace: true })
+      queueMicrotask(() => {
+        endUserSession(dispatch)
+        navigate("/login", { replace: true })
+      })
     } catch (err) {
       toast.error(getErrorMessage(err))
     }

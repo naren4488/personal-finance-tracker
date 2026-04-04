@@ -22,6 +22,7 @@ import {
   type RegisterRequest,
 } from "@/lib/api/auth-schemas"
 import {
+  parseDeleteAccountSuccess,
   parseProfileSuccessEnvelope,
   updateProfileRequestSchema,
   type ProfileUser,
@@ -224,6 +225,29 @@ export const baseApi = createApi({
         return { data: parsed.user }
       },
       invalidatesTags: ["User"],
+    }),
+
+    deleteMe: build.mutation<{ message: string }, void>({
+      async queryFn(_arg, _api, _extraOptions, baseQuery) {
+        const res = await baseQuery({
+          url: USER_PATHS.me,
+          method: "DELETE",
+        })
+        if (res.error) {
+          return { error: normalizeFetchError(res.error) }
+        }
+        const failMsg = parseApiFailureMessage(res.data)
+        if (failMsg) {
+          return { error: { status: 400, data: failMsg } }
+        }
+        const parsed = parseDeleteAccountSuccess(res.data)
+        if (!parsed.ok) {
+          return { error: { status: 422, data: parsed.error } }
+        }
+        return { data: { message: parsed.message } }
+      },
+      // Like `logout`: no tag invalidation. Invalidation can error during teardown and
+      // `endUserSession` already calls `resetApiState()`.
     }),
 
     getAccounts: build.query<Account[], void>({
@@ -586,4 +610,5 @@ export const {
   useAddTransactionMutation,
   useGetMeQuery,
   useUpdateMeMutation,
+  useDeleteMeMutation,
 } = baseApi
