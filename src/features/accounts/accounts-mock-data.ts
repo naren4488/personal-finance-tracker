@@ -14,10 +14,10 @@ export const ACCOUNTS_SEGMENT_META: Record<
   AccountsSegmentId,
   { label: string; listTitle: string }
 > = {
-  accounts: { label: "Accounts", listTitle: "Accounts" },
+  accounts: { label: "Accounts", listTitle: "My Accounts" },
   people: { label: "People", listTitle: "People" },
   loans: { label: "Loans", listTitle: "Loans" },
-  cards: { label: "Cards", listTitle: "Cards" },
+  cards: { label: "Cards", listTitle: "Credit Cards" },
 }
 
 export const ACCOUNTS_MOCK_BY_SEGMENT: Record<AccountsSegmentId, AccountListItem[]> = {
@@ -70,35 +70,8 @@ export const ACCOUNTS_MOCK_BY_SEGMENT: Record<AccountsSegmentId, AccountListItem
       amountInr: 12_500,
     },
   ],
-  loans: [
-    {
-      id: "l1",
-      name: "Home loan — SBI",
-      entryCount: 4,
-      payBy: "5 Apr 2026",
-      amountInr: -18_75_000,
-    },
-    {
-      id: "l2",
-      name: "Personal — Axis",
-      entryCount: 1,
-      amountInr: -2_40_000,
-    },
-  ],
-  cards: [
-    {
-      id: "c1",
-      name: "HDFC Regalia",
-      entryCount: 6,
-      amountInr: -32_400,
-    },
-    {
-      id: "c2",
-      name: "ICICI Amazon Pay",
-      entryCount: 9,
-      amountInr: 0,
-    },
-  ],
+  loans: [],
+  cards: [],
 }
 
 /** Names for Udhar “select existing person” dropdown (from People mock list). */

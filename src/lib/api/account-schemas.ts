@@ -36,3 +36,50 @@ export function parseGetAccountsSuccess(
   }
   return { ok: false, error: "Invalid accounts response." }
 }
+
+export type AccountEmiLoanPayload = {
+  bankLender?: string
+  loanAccountNo?: string
+  principalInr: number
+  interestRatePercent: number
+  tenureMonths: number
+  startDate: string
+  emiDueDay: number
+  dueDateCycle: "fixed" | "rolling"
+  overrideEmi: boolean
+  customEmiAmountInr?: number
+}
+
+export type CreateAccountRequest = {
+  name: string
+  accountType: string
+  initialBalanceInr: number
+  emiLoan?: AccountEmiLoanPayload
+}
+
+export function parseCreateAccountSuccess(
+  raw: unknown
+): { ok: true; account: Account } | { ok: false; error: string } {
+  const direct = accountSchema.safeParse(raw)
+  if (direct.success) {
+    return { ok: true, account: direct.data }
+  }
+  const wrapped = z
+    .object({
+      success: z.literal(true),
+      data: accountSchema,
+    })
+    .safeParse(raw)
+  if (wrapped.success) {
+    return { ok: true, account: wrapped.data.data }
+  }
+  const nested = z
+    .object({
+      data: z.object({ account: accountSchema }),
+    })
+    .safeParse(raw)
+  if (nested.success) {
+    return { ok: true, account: nested.data.data.account }
+  }
+  return { ok: false, error: "Invalid create account response." }
+}

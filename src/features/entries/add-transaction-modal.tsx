@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Skeleton } from "@/components/ui/skeleton"
 import { getErrorMessage } from "@/lib/api/errors"
+import { FORM_OVERLAY_FOOTER, FORM_OVERLAY_SCROLL_BODY } from "@/lib/form-overlay-scroll"
 import type { TransactionType } from "@/lib/api/schemas"
 import { cn } from "@/lib/utils"
 import { useAddTransactionMutation, useGetAccountsQuery } from "@/store/api/base-api"
@@ -44,19 +45,43 @@ function SelectChevron() {
   )
 }
 
+function NoAccountsEmptyState({ onAddAccount }: { onAddAccount: () => void }) {
+  return (
+    <div className="flex flex-1 flex-col items-center justify-center px-6 py-10 text-center">
+      <div className="mb-4 flex size-16 items-center justify-center rounded-full bg-muted/80">
+        <Landmark className="size-8 text-primary" strokeWidth={2} aria-hidden />
+      </div>
+      <p className="text-base font-bold text-primary">No account found</p>
+      <p className="mt-2 max-w-[18rem] text-sm text-muted-foreground">
+        Add a bank account, cash, or wallet to start tracking
+      </p>
+      <Button
+        type="button"
+        className="mt-6 h-11 w-full max-w-[14rem] rounded-xl bg-primary text-base font-semibold text-primary-foreground hover:bg-primary/90"
+        onClick={onAddAccount}
+      >
+        Add Account
+      </Button>
+    </div>
+  )
+}
+
 export type AddTransactionModalProps = {
   open: boolean
   onOpenChange: (open: boolean) => void
   /** Expenses tab flow: locked expense type, “Add Expense”, note-first title. */
   expenseFlow?: boolean
+  /** When set, “Add Account” opens the shared Accounts sheet instead of navigating away. */
+  onOpenAddAccount?: () => void
 }
 
 type MountedProps = {
   onOpenChange: (open: boolean) => void
   expenseFlow: boolean
+  onOpenAddAccount?: () => void
 }
 
-function AddTransactionModalMounted({ onOpenChange, expenseFlow }: MountedProps) {
+function AddTransactionModalMounted({ onOpenChange, expenseFlow, onOpenAddAccount }: MountedProps) {
   const titleId = useId()
   const categoryId = useId()
   const accountIdField = useId()
@@ -80,7 +105,8 @@ function AddTransactionModalMounted({ onOpenChange, expenseFlow }: MountedProps)
   const [newTag, setNewTag] = useState("")
 
   const effectiveType: TransactionType = expenseFlow ? "expense" : txType
-  const hasAccounts = accounts.length > 0
+  /** Backend accounts — drives empty state vs form (TXNS & Expenses). */
+  const hasAccount = accounts.length > 0
   const modalTitle = expenseFlow ? "Add Expense" : "Add Transaction"
   const submitLabel = expenseFlow ? "Add Expense" : "Add Transaction"
 
@@ -100,7 +126,7 @@ function AddTransactionModalMounted({ onOpenChange, expenseFlow }: MountedProps)
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
-    if (!hasAccounts) return
+    if (!hasAccount) return
 
     let titleBase: string
     if (expenseFlow) {
@@ -162,12 +188,12 @@ function AddTransactionModalMounted({ onOpenChange, expenseFlow }: MountedProps)
         : "Paying From"
 
   const selectFieldClass = cn(
-    "h-9 w-full appearance-none rounded-xl border border-border bg-card px-3 pr-9 text-sm text-foreground shadow-sm outline-none",
+    "h-8 w-full appearance-none rounded-xl border border-border bg-card px-2.5 pr-8 text-xs text-foreground shadow-sm outline-none sm:h-9 sm:px-3 sm:pr-9 sm:text-sm",
     "focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/50"
   )
 
   return (
-    <div className="fixed inset-0 z-[60] flex max-h-dvh items-start justify-center overflow-hidden pt-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] sm:items-center sm:py-4">
+    <div className="fixed inset-0 z-[60] flex min-h-0 max-h-dvh items-center justify-center overflow-hidden p-2 pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:p-4">
       <button
         type="button"
         className="absolute inset-0 bg-black/50 backdrop-blur-[2px]"
@@ -179,7 +205,7 @@ function AddTransactionModalMounted({ onOpenChange, expenseFlow }: MountedProps)
         aria-modal="true"
         aria-labelledby={titleId}
         className={cn(
-          "relative flex max-h-[calc(100dvh-0.75rem-env(safe-area-inset-bottom))] w-full max-w-lg flex-col overflow-hidden rounded-2xl border border-border bg-card shadow-2xl sm:max-h-[min(92dvh,calc(100dvh-2rem))]",
+          "relative flex min-h-0 max-h-[min(calc(100dvh-1.25rem-env(safe-area-inset-bottom)),92dvh)] w-full max-w-xl flex-col overflow-hidden rounded-2xl border border-border bg-card shadow-2xl sm:max-h-[min(92dvh,calc(100dvh-2rem))]",
           "animate-in fade-in zoom-in-95 duration-200"
         )}
       >
@@ -201,7 +227,7 @@ function AddTransactionModalMounted({ onOpenChange, expenseFlow }: MountedProps)
 
         <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
           {isLoading && (
-            <div className="space-y-2 px-4 py-3">
+            <div className={cn(FORM_OVERLAY_SCROLL_BODY, "space-y-2 px-4 py-3")}>
               <Skeleton className="h-14 w-full rounded-xl" />
               <Skeleton className="h-9 w-full rounded-xl" />
               <Skeleton className="h-9 w-full rounded-xl" />
@@ -209,7 +235,12 @@ function AddTransactionModalMounted({ onOpenChange, expenseFlow }: MountedProps)
           )}
 
           {isError && !isLoading && (
-            <div className="flex flex-col items-center gap-2 px-4 py-4 text-center">
+            <div
+              className={cn(
+                FORM_OVERLAY_SCROLL_BODY,
+                "flex flex-col items-center justify-center gap-2 px-4 py-4 text-center"
+              )}
+            >
               <p className="text-xs text-destructive">{getErrorMessage(error)}</p>
               <Button
                 type="button"
@@ -223,39 +254,33 @@ function AddTransactionModalMounted({ onOpenChange, expenseFlow }: MountedProps)
             </div>
           )}
 
-          {!isLoading && !isError && !hasAccounts && (
-            <div className="flex flex-col items-center justify-center px-4 py-6 text-center">
-              <div className="mb-2 flex size-11 items-center justify-center rounded-2xl bg-muted/80">
-                <Landmark className="size-6 text-primary" strokeWidth={2} aria-hidden />
-              </div>
-              <p className="text-sm font-bold text-foreground">No account found</p>
-              <p className="mt-0.5 max-w-[16rem] text-xs text-muted-foreground">
-                Add a bank account, cash, or wallet to start tracking
-              </p>
-              <Button
-                type="button"
-                className="mt-3 h-9 rounded-xl px-6 text-sm font-semibold"
-                onClick={() => {
+          {!isLoading && !isError && !hasAccount && (
+            <div className={cn(FORM_OVERLAY_SCROLL_BODY, "flex flex-col justify-center px-2 py-2")}>
+              <NoAccountsEmptyState
+                onAddAccount={() => {
                   dismiss()
-                  navigate("/accounts")
+                  if (onOpenAddAccount) onOpenAddAccount()
+                  else navigate("/accounts")
                 }}
-              >
-                Add Account
-              </Button>
+              />
             </div>
           )}
 
-          {!isLoading && !isError && hasAccounts && (
+          {!isLoading && !isError && hasAccount && (
             <form
               id="add-transaction-form"
               onSubmit={handleSubmit}
               className="flex min-h-0 flex-1 flex-col overflow-hidden"
             >
-              <div className="min-h-0 flex-1 space-y-1.5 overflow-hidden px-4 py-2">
+              <div
+                className={cn(FORM_OVERLAY_SCROLL_BODY, "space-y-1 px-3 py-1.5 sm:px-4 sm:py-2")}
+              >
                 {!expenseFlow && (
                   <section>
-                    <Label className="mb-0.5 block text-xs font-bold text-primary">Type</Label>
-                    <div className="grid grid-cols-3 gap-1.5">
+                    <Label className="mb-0.5 block text-[11px] font-bold text-primary sm:text-xs">
+                      Type
+                    </Label>
+                    <div className="grid grid-cols-3 gap-1">
                       {(
                         [
                           { id: "expense" as const, label: "Expense" },
@@ -289,7 +314,7 @@ function AddTransactionModalMounted({ onOpenChange, expenseFlow }: MountedProps)
                 <section>
                   <Label
                     htmlFor="at-amount"
-                    className="mb-0.5 block text-xs font-bold text-primary"
+                    className="mb-0.5 block text-[11px] font-bold text-primary sm:text-xs"
                   >
                     Amount (₹)
                   </Label>
@@ -299,15 +324,15 @@ function AddTransactionModalMounted({ onOpenChange, expenseFlow }: MountedProps)
                     placeholder="0"
                     value={amount}
                     onChange={(e) => setAmount(e.target.value.replace(/[^\d]/g, ""))}
-                    className="h-12 rounded-xl border-border bg-muted/60 text-center text-2xl font-semibold tabular-nums text-primary/80 placeholder:text-primary/40"
+                    className="h-10 rounded-xl border-border bg-muted/60 text-center text-xl font-semibold tabular-nums text-primary/80 placeholder:text-primary/40 sm:text-2xl"
                   />
                 </section>
 
-                <div className="grid grid-cols-2 gap-2">
+                <div className="grid grid-cols-2 gap-1.5 sm:gap-2">
                   <section>
                     <Label
                       htmlFor={categoryId}
-                      className="mb-0.5 block text-xs font-bold text-primary"
+                      className="mb-0.5 block text-[11px] font-bold text-primary sm:text-xs"
                     >
                       Category
                     </Label>
@@ -331,7 +356,7 @@ function AddTransactionModalMounted({ onOpenChange, expenseFlow }: MountedProps)
                   <section>
                     <Label
                       htmlFor="at-date"
-                      className="mb-0.5 block text-xs font-bold text-primary"
+                      className="mb-0.5 block text-[11px] font-bold text-primary sm:text-xs"
                     >
                       Date
                     </Label>
@@ -341,7 +366,7 @@ function AddTransactionModalMounted({ onOpenChange, expenseFlow }: MountedProps)
                         type="date"
                         value={date}
                         onChange={(e) => setDate(e.target.value)}
-                        className="h-9 rounded-xl border-border bg-card px-3 pr-9 text-sm shadow-sm scheme-light dark:scheme-dark"
+                        className="h-8 rounded-xl border-border bg-card px-2.5 pr-8 text-xs shadow-sm scheme-light dark:scheme-dark sm:h-9 sm:px-3 sm:pr-9 sm:text-sm"
                       />
                       <CalendarDays
                         className="pointer-events-none absolute right-2 top-1/2 size-4 -translate-y-1/2 text-muted-foreground"
@@ -352,10 +377,10 @@ function AddTransactionModalMounted({ onOpenChange, expenseFlow }: MountedProps)
                 </div>
 
                 <section>
-                  <Label className="mb-0.5 block text-xs font-bold text-primary">
+                  <Label className="mb-0.5 block text-[11px] font-bold text-primary sm:text-xs">
                     Payment Method
                   </Label>
-                  <div className="grid grid-cols-2 gap-1.5">
+                  <div className="grid grid-cols-2 gap-1">
                     <ToggleTile
                       selected={paymentMethod === "account"}
                       onClick={() => setPaymentMethod("account")}
@@ -384,7 +409,7 @@ function AddTransactionModalMounted({ onOpenChange, expenseFlow }: MountedProps)
                 <section>
                   <Label
                     htmlFor={accountIdField}
-                    className="mb-0.5 block text-xs font-bold text-primary"
+                    className="mb-0.5 block text-[11px] font-bold text-primary sm:text-xs"
                   >
                     {accountLabel}
                   </Label>
@@ -406,80 +431,106 @@ function AddTransactionModalMounted({ onOpenChange, expenseFlow }: MountedProps)
                   </div>
                 </section>
 
-                <label className="flex cursor-pointer items-center gap-2 rounded-lg py-0.5">
-                  <input
-                    type="checkbox"
-                    checked={paidOnBehalf}
-                    onChange={(e) => setPaidOnBehalf(e.target.checked)}
-                    className="size-3.5 rounded border-border"
-                  />
-                  <span className="text-[11px] leading-tight text-foreground sm:text-xs">
-                    Paid on behalf of someone (add to their dues)
-                  </span>
-                </label>
-
-                <div className="rounded-xl border border-border/80 bg-muted/30 p-2">
-                  <label className="flex cursor-pointer items-start justify-between gap-2">
-                    <div className="min-w-0">
-                      <span className="text-xs font-semibold text-foreground">
-                        Schedule as upcoming expense
-                      </span>
-                      <p className="mt-0.5 text-[10px] leading-tight text-muted-foreground sm:text-[11px]">
-                        Mark as planned; won&apos;t affect balances until it happens.
-                      </p>
-                    </div>
+                <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-2">
+                  <label className="flex cursor-pointer items-start gap-1.5 rounded-lg border border-transparent py-0.5">
                     <input
                       type="checkbox"
-                      checked={scheduleUpcoming}
-                      onChange={(e) => setScheduleUpcoming(e.target.checked)}
+                      checked={paidOnBehalf}
+                      onChange={(e) => setPaidOnBehalf(e.target.checked)}
                       className="mt-0.5 size-3.5 shrink-0 rounded border-border"
                     />
+                    <span className="text-[10px] leading-tight text-foreground sm:text-[11px]">
+                      Paid on behalf of someone (add to their dues)
+                    </span>
                   </label>
+                  <div className="rounded-xl border border-border/80 bg-muted/30 p-1.5">
+                    <label className="flex cursor-pointer items-start justify-between gap-1.5">
+                      <div className="min-w-0">
+                        <span className="text-[11px] font-semibold text-foreground">
+                          Schedule upcoming
+                        </span>
+                        <p className="text-[9px] leading-tight text-muted-foreground sm:text-[10px]">
+                          Planned only; no balance change yet.
+                        </p>
+                      </div>
+                      <input
+                        type="checkbox"
+                        checked={scheduleUpcoming}
+                        onChange={(e) => setScheduleUpcoming(e.target.checked)}
+                        className="mt-0.5 size-3.5 shrink-0 rounded border-border"
+                      />
+                    </label>
+                  </div>
                 </div>
 
-                {!expenseFlow && (
+                {!expenseFlow ? (
+                  <div className="grid grid-cols-2 gap-1.5 sm:gap-2">
+                    <section>
+                      <Label
+                        htmlFor="at-desc"
+                        className="mb-0.5 block text-[11px] font-bold text-primary sm:text-xs"
+                      >
+                        Description
+                      </Label>
+                      <Input
+                        id="at-desc"
+                        value={description}
+                        onChange={(e) => setDescription(e.target.value)}
+                        placeholder="Short description"
+                        className="h-8 rounded-xl border-border bg-card px-2.5 text-xs shadow-sm sm:h-9 sm:px-3 sm:text-sm"
+                      />
+                    </section>
+                    <section>
+                      <Label
+                        htmlFor="at-note"
+                        className="mb-0.5 block text-[11px] font-bold text-primary sm:text-xs"
+                      >
+                        Note
+                      </Label>
+                      <textarea
+                        id="at-note"
+                        rows={1}
+                        placeholder="Optional details…"
+                        value={note}
+                        onChange={(e) => setNote(e.target.value)}
+                        className={cn(
+                          "min-h-8 w-full resize-none rounded-xl border border-border bg-card px-2.5 py-1 text-xs text-foreground shadow-sm outline-none sm:min-h-9 sm:px-3 sm:py-1.5 sm:text-sm",
+                          "placeholder:text-muted-foreground/80",
+                          "focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/50"
+                        )}
+                      />
+                    </section>
+                  </div>
+                ) : (
                   <section>
                     <Label
-                      htmlFor="at-desc"
-                      className="mb-0.5 block text-xs font-bold text-primary"
+                      htmlFor="at-note"
+                      className="mb-0.5 block text-[11px] font-bold text-primary sm:text-xs"
                     >
-                      Description
+                      Note
                     </Label>
-                    <Input
-                      id="at-desc"
-                      value={description}
-                      onChange={(e) => setDescription(e.target.value)}
-                      placeholder="Short description"
-                      className="h-9 rounded-xl border-border bg-card px-3 text-sm shadow-sm"
+                    <textarea
+                      id="at-note"
+                      rows={1}
+                      placeholder="What was this for?"
+                      value={note}
+                      onChange={(e) => setNote(e.target.value)}
+                      className={cn(
+                        "min-h-9 w-full resize-none rounded-xl border border-border bg-card px-3 py-1.5 text-sm text-foreground shadow-sm outline-none",
+                        "placeholder:text-muted-foreground/80",
+                        "focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/50"
+                      )}
                     />
                   </section>
                 )}
 
                 <section>
-                  <Label htmlFor="at-note" className="mb-0.5 block text-xs font-bold text-primary">
-                    Note
-                  </Label>
-                  <textarea
-                    id="at-note"
-                    rows={1}
-                    placeholder={expenseFlow ? "What was this for?" : "Optional details…"}
-                    value={note}
-                    onChange={(e) => setNote(e.target.value)}
-                    className={cn(
-                      "min-h-9 w-full resize-none rounded-xl border border-border bg-card px-3 py-1.5 text-sm text-foreground shadow-sm outline-none",
-                      "placeholder:text-muted-foreground/80",
-                      "focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/50"
-                    )}
-                  />
-                </section>
-
-                <section>
-                  <Label className="mb-0.5 flex items-center gap-1 text-xs font-bold text-primary">
-                    <Tag className="size-3.5" strokeWidth={2} aria-hidden />
+                  <Label className="mb-0.5 flex items-center gap-1 text-[11px] font-bold text-primary sm:text-xs">
+                    <Tag className="size-3 sm:size-3.5" strokeWidth={2} aria-hidden />
                     Tags
                   </Label>
-                  <div className="flex flex-wrap gap-1.5">
-                    <div className="relative min-w-0 flex-1 basis-[40%]">
+                  <div className="flex flex-wrap gap-1">
+                    <div className="relative min-w-0 flex-1 basis-[38%]">
                       <select
                         value={tagPreset}
                         onChange={(e) => setTagPreset(e.target.value)}
@@ -498,7 +549,7 @@ function AddTransactionModalMounted({ onOpenChange, expenseFlow }: MountedProps)
                       value={newTag}
                       onChange={(e) => setNewTag(e.target.value)}
                       placeholder="New tag"
-                      className="h-9 min-w-[5rem] flex-1 rounded-xl border-border bg-card px-2 text-xs shadow-sm"
+                      className="h-8 min-w-20 flex-1 rounded-xl border-border bg-card px-2 text-xs shadow-sm sm:h-9"
                       onKeyDown={(e) => {
                         if (e.key === "Enter") {
                           e.preventDefault()
@@ -510,7 +561,7 @@ function AddTransactionModalMounted({ onOpenChange, expenseFlow }: MountedProps)
                       type="button"
                       variant="secondary"
                       size="icon"
-                      className="size-9 shrink-0 rounded-xl text-sm"
+                      className="size-8 shrink-0 rounded-xl text-sm sm:size-9"
                       aria-label="Add tag"
                       onClick={addTagFromInputs}
                     >
@@ -525,11 +576,11 @@ function AddTransactionModalMounted({ onOpenChange, expenseFlow }: MountedProps)
                 </section>
               </div>
 
-              <div className="shrink-0 border-t border-border bg-card px-4 py-2 pb-[max(0.5rem,env(safe-area-inset-bottom))]">
+              <div className={FORM_OVERLAY_FOOTER}>
                 <Button
                   type="submit"
                   disabled={isSubmitting}
-                  className="h-10 w-full rounded-xl bg-[hsl(230_22%_62%)] text-sm font-bold text-white hover:bg-[hsl(230_22%_56%)] disabled:opacity-60 sm:h-11 sm:text-base"
+                  className="h-9 w-full rounded-xl bg-[hsl(230_22%_62%)] text-sm font-bold text-white hover:bg-[hsl(230_22%_56%)] disabled:opacity-60 sm:h-11 sm:text-base"
                 >
                   {isSubmitting ? "Saving…" : submitLabel}
                 </Button>
@@ -546,6 +597,7 @@ export function AddTransactionModal({
   open,
   onOpenChange,
   expenseFlow = false,
+  onOpenAddAccount,
 }: AddTransactionModalProps) {
   if (!open) return null
   return (
@@ -553,6 +605,7 @@ export function AddTransactionModal({
       key={expenseFlow ? "expense" : "transaction"}
       expenseFlow={expenseFlow}
       onOpenChange={onOpenChange}
+      onOpenAddAccount={onOpenAddAccount}
     />
   )
 }

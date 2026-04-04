@@ -18,7 +18,12 @@ import {
   type LoginRequest,
   type RegisterRequest,
 } from "@/lib/api/auth-schemas"
-import { parseGetAccountsSuccess, type Account } from "@/lib/api/account-schemas"
+import {
+  parseCreateAccountSuccess,
+  parseGetAccountsSuccess,
+  type Account,
+  type CreateAccountRequest,
+} from "@/lib/api/account-schemas"
 import {
   parseCreatePersonSuccess,
   parseGetPeopleSuccess,
@@ -176,6 +181,34 @@ export const baseApi = createApi({
         return { data: parsed.accounts }
       },
       providesTags: [{ type: "Account", id: "LIST" }],
+    }),
+
+    createAccount: build.mutation<Account, CreateAccountRequest>({
+      async queryFn(body, _api, _extraOptions, baseQuery) {
+        const res = await baseQuery({
+          url: ACCOUNT_PATHS.create,
+          method: "POST",
+          body: {
+            name: body.name.trim(),
+            accountType: body.accountType,
+            initialBalanceInr: body.initialBalanceInr,
+            ...(body.emiLoan ? { emiLoan: body.emiLoan } : {}),
+          },
+        })
+        if (res.error) {
+          return { error: normalizeFetchError(res.error) }
+        }
+        const failMsg = parseApiFailureMessage(res.data)
+        if (failMsg) {
+          return { error: { status: 400, data: failMsg } }
+        }
+        const parsed = parseCreateAccountSuccess(res.data)
+        if (!parsed.ok) {
+          return { error: { status: 422, data: parsed.error } }
+        }
+        return { data: parsed.account }
+      },
+      invalidatesTags: [{ type: "Account", id: "LIST" }],
     }),
 
     getPeople: build.query<Person[], void>({
@@ -436,6 +469,7 @@ export const {
   useLogoutMutation,
   useRefreshTokenMutation,
   useGetAccountsQuery,
+  useCreateAccountMutation,
   useGetPeopleQuery,
   useCreatePersonMutation,
   useGetTransactionsQuery,

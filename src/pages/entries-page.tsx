@@ -3,8 +3,6 @@ import {
   ArrowLeftRight,
   Banknote,
   ChevronDown,
-  ChevronLeft,
-  ChevronRight,
   CreditCard,
   FileText,
   IndianRupee,
@@ -14,9 +12,12 @@ import {
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Skeleton } from "@/components/ui/skeleton"
+import { AddAccountSheet } from "@/features/accounts/add-account-sheet"
 import { AddCreditCardSheet } from "@/features/accounts/add-credit-card-sheet"
 import { AddLoanSheet } from "@/features/accounts/add-loan-sheet"
 import { AddUdharEntrySheet } from "@/features/accounts/add-udhar-entry-sheet"
+import { AccountRowCard, PeopleApiRow } from "@/features/accounts/account-list-rows"
+import { ACCOUNTS_MOCK_BY_SEGMENT } from "@/features/accounts/accounts-mock-data"
 import { AddTransactionModal } from "@/features/entries/add-transaction-modal"
 import { QuickTransactionForm } from "@/features/entries/quick-transaction-form"
 import { TransactionRow } from "@/features/entries/transaction-row"
@@ -24,7 +25,12 @@ import { getErrorMessage } from "@/lib/api/errors"
 import type { Transaction, TransactionType } from "@/lib/api/schemas"
 import { formatCurrency } from "@/lib/format"
 import { cn } from "@/lib/utils"
-import { useGetAccountsQuery, useGetTransactionsQuery } from "@/store/api/base-api"
+import {
+  useGetAccountsQuery,
+  useGetPeopleQuery,
+  useGetTransactionsQuery,
+} from "@/store/api/base-api"
+import { useAppSelector } from "@/store/hooks"
 
 type EntrySegment = "txns" | "expenses" | "udhar" | "loans" | "cards"
 type TimePreset = "7d" | "month" | "3m" | "year" | "all"
@@ -117,7 +123,6 @@ function headerTotalLabel(
 }
 
 export default function EntriesPage() {
-  const tabsScrollRef = useRef<HTMLDivElement>(null)
   const addFormRef = useRef<HTMLDivElement>(null)
 
   const [segment, setSegment] = useState<EntrySegment>("expenses")
@@ -129,13 +134,27 @@ export default function EntriesPage() {
   const [udharSheetOpen, setUdharSheetOpen] = useState(false)
   const [loanSheetOpen, setLoanSheetOpen] = useState(false)
   const [cardSheetOpen, setCardSheetOpen] = useState(false)
+  const [addAccountSheetOpen, setAddAccountSheetOpen] = useState(false)
   const [txTypeFilter, setTxTypeFilter] = useState<"all" | TransactionType>("all")
   const [txAccountFilter, setTxAccountFilter] = useState<string>("all")
 
   const { data: transactions = [], isLoading, isError, error, refetch } = useGetTransactionsQuery()
-  const { data: accountOptions = [] } = useGetAccountsQuery(undefined, {
-    skip: segment !== "txns" && !expenseModalOpen,
-  })
+  const { data: accounts = [] } = useGetAccountsQuery()
+  const {
+    isLoading: peopleLoading,
+    isError: peopleError,
+    error: peopleQueryError,
+    refetch: refetchPeople,
+  } = useGetPeopleQuery()
+  const peopleFromStore = useAppSelector((s) => s.people.items)
+
+  const mockPeopleById = useMemo(
+    () => Object.fromEntries(ACCOUNTS_MOCK_BY_SEGMENT.people.map((p) => [p.id, p])),
+    []
+  )
+
+  const loansMockList = ACCOUNTS_MOCK_BY_SEGMENT.loans
+  const cardsMockList = ACCOUNTS_MOCK_BY_SEGMENT.cards
 
   const filtered = useMemo(() => {
     const now = new Date()
@@ -156,11 +175,41 @@ export default function EntriesPage() {
     return list.sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0))
   }, [transactions, segment, timePreset, search, txTypeFilter, txAccountFilter])
 
-  const totalDisplay = headerTotalLabel(segment, filtered)
+  const entriesHasList = useMemo(() => {
+    if (segment === "txns" || segment === "expenses") {
+      return !isLoading && !isError && filtered.length > 0
+    }
+    if (segment === "udhar") {
+      return !peopleLoading && !peopleError && peopleFromStore.length > 0
+    }
+    if (segment === "loans") return loansMockList.length > 0
+    if (segment === "cards") return cardsMockList.length > 0
+    return false
+  }, [
+    segment,
+    isLoading,
+    isError,
+    filtered.length,
+    peopleLoading,
+    peopleError,
+    peopleFromStore.length,
+    loansMockList.length,
+    cardsMockList.length,
+  ])
 
-  function scrollTabs(dir: -1 | 1) {
-    tabsScrollRef.current?.scrollBy({ left: dir * 140, behavior: "smooth" })
-  }
+  const segmentListLoading =
+    segment === "udhar"
+      ? peopleLoading
+      : segment === "loans" || segment === "cards"
+        ? false
+        : isLoading
+
+  const segmentListError =
+    segment === "udhar" ? peopleError : segment === "loans" || segment === "cards" ? false : isError
+
+  const segmentError = segment === "udhar" ? peopleQueryError : error
+
+  const totalDisplay = headerTotalLabel(segment, filtered)
 
   function openAddForm() {
     setShowAddForm(true)
@@ -168,6 +217,27 @@ export default function EntriesPage() {
       addFormRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" })
     })
   }
+
+  function openEntriesHeaderAdd() {
+    if (segment === "txns") setTxModalOpen(true)
+    else if (segment === "expenses") setExpenseModalOpen(true)
+    else if (segment === "udhar") setUdharSheetOpen(true)
+    else if (segment === "loans") setLoanSheetOpen(true)
+    else if (segment === "cards") setCardSheetOpen(true)
+  }
+
+  const headerAddAriaLabel =
+    segment === "txns"
+      ? "Add transaction"
+      : segment === "expenses"
+        ? "Add expense"
+        : segment === "udhar"
+          ? "Add udhar entry"
+          : segment === "loans"
+            ? "Add loan"
+            : segment === "cards"
+              ? "Add credit card"
+              : "Add entry"
 
   const pageTitle =
     segment === "txns"
@@ -216,61 +286,58 @@ export default function EntriesPage() {
 
   return (
     <main className="min-h-0 flex-1 bg-background px-4 py-4 pb-28">
-      <AddTransactionModal open={txModalOpen} onOpenChange={setTxModalOpen} />
-      <AddTransactionModal open={expenseModalOpen} onOpenChange={setExpenseModalOpen} expenseFlow />
+      <AddAccountSheet open={addAccountSheetOpen} onOpenChange={setAddAccountSheetOpen} />
+      <AddTransactionModal
+        open={txModalOpen}
+        onOpenChange={setTxModalOpen}
+        onOpenAddAccount={() => {
+          setTxModalOpen(false)
+          setAddAccountSheetOpen(true)
+        }}
+      />
+      <AddTransactionModal
+        open={expenseModalOpen}
+        onOpenChange={setExpenseModalOpen}
+        expenseFlow
+        onOpenAddAccount={() => {
+          setExpenseModalOpen(false)
+          setAddAccountSheetOpen(true)
+        }}
+      />
       <AddUdharEntrySheet open={udharSheetOpen} onOpenChange={setUdharSheetOpen} />
       <AddLoanSheet open={loanSheetOpen} onOpenChange={setLoanSheetOpen} />
       <AddCreditCardSheet open={cardSheetOpen} onOpenChange={setCardSheetOpen} />
 
-      <div className="relative mb-3">
-        <button
-          type="button"
-          className="absolute top-1/2 left-0 z-10 flex size-7 -translate-y-1/2 items-center justify-center rounded-full border border-border/80 bg-card text-muted-foreground shadow-sm hover:bg-muted/60"
-          aria-label="Scroll tabs left"
-          onClick={() => scrollTabs(-1)}
-        >
-          <ChevronLeft className="size-4" strokeWidth={2} />
-        </button>
-        <button
-          type="button"
-          className="absolute top-1/2 right-0 z-10 flex size-7 -translate-y-1/2 items-center justify-center rounded-full border border-border/80 bg-card text-muted-foreground shadow-sm hover:bg-muted/60"
-          aria-label="Scroll tabs right"
-          onClick={() => scrollTabs(1)}
-        >
-          <ChevronRight className="size-4" strokeWidth={2} />
-        </button>
-        <div
-          ref={tabsScrollRef}
-          className="scrollbar-thin flex gap-2 overflow-x-auto scroll-smooth px-9 py-0.5 [-ms-overflow-style:none] [scrollbar-width:thin] [&::-webkit-scrollbar]:h-1.5 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-border [&::-webkit-scrollbar-track]:rounded-full [&::-webkit-scrollbar-track]:bg-muted/80"
-          role="tablist"
-          aria-label="Entry categories"
-        >
-          {ENTRY_SEGMENTS.map(({ id, label, icon: Icon }) => {
-            const active = segment === id
-            return (
-              <button
-                key={id}
-                type="button"
-                role="tab"
-                aria-selected={active}
-                id={`entries-tab-${id}`}
-                className={cn(
-                  "flex shrink-0 items-center gap-1.5 rounded-full px-3.5 py-2 text-xs font-semibold transition-colors sm:text-[13px]",
-                  active
-                    ? "bg-primary text-primary-foreground shadow-sm"
-                    : "bg-muted/80 text-muted-foreground hover:bg-muted hover:text-foreground"
-                )}
-                onClick={() => setSegment(id)}
-              >
-                <Icon className="size-4 shrink-0" strokeWidth={active ? 2.25 : 2} aria-hidden />
-                {label}
-              </button>
-            )
-          })}
-        </div>
+      <div className="mb-3 grid grid-cols-5 gap-1" role="tablist" aria-label="Entry categories">
+        {ENTRY_SEGMENTS.map(({ id, label, icon: Icon }) => {
+          const active = segment === id
+          return (
+            <button
+              key={id}
+              type="button"
+              role="tab"
+              aria-selected={active}
+              id={`entries-tab-${id}`}
+              className={cn(
+                "flex min-w-0 flex-row items-center justify-center gap-0.5 rounded-full px-1.5 py-1.5 text-center text-[10px] font-semibold leading-none transition-colors sm:gap-1 sm:px-2 sm:text-xs",
+                active
+                  ? "bg-primary text-primary-foreground shadow-sm"
+                  : "bg-muted/80 text-muted-foreground hover:bg-muted hover:text-foreground"
+              )}
+              onClick={() => setSegment(id)}
+            >
+              <Icon
+                className="size-3.5 shrink-0 sm:size-4"
+                strokeWidth={active ? 2.25 : 2}
+                aria-hidden
+              />
+              <span className="truncate">{label}</span>
+            </button>
+          )
+        })}
       </div>
 
-      <div className="mb-3 flex items-baseline justify-between gap-3">
+      <div className="mb-3 flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
         <h1
           className={cn(
             "text-lg font-bold tracking-tight",
@@ -279,11 +346,24 @@ export default function EntriesPage() {
         >
           {pageTitle}
         </h1>
-        {showHeaderTotal && !isLoading && !isError ? (
-          <span className={totalDisplay.className}>{totalDisplay.text}</span>
-        ) : showHeaderTotal && isLoading ? (
-          <Skeleton className="h-6 w-16 rounded-md" />
-        ) : null}
+        <div className="flex flex-wrap items-center justify-end gap-x-3 gap-y-1 sm:ml-auto">
+          {showHeaderTotal && !isLoading && !isError ? (
+            <span className={totalDisplay.className}>{totalDisplay.text}</span>
+          ) : showHeaderTotal && isLoading ? (
+            <Skeleton className="h-6 w-16 rounded-md" />
+          ) : null}
+          {entriesHasList ? (
+            <Button
+              type="button"
+              variant="link"
+              className="h-auto shrink-0 p-0 text-sm font-semibold text-primary"
+              onClick={openEntriesHeaderAdd}
+              aria-label={headerAddAriaLabel}
+            >
+              + Add
+            </Button>
+          ) : null}
+        </div>
       </div>
 
       {segment === "txns" && (
@@ -310,7 +390,7 @@ export default function EntriesPage() {
               aria-label="Filter by account"
             >
               <option value="all">All accounts</option>
-              {accountOptions.map((a) => (
+              {accounts.map((a) => (
                 <option key={a.id} value={a.id}>
                   {a.name}
                 </option>
@@ -318,25 +398,6 @@ export default function EntriesPage() {
             </select>
             <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
           </div>
-          <Button
-            type="button"
-            className="h-10 shrink-0 rounded-full px-5 text-sm font-semibold sm:ml-auto"
-            onClick={() => setTxModalOpen(true)}
-          >
-            Add Transaction
-          </Button>
-        </div>
-      )}
-
-      {segment === "expenses" && !isLoading && !isError && filtered.length > 0 && (
-        <div className="mb-3 flex justify-end">
-          <Button
-            type="button"
-            className="h-10 rounded-full px-5 text-sm font-semibold"
-            onClick={() => setExpenseModalOpen(true)}
-          >
-            Add Expense
-          </Button>
         </div>
       )}
 
@@ -382,22 +443,22 @@ export default function EntriesPage() {
         </>
       )}
 
-      {isError && (
+      {segmentListError && (
         <div className="mb-4 space-y-3 rounded-2xl border border-destructive/30 bg-destructive/5 px-4 py-4">
-          <p className="text-sm text-destructive">{getErrorMessage(error)}</p>
+          <p className="text-sm text-destructive">{getErrorMessage(segmentError)}</p>
           <Button
             type="button"
             variant="outline"
             size="sm"
             className="rounded-xl"
-            onClick={() => refetch()}
+            onClick={() => (segment === "udhar" ? refetchPeople() : refetch())}
           >
             Retry
           </Button>
         </div>
       )}
 
-      {isLoading && !isError && (
+      {segmentListLoading && !segmentListError && (
         <div className="space-y-2">
           <Skeleton className="h-18 w-full rounded-2xl" />
           <Skeleton className="h-18 w-full rounded-2xl" />
@@ -405,7 +466,7 @@ export default function EntriesPage() {
         </div>
       )}
 
-      {!isLoading && !isError && filtered.length === 0 && (
+      {!segmentListLoading && !segmentListError && !entriesHasList && (
         <div className="flex min-h-[min(52vh,22rem)] flex-col items-center justify-center rounded-2xl border border-dashed border-border/90 bg-card px-6 py-12 text-center">
           <div className="mb-4 flex size-14 items-center justify-center rounded-2xl bg-muted/80">
             {segment === "expenses" ? (
@@ -481,87 +542,47 @@ export default function EntriesPage() {
         </div>
       )}
 
-      {!isLoading && !isError && filtered.length > 0 && (
-        <ul className="flex list-none flex-col gap-2.5" aria-label="Entries list">
-          {filtered.map((tx) => (
-            <li key={tx.id}>
-              <TransactionRow tx={tx} />
+      {!segmentListLoading &&
+        !segmentListError &&
+        entriesHasList &&
+        (segment === "txns" || segment === "expenses") && (
+          <ul className="flex list-none flex-col gap-2.5" aria-label="Entries list">
+            {filtered.map((tx) => (
+              <li key={tx.id}>
+                <TransactionRow tx={tx} />
+              </li>
+            ))}
+          </ul>
+        )}
+
+      {!segmentListLoading && !segmentListError && entriesHasList && segment === "udhar" && (
+        <ul className="flex list-none flex-col gap-2.5" aria-label="Udhar list">
+          {peopleFromStore.map((person) => (
+            <li key={person.id}>
+              <PeopleApiRow person={person} balanceRow={mockPeopleById[person.id]} />
             </li>
           ))}
         </ul>
       )}
 
-      {!isLoading && !isError && filtered.length > 0 && segment === "expenses" && (
-        <Button
-          type="button"
-          variant="outline"
-          className="mt-4 h-11 w-full rounded-xl text-base font-semibold"
-          onClick={() => setExpenseModalOpen(true)}
-        >
-          Add Expense
-        </Button>
+      {!segmentListLoading && !segmentListError && entriesHasList && segment === "loans" && (
+        <ul className="flex list-none flex-col gap-2.5" aria-label="Loans list">
+          {loansMockList.map((item) => (
+            <li key={item.id}>
+              <AccountRowCard item={item} />
+            </li>
+          ))}
+        </ul>
       )}
 
-      {!isLoading && !isError && filtered.length > 0 && segment === "udhar" && (
-        <Button
-          type="button"
-          variant="outline"
-          className="mt-4 h-11 w-full rounded-xl text-base font-semibold"
-          onClick={() => setUdharSheetOpen(true)}
-        >
-          Add Udhar Entry
-        </Button>
-      )}
-
-      {!isLoading && !isError && filtered.length > 0 && segment === "loans" && (
-        <Button
-          type="button"
-          variant="outline"
-          className="mt-4 h-11 w-full rounded-xl text-base font-semibold"
-          onClick={() => setLoanSheetOpen(true)}
-        >
-          Add Loan
-        </Button>
-      )}
-
-      {!isLoading &&
-        !isError &&
-        filtered.length > 0 &&
-        segment !== "txns" &&
-        segment !== "expenses" &&
-        segment !== "udhar" &&
-        segment !== "loans" &&
-        segment !== "cards" && (
-          <Button
-            type="button"
-            variant="outline"
-            className="mt-4 h-11 w-full rounded-xl text-base font-semibold"
-            onClick={openAddForm}
-          >
-            Add entry
-          </Button>
-        )}
-
-      {!isLoading && !isError && filtered.length > 0 && segment === "cards" && (
-        <Button
-          type="button"
-          variant="outline"
-          className="mt-4 h-11 w-full rounded-xl text-base font-semibold"
-          onClick={() => setCardSheetOpen(true)}
-        >
-          Add Card
-        </Button>
-      )}
-
-      {!isLoading && !isError && filtered.length > 0 && segment === "txns" && (
-        <Button
-          type="button"
-          variant="outline"
-          className="mt-4 h-11 w-full rounded-xl text-base font-semibold"
-          onClick={() => setTxModalOpen(true)}
-        >
-          Add Transaction
-        </Button>
+      {!segmentListLoading && !segmentListError && entriesHasList && segment === "cards" && (
+        <ul className="flex list-none flex-col gap-2.5" aria-label="Credit cards list">
+          {cardsMockList.map((item) => (
+            <li key={item.id}>
+              <AccountRowCard item={item} />
+            </li>
+          ))}
+        </ul>
       )}
 
       {showAddForm &&

@@ -18,6 +18,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { getErrorMessage } from "@/lib/api/errors"
 import { clearToken } from "@/lib/auth/token"
+import { FORM_OVERLAY_FOOTER, FORM_OVERLAY_SCROLL_BODY } from "@/lib/form-overlay-scroll"
 import { cn } from "@/lib/utils"
 import { useCreatePersonMutation, useGetPeopleQuery } from "@/store/api/base-api"
 import { clearUser } from "@/store/auth-slice"
@@ -212,7 +213,7 @@ function AddUdharEntrySheetMounted({ onOpenChange }: MountedProps) {
     "h-9 rounded-xl border border-border bg-card px-3 text-sm text-foreground shadow-sm outline-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/50"
 
   return (
-    <div className="fixed inset-0 z-50 flex max-h-dvh items-start justify-center overflow-hidden pt-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] sm:items-center sm:py-4">
+    <div className="fixed inset-0 z-50 flex min-h-0 max-h-dvh items-center justify-center overflow-hidden p-2 pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:p-4">
       <button
         type="button"
         className="absolute inset-0 bg-black/50 backdrop-blur-[2px]"
@@ -224,7 +225,7 @@ function AddUdharEntrySheetMounted({ onOpenChange }: MountedProps) {
         aria-modal="true"
         aria-labelledby={titleId}
         className={cn(
-          "relative flex max-h-[calc(100dvh-0.75rem-env(safe-area-inset-bottom))] w-full max-w-lg flex-col overflow-hidden rounded-2xl border border-border bg-card shadow-2xl sm:max-h-[min(92dvh,calc(100dvh-2rem))]",
+          "relative flex min-h-0 max-h-[min(calc(100dvh-1.25rem-env(safe-area-inset-bottom)),92dvh)] w-full max-w-lg flex-col overflow-hidden rounded-2xl border border-border bg-card shadow-2xl sm:max-h-[min(92dvh,calc(100dvh-2rem))]",
           "animate-in fade-in zoom-in-95 duration-200"
         )}
       >
@@ -245,7 +246,7 @@ function AddUdharEntrySheetMounted({ onOpenChange }: MountedProps) {
         </header>
 
         <form onSubmit={handleSubmit} className="flex min-h-0 flex-1 flex-col overflow-hidden">
-          <div className="min-h-0 flex-1 space-y-2 overflow-hidden px-4 py-2">
+          <div className={cn(FORM_OVERLAY_SCROLL_BODY, "space-y-2 px-4 py-2")}>
             <section>
               <Label className="mb-0.5 block text-xs font-bold text-primary">Type</Label>
               <div className="grid grid-cols-2 gap-1.5">
@@ -476,7 +477,7 @@ function AddUdharEntrySheetMounted({ onOpenChange }: MountedProps) {
             </section>
           </div>
 
-          <div className="shrink-0 border-t border-border bg-card px-4 py-2 pb-[max(0.5rem,env(safe-area-inset-bottom))]">
+          <div className={cn(FORM_OVERLAY_FOOTER, "px-4")}>
             <Button
               type="submit"
               disabled={isCreatingPerson}
