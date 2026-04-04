@@ -9,6 +9,7 @@ import { ACCOUNT_PATHS } from "@/api/account-paths"
 import { TRANSACTION_PATHS } from "@/api/transaction-paths"
 import { AUTH_PATHS } from "@/api/auth-paths"
 import { PEOPLE_PATHS } from "@/api/people-paths"
+import { USER_PATHS } from "@/api/user-paths"
 import { isAccountCreateApiDisabled } from "@/lib/feature-flags"
 import { getApiBaseUrl } from "@/lib/env"
 import { clearToken, getRefreshToken, setAuthTokens } from "@/lib/auth/token"
@@ -20,6 +21,12 @@ import {
   type LoginRequest,
   type RegisterRequest,
 } from "@/lib/api/auth-schemas"
+import {
+  parseProfileSuccessEnvelope,
+  updateProfileRequestSchema,
+  type ProfileUser,
+  type UpdateProfileRequest,
+} from "@/lib/api/profile-schemas"
 import {
   buildCreateAccountPostBody,
   parseCreateAccountSuccess,
@@ -52,8 +59,9 @@ import {
   logAuthResponseParsed,
   logAuthResponseSuccess,
 } from "@/lib/debug/auth-api-log"
+import { clearAllProfileDraftsFromStorage } from "@/lib/profile/local-profile-draft"
 import { clearUser, setUser } from "@/store/auth-slice"
-import { addPerson, setPeople } from "@/store/people-slice"
+import { addPerson, resetPeople, setPeople } from "@/store/people-slice"
 
 function normalizeFetchError(error: FetchBaseQueryError): FetchBaseQueryError {
   if (typeof error.status !== "number") {
@@ -104,6 +112,7 @@ const rawBaseQuery = fetchBaseQuery({
     if (token) {
       headers.set("Authorization", `Bearer ${token}`)
     }
+    headers.set("Accept", "application/json")
     headers.set("Content-Type", "application/json")
     return headers
   },
@@ -150,8 +159,11 @@ const baseQueryWithReauth: BaseQueryFn<string | FetchArgs, unknown, FetchBaseQue
     if (refreshed) {
       result = await rawBaseQuery(args, api, extraOptions)
     } else {
-      api.dispatch(clearUser())
+      clearAllProfileDraftsFromStorage()
       clearToken()
+      api.dispatch(clearUser())
+      api.dispatch(baseApi.util.resetApiState())
+      api.dispatch(resetPeople())
     }
   }
 
@@ -161,8 +173,59 @@ const baseQueryWithReauth: BaseQueryFn<string | FetchArgs, unknown, FetchBaseQue
 export const baseApi = createApi({
   reducerPath: "api",
   baseQuery: baseQueryWithReauth,
-  tagTypes: ["Transaction", "People", "Account"],
+  tagTypes: ["Transaction", "People", "Account", "User"],
   endpoints: (build) => ({
+    getMe: build.query<ProfileUser, string>({
+      async queryFn(userId, _api, _extraOptions, baseQuery) {
+        void userId
+        const res = await baseQuery({
+          url: USER_PATHS.me,
+          method: "GET",
+        })
+        if (res.error) {
+          return { error: normalizeFetchError(res.error) }
+        }
+        const failMsg = parseApiFailureMessage(res.data)
+        if (failMsg) {
+          return { error: { status: 400, data: failMsg } }
+        }
+        const parsed = parseProfileSuccessEnvelope(res.data)
+        if (!parsed.ok) {
+          return { error: { status: 422, data: parsed.error } }
+        }
+        return { data: parsed.user }
+      },
+      providesTags: (_result, _error, userId) => [{ type: "User", id: userId }],
+    }),
+
+    updateMe: build.mutation<ProfileUser, UpdateProfileRequest>({
+      async queryFn(body, _api, _extraOptions, baseQuery) {
+        const validated = updateProfileRequestSchema.safeParse(body)
+        if (!validated.success) {
+          const first = validated.error.flatten().formErrors[0]
+          return { error: { status: 422, data: first ?? "Invalid profile data" } }
+        }
+        const res = await baseQuery({
+          url: USER_PATHS.me,
+          method: "PUT",
+          body: validated.data,
+        })
+        if (res.error) {
+          return { error: normalizeFetchError(res.error) }
+        }
+        const failMsg = parseApiFailureMessage(res.data)
+        if (failMsg) {
+          return { error: { status: 400, data: failMsg } }
+        }
+        const parsed = parseProfileSuccessEnvelope(res.data)
+        if (!parsed.ok) {
+          return { error: { status: 422, data: parsed.error } }
+        }
+        return { data: parsed.user }
+      },
+      invalidatesTags: ["User"],
+    }),
+
     getAccounts: build.query<Account[], void>({
       async queryFn(_arg, _api, _extraOptions, baseQuery) {
         const res = await baseQuery({
@@ -521,4 +584,6 @@ export const {
   useCreatePersonMutation,
   useGetRecentTransactionsQuery,
   useAddTransactionMutation,
+  useGetMeQuery,
+  useUpdateMeMutation,
 } = baseApi

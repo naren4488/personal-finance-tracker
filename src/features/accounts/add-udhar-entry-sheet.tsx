@@ -17,11 +17,10 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { getErrorMessage } from "@/lib/api/errors"
-import { clearToken } from "@/lib/auth/token"
+import { endUserSession } from "@/lib/auth/end-session"
 import { FORM_OVERLAY_FOOTER, FORM_OVERLAY_SCROLL_BODY } from "@/lib/form-overlay-scroll"
 import { cn } from "@/lib/utils"
 import { useCreatePersonMutation, useGetPeopleQuery } from "@/store/api/base-api"
-import { clearUser } from "@/store/auth-slice"
 import { useAppDispatch, useAppSelector } from "@/store/hooks"
 
 const PAID_FROM_OPTIONS = ["HDFC Savings", "Cash wallet", "UPI — Primary"] as const
@@ -165,8 +164,7 @@ function AddUdharEntrySheetMounted({ onOpenChange }: MountedProps) {
         const msg = getErrorMessage(err)
         if (isAuthTokenRequiredMessage(msg)) {
           toast.error("Please sign in again")
-          clearToken()
-          dispatch(clearUser())
+          endUserSession(dispatch)
           dismiss()
           navigate("/login", { replace: true })
           return

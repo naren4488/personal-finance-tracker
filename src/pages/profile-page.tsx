@@ -7,19 +7,30 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { getErrorMessage } from "@/lib/api/errors"
+import { Skeleton } from "@/components/ui/skeleton"
 import type { AuthUser } from "@/lib/api/auth-schemas"
-import { clearToken } from "@/lib/auth/token"
+import { getErrorMessage } from "@/lib/api/errors"
+import {
+  buildUpdateProfileBody,
+  profileUserToFormDefaults,
+  type ProfileUser,
+  type UpdateProfileRequest,
+} from "@/lib/api/profile-schemas"
+import { endUserSession } from "@/lib/auth/end-session"
 import {
   loadProfileDraft,
   saveProfileDraft,
   type IncomeType,
   type ProfileDraft,
 } from "@/lib/profile/local-profile-draft"
-import { baseApi, useLogoutMutation } from "@/store/api/base-api"
+import {
+  useDeleteMeMutation,
+  useGetMeQuery,
+  useLogoutMutation,
+  useUpdateMeMutation,
+} from "@/store/api/base-api"
 import { useAppDispatch, useAppSelector } from "@/store/hooks"
-import { clearUser, patchUser } from "@/store/auth-slice"
-import { resetPeople } from "@/store/people-slice"
+import { setUser } from "@/store/auth-slice"
 import { cn } from "@/lib/utils"
 
 function initialsFromName(name: string): string {
@@ -35,13 +46,62 @@ const incomeOptions: { value: IncomeType; label: string }[] = [
   { value: "freelance", label: "Freelance" },
 ]
 
-function ProfileContent({ user }: { user: AuthUser }) {
+function coerceIncomeType(raw: string): IncomeType {
+  if (raw === "business" || raw === "freelance") return raw
+  return "salaried"
+}
+
+function profileUserToDraft(profile: ProfileUser): ProfileDraft {
+  const d = profileUserToFormDefaults(profile)
+  return {
+    phone: d.phone,
+    incomeType: coerceIncomeType(d.incomeType),
+    company: d.company,
+    salaryDay: d.salaryDay,
+    monthlySalary: d.monthlySalary,
+  }
+}
+
+function resolveProfileFormSource(
+  isProfileLoading: boolean,
+  isProfileSuccess: boolean,
+  isProfileError: boolean,
+  profileFromApi: ProfileUser | undefined
+): "api" | "local" | null {
+  if (isProfileLoading) return null
+  if (isProfileSuccess && profileFromApi) return "api"
+  if (isProfileSuccess && !profileFromApi) return "local"
+  if (isProfileError) return "local"
+  return null
+}
+
+type ProfileFormProps = {
+  user: AuthUser
+  initialName: string
+  initialDraft: ProfileDraft
+  updateMe: (body: UpdateProfileRequest) => { unwrap: () => Promise<ProfileUser> }
+  deleteMe: () => { unwrap: () => Promise<{ message?: string }> }
+  logout: () => { unwrap: () => Promise<unknown> }
+  isSaving: boolean
+  isDeletingAccount: boolean
+  isLogoutLoading: boolean
+}
+
+function ProfileForm({
+  user,
+  initialName,
+  initialDraft,
+  updateMe,
+  deleteMe,
+  logout,
+  isSaving,
+  isDeletingAccount,
+  isLogoutLoading,
+}: ProfileFormProps) {
   const navigate = useNavigate()
   const dispatch = useAppDispatch()
-  const [logout, { isLoading: isLogoutLoading }] = useLogoutMutation()
-
-  const [name, setName] = useState(user.name ?? "")
-  const [draft, setDraft] = useState<ProfileDraft>(() => loadProfileDraft(user.id))
+  const [name, setName] = useState(initialName)
+  const [draft, setDraft] = useState<ProfileDraft>(initialDraft)
 
   const email = user.email ?? ""
   const displayInitials = name.trim()
@@ -54,22 +114,58 @@ function ProfileContent({ user }: { user: AuthUser }) {
     setDraft((d) => ({ ...d, [key]: value }))
   }
 
-  function handleSaveProfile() {
+  async function handleSaveProfile() {
     const trimmed = name.trim()
     if (!trimmed) {
       toast.error("Name is required")
       return
     }
-    dispatch(patchUser({ name: trimmed }))
-    saveProfileDraft(user.id, draft)
-    toast.success("Profile saved locally. Income & phone will sync when your API is ready.")
+    const dayRaw = draft.salaryDay.trim()
+    if (!dayRaw) {
+      toast.error("Salary day is required (1–31)")
+      return
+    }
+    const day = Number(dayRaw)
+    if (!Number.isInteger(day) || day < 1 || day > 31) {
+      toast.error("Salary day must be a whole number between 1 and 31")
+      return
+    }
+    const body = buildUpdateProfileBody({
+      name: trimmed,
+      phoneNumber: draft.phone,
+      incomeType: draft.incomeType,
+      company: draft.company,
+      salaryDay: day,
+      monthlySalary: draft.monthlySalary,
+    })
+    try {
+      const updated = await updateMe(body).unwrap()
+      console.log("[profile] PUT /users/me success — updated user:", updated)
+      dispatch(setUser({ ...user, ...updated } as AuthUser))
+      const next = profileUserToFormDefaults(updated)
+      setName(next.name || trimmed)
+      setDraft({
+        phone: next.phone,
+        incomeType: coerceIncomeType(next.incomeType),
+        company: next.company,
+        salaryDay: next.salaryDay,
+        monthlySalary: next.monthlySalary,
+      })
+      saveProfileDraft(user.id, {
+        phone: next.phone,
+        incomeType: coerceIncomeType(next.incomeType),
+        company: next.company,
+        salaryDay: next.salaryDay,
+        monthlySalary: next.monthlySalary,
+      })
+      toast.success("Profile saved")
+    } catch (err) {
+      toast.error(getErrorMessage(err))
+    }
   }
 
   function clearSessionAndRedirect() {
-    clearToken()
-    dispatch(clearUser())
-    dispatch(baseApi.util.resetApiState())
-    dispatch(resetPeople())
+    endUserSession(dispatch)
     navigate("/login", { replace: true })
   }
 
@@ -88,12 +184,18 @@ function ProfileContent({ user }: { user: AuthUser }) {
     }
   }
 
-  function handleDeleteAccount() {
+  async function handleDeleteAccount() {
     const ok = window.confirm(
-      "Delete your account? This cannot be undone once your backend supports it. (Demo: not implemented.)"
+      "Delete your account permanently? All your data will be removed from the server. This cannot be undone."
     )
-    if (ok) {
-      toast.message("Account deletion needs a backend endpoint — not implemented yet.")
+    if (!ok) return
+    try {
+      const { message } = await deleteMe().unwrap()
+      toast.success(message || "Your account has been deleted.")
+      endUserSession(dispatch)
+      navigate("/login", { replace: true })
+    } catch (err) {
+      toast.error(getErrorMessage(err))
     }
   }
 
@@ -102,15 +204,7 @@ function ProfileContent({ user }: { user: AuthUser }) {
   }
 
   return (
-    <main className="space-y-4 px-4 py-4 pb-28">
-      <Link
-        to="/"
-        className="inline-flex items-center gap-1 text-sm font-medium text-muted-foreground hover:text-foreground"
-      >
-        <ArrowLeft className="size-4" strokeWidth={2} />
-        Back
-      </Link>
-
+    <>
       <Card className="rounded-2xl border-border/80 shadow-sm">
         <CardHeader className="border-b border-border/50 pb-4">
           <div className="flex gap-4">
@@ -242,28 +336,123 @@ function ProfileContent({ user }: { user: AuthUser }) {
         <Button
           type="button"
           className="h-11 w-full rounded-xl text-base font-semibold"
-          onClick={handleSaveProfile}
+          disabled={isSaving || isDeletingAccount}
+          onClick={() => void handleSaveProfile()}
         >
-          Save profile
+          {isSaving ? "Saving…" : "Save profile"}
         </Button>
         <Button
           type="button"
           variant="secondary"
           className="h-11 w-full rounded-xl text-base font-semibold"
-          disabled={isLogoutLoading}
+          disabled={isLogoutLoading || isDeletingAccount}
           onClick={() => void handleSignOut()}
         >
           {isLogoutLoading ? "Signing out…" : "Sign out"}
         </Button>
         <button
           type="button"
-          onClick={handleDeleteAccount}
-          className="flex items-center justify-center gap-2 py-2 text-sm font-medium text-destructive hover:underline"
+          disabled={isDeletingAccount || isLogoutLoading}
+          onClick={() => void handleDeleteAccount()}
+          className="flex items-center justify-center gap-2 py-2 text-sm font-medium text-destructive hover:underline disabled:pointer-events-none disabled:opacity-50"
         >
           <Trash2 className="size-4" strokeWidth={2} />
-          Delete account permanently
+          {isDeletingAccount ? "Deleting account…" : "Delete account permanently"}
         </button>
       </div>
+    </>
+  )
+}
+
+function ProfileContent({ user }: { user: AuthUser }) {
+  const [logout, { isLoading: isLogoutLoading }] = useLogoutMutation()
+  const [updateMe, { isLoading: isSaving }] = useUpdateMeMutation()
+  const [deleteMe, { isLoading: isDeletingAccount }] = useDeleteMeMutation()
+  const {
+    data: profileFromApi,
+    isLoading: isProfileLoading,
+    isError: isProfileError,
+    isSuccess: isProfileSuccess,
+  } = useGetMeQuery(user.id, { skip: !user })
+
+  const formSource = resolveProfileFormSource(
+    isProfileLoading,
+    isProfileSuccess,
+    isProfileError,
+    profileFromApi
+  )
+
+  const showProfileSkeleton = formSource === null
+
+  const initialName =
+    formSource === "api" && profileFromApi
+      ? profileUserToFormDefaults(profileFromApi).name || user.name || ""
+      : (user.name ?? "")
+
+  const initialDraft =
+    formSource === "api" && profileFromApi
+      ? profileUserToDraft(profileFromApi)
+      : loadProfileDraft(user.id)
+
+  return (
+    <main className="space-y-4 px-4 py-4 pb-28">
+      <Link
+        to="/"
+        className="inline-flex items-center gap-1 text-sm font-medium text-muted-foreground hover:text-foreground"
+      >
+        <ArrowLeft className="size-4" strokeWidth={2} />
+        Back
+      </Link>
+
+      {showProfileSkeleton ? (
+        <div className="space-y-4">
+          <Card className="rounded-2xl border-border/80 shadow-sm">
+            <CardHeader className="space-y-3 border-b border-border/50 pb-4">
+              <div className="flex gap-4">
+                <Skeleton className="size-20 shrink-0 rounded-full" />
+                <div className="flex flex-1 flex-col justify-center gap-2 pt-1">
+                  <Skeleton className="h-6 w-40" />
+                  <Skeleton className="h-4 w-56" />
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent className="space-y-4 pt-6">
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <Skeleton className="h-11 w-full rounded-xl" />
+                <Skeleton className="h-11 w-full rounded-xl" />
+              </div>
+              <Skeleton className="h-11 w-full rounded-xl" />
+            </CardContent>
+          </Card>
+          <Card className="rounded-2xl border-border/80 shadow-sm">
+            <CardHeader>
+              <Skeleton className="h-5 w-36" />
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <Skeleton className="h-12 w-full rounded-full" />
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <Skeleton className="h-11 w-full rounded-xl" />
+                <Skeleton className="h-11 w-full rounded-xl" />
+              </div>
+              <Skeleton className="h-11 w-full rounded-xl" />
+            </CardContent>
+          </Card>
+          <Skeleton className="h-11 w-full rounded-xl" />
+        </div>
+      ) : (
+        <ProfileForm
+          key={`${user.id}-${formSource}`}
+          user={user}
+          initialName={initialName}
+          initialDraft={initialDraft}
+          updateMe={updateMe}
+          deleteMe={deleteMe}
+          logout={logout}
+          isSaving={isSaving}
+          isDeletingAccount={isDeletingAccount}
+          isLogoutLoading={isLogoutLoading}
+        />
+      )}
     </main>
   )
 }

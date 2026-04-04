@@ -181,10 +181,19 @@ function AddAccountSheetMounted({ onOpenChange }: MountedProps) {
   }
 
   const fieldClass =
-    "h-8 w-full rounded-xl border border-border bg-muted/50 px-3 text-sm text-foreground shadow-sm outline-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/50 sm:h-9"
+    "h-11 w-full rounded-2xl border border-border/80 bg-background px-4 text-sm text-foreground shadow-sm transition-[color,box-shadow,border-color] outline-none placeholder:text-muted-foreground/65 hover:border-border focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/35 focus-visible:ring-offset-2 focus-visible:ring-offset-background sm:h-12"
+
+  const balanceInputClass =
+    "h-12 w-full rounded-2xl border border-border/80 bg-background px-4 text-center text-lg font-semibold tabular-nums text-primary shadow-sm transition-[color,box-shadow,border-color] outline-none placeholder:text-primary/35 hover:border-border focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/35 focus-visible:ring-offset-2 focus-visible:ring-offset-background sm:h-14 sm:text-xl"
+
+  const typeTileClass =
+    "flex min-h-0 items-start gap-2 rounded-2xl border-2 bg-card p-2.5 text-left transition-[border-color,box-shadow,background-color] sm:gap-2.5 sm:p-3 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-card"
+
+  const sectionLabelClass =
+    "mb-2 block text-xs font-bold uppercase tracking-wide text-primary/90 sm:text-[13px] sm:normal-case sm:tracking-normal"
 
   return (
-    <div className="fixed inset-0 z-50 flex min-h-0 max-h-dvh items-center justify-center overflow-hidden p-2 pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:p-4">
+    <div className="fixed inset-0 z-50 flex min-h-0 max-h-dvh items-center justify-center overflow-hidden p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:p-5">
       <button
         type="button"
         className="absolute inset-0 bg-black/50 backdrop-blur-[2px]"
@@ -196,29 +205,32 @@ function AddAccountSheetMounted({ onOpenChange }: MountedProps) {
         aria-modal="true"
         aria-labelledby={titleId}
         className={cn(
-          "relative flex min-h-0 max-h-[min(calc(100dvh-1.25rem-env(safe-area-inset-bottom)),92dvh)] w-full max-w-xl flex-col overflow-hidden rounded-2xl border border-border bg-card shadow-2xl sm:max-h-[min(92dvh,calc(100dvh-2rem))]",
+          "relative flex min-h-0 w-full max-w-lg flex-col overflow-hidden rounded-2xl border border-border/90 bg-card shadow-[0_25px_50px_-12px_rgba(15,23,42,0.25)] ring-1 ring-black/4 dark:shadow-[0_25px_50px_-12px_rgba(0,0,0,0.55)] dark:ring-white/6",
+          "max-h-[min(calc(100dvh-1.5rem-env(safe-area-inset-bottom)),92dvh)] sm:max-h-[min(90dvh,calc(100dvh-2.5rem))] sm:rounded-3xl lg:max-w-xl",
           "animate-in fade-in zoom-in-95 duration-200"
         )}
       >
-        <header className="shrink-0 border-b border-border px-3 py-2 sm:px-4 sm:py-2.5">
-          <div className="flex items-start justify-between gap-2">
-            <h2 id={titleId} className="text-base font-bold text-primary sm:text-lg">
+        <header className="shrink-0 border-b border-border/80 bg-card/95 px-4 py-3 backdrop-blur-sm sm:px-6 sm:py-4">
+          <div className="flex items-start justify-between gap-3">
+            <h2 id={titleId} className="text-lg font-bold tracking-tight text-primary sm:text-xl">
               Add Account
             </h2>
             <Button
               type="button"
               variant="ghost"
               size="icon-sm"
-              className="shrink-0 rounded-full text-muted-foreground hover:text-foreground"
+              className="shrink-0 rounded-full text-muted-foreground hover:bg-muted hover:text-foreground"
               aria-label="Close"
               onClick={dismiss}
             >
               <X className="size-5" strokeWidth={2} />
             </Button>
           </div>
-          <div className="mt-1.5 text-center sm:mt-2">
-            <p className="text-sm font-bold text-primary">Where do you keep money?</p>
-            <p className="mt-0.5 text-[11px] text-muted-foreground sm:text-xs">
+          <div className="mt-2 text-center sm:mt-3">
+            <p className="text-sm font-semibold text-foreground sm:text-base">
+              Where do you keep money?
+            </p>
+            <p className="mt-1 text-xs leading-relaxed text-muted-foreground sm:text-sm">
               Add a money source to start tracking balances
             </p>
           </div>
@@ -228,135 +240,139 @@ function AddAccountSheetMounted({ onOpenChange }: MountedProps) {
           <div
             className={cn(
               FORM_OVERLAY_SCROLL_BODY,
-              "space-y-1.5 px-3 py-1.5 sm:space-y-2 sm:px-4 sm:py-2"
+              "space-y-6 px-4 py-5 pb-6! sm:space-y-7 sm:px-6 sm:py-6 sm:pb-8!"
             )}
           >
             {accountCreateDisabled ? (
               <div
                 role="status"
-                className="rounded-xl border border-amber-500/35 bg-amber-500/10 px-3 py-2.5 text-xs text-foreground sm:text-sm"
+                className="rounded-2xl border border-amber-500/40 bg-amber-500/12 px-4 py-3.5 text-sm text-foreground sm:px-4 sm:py-4"
               >
                 <p className="font-semibold text-amber-950 dark:text-amber-100">
                   Account creation is turned off
                 </p>
-                <p className="mt-1 text-[11px] leading-snug text-muted-foreground sm:text-xs">
+                <p className="mt-2 text-xs leading-relaxed text-muted-foreground sm:text-sm">
                   Nothing is sent to the server while this mode is on. Delete{" "}
-                  <code className="rounded bg-muted px-1 py-0.5 font-mono text-[10px]">
+                  <code className="rounded-md bg-background/80 px-1.5 py-0.5 font-mono text-[11px]">
                     VITE_DISABLE_ACCOUNT_CREATE
                   </code>{" "}
                   from{" "}
-                  <code className="rounded bg-muted px-1 py-0.5 font-mono text-[10px]">
+                  <code className="rounded-md bg-background/80 px-1.5 py-0.5 font-mono text-[11px]">
                     .env.local
                   </code>{" "}
                   (or set it to false) after the add-account API is deployed.
                 </p>
               </div>
             ) : null}
-            <div
-              className={cn(
-                "transition-transform duration-200",
-                emiDue && "origin-top scale-[0.97] sm:scale-[0.98]"
-              )}
-            >
-              <Label className="mb-1 block text-[11px] font-bold text-primary sm:text-xs">
-                Account Type
-              </Label>
-              <div className="grid grid-cols-2 gap-1 sm:gap-1.5">
-                {firstFour.map(({ id, label, description, Icon }) => {
-                  const selected = accountType === id
-                  return (
-                    <button
-                      key={id}
-                      type="button"
-                      role="radio"
-                      aria-checked={selected}
-                      onClick={() => setAccountType(id)}
-                      className={cn(
-                        "flex min-h-0 items-start gap-1.5 rounded-xl border-2 bg-card p-1.5 text-left transition-colors sm:gap-2 sm:p-2",
-                        selected
-                          ? "border-primary bg-sky-50 dark:bg-primary/15"
-                          : "border-border hover:border-muted-foreground/30"
-                      )}
-                    >
-                      <span className="flex size-8 shrink-0 items-center justify-center rounded-full bg-muted sm:size-9">
-                        <Icon
-                          className="size-4 text-primary sm:size-[18px]"
+
+            <section className="space-y-3 sm:space-y-3.5" aria-labelledby="account-type-heading">
+              <p id="account-type-heading" className={sectionLabelClass}>
+                Account type
+              </p>
+              <div className="space-y-2.5 sm:space-y-3">
+                <div className="grid grid-cols-2 gap-2.5 sm:gap-3">
+                  {firstFour.map(({ id, label, description, Icon }) => {
+                    const selected = accountType === id
+                    return (
+                      <button
+                        key={id}
+                        type="button"
+                        role="radio"
+                        aria-checked={selected}
+                        onClick={() => setAccountType(id)}
+                        className={cn(
+                          typeTileClass,
+                          selected
+                            ? "border-primary bg-primary/8 shadow-sm dark:bg-primary/15"
+                            : "border-border/80 hover:border-muted-foreground/40 hover:bg-muted/30"
+                        )}
+                      >
+                        <span className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-muted/80 sm:size-10">
+                          <Icon
+                            className="size-[18px] text-primary sm:size-5"
+                            strokeWidth={2}
+                            aria-hidden
+                          />
+                        </span>
+                        <span className="min-w-0 flex-1">
+                          <span className="block text-xs font-bold leading-snug text-foreground sm:text-[13px]">
+                            {label}
+                          </span>
+                          <span className="mt-1 line-clamp-2 text-[10px] leading-snug text-muted-foreground sm:text-[11px]">
+                            {description}
+                          </span>
+                        </span>
+                      </button>
+                    )
+                  })}
+                </div>
+                {fifth ? (
+                  <button
+                    key={fifth.id}
+                    type="button"
+                    role="radio"
+                    aria-checked={accountType === fifth.id}
+                    onClick={() => setAccountType(fifth.id)}
+                    className={cn(
+                      typeTileClass,
+                      "w-full",
+                      accountType === fifth.id
+                        ? "border-primary bg-primary/8 shadow-sm dark:bg-primary/15"
+                        : "border-border/80 hover:border-muted-foreground/40 hover:bg-muted/30"
+                    )}
+                  >
+                    <span className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-muted/80 sm:size-10">
+                      {FifthIcon ? (
+                        <FifthIcon
+                          className="size-[18px] text-primary sm:size-5"
                           strokeWidth={2}
                           aria-hidden
                         />
+                      ) : null}
+                    </span>
+                    <span className="min-w-0 flex-1">
+                      <span className="block text-xs font-bold leading-snug text-foreground sm:text-[13px]">
+                        {fifth.label}
                       </span>
-                      <span className="min-w-0 flex-1">
-                        <span className="block text-[11px] font-bold leading-tight text-foreground sm:text-xs">
-                          {label}
-                        </span>
-                        <span className="mt-0.5 line-clamp-2 text-[9px] leading-snug text-muted-foreground sm:text-[10px]">
-                          {description}
-                        </span>
+                      <span className="mt-1 text-[10px] leading-snug text-muted-foreground sm:text-[11px]">
+                        {fifth.description}
                       </span>
-                    </button>
-                  )
-                })}
+                    </span>
+                  </button>
+                ) : null}
               </div>
-              {fifth ? (
-                <button
-                  key={fifth.id}
-                  type="button"
-                  role="radio"
-                  aria-checked={accountType === fifth.id}
-                  onClick={() => setAccountType(fifth.id)}
-                  className={cn(
-                    "mt-1 flex w-full items-start gap-1.5 rounded-xl border-2 bg-card p-1.5 text-left transition-colors sm:mt-1.5 sm:gap-2 sm:p-2",
-                    accountType === fifth.id
-                      ? "border-primary bg-sky-50 dark:bg-primary/15"
-                      : "border-border hover:border-muted-foreground/30"
-                  )}
-                >
-                  <span className="flex size-8 shrink-0 items-center justify-center rounded-full bg-muted sm:size-9">
-                    {FifthIcon ? (
-                      <FifthIcon
-                        className="size-4 text-primary sm:size-[18px]"
-                        strokeWidth={2}
-                        aria-hidden
-                      />
-                    ) : null}
-                  </span>
-                  <span className="min-w-0 flex-1">
-                    <span className="block text-[11px] font-bold leading-tight text-foreground sm:text-xs">
-                      {fifth.label}
-                    </span>
-                    <span className="mt-0.5 text-[9px] leading-snug text-muted-foreground sm:text-[10px]">
-                      {fifth.description}
-                    </span>
-                  </span>
-                </button>
-              ) : null}
-            </div>
+            </section>
 
-            <div>
+            <section className="space-y-2 sm:space-y-2.5">
               <Label
                 htmlFor={nameId}
-                className="mb-0.5 block text-[11px] font-bold text-primary sm:text-xs"
+                className={cn(sectionLabelClass, "mb-0 normal-case tracking-normal")}
               >
-                Give it a name
+                Name
               </Label>
               <Input
                 id={nameId}
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 placeholder="e.g. SBI Savings, HDFC Current"
-                className={cn(fieldClass, "bg-muted/50")}
+                className={fieldClass}
               />
-            </div>
+            </section>
 
-            <div className="flex items-center justify-between gap-3 rounded-xl border border-border/60 bg-muted/20 px-2.5 py-1.5 sm:px-3 sm:py-2">
-              <div className="min-w-0">
+            <section
+              className={cn(
+                "flex items-center justify-between gap-4 rounded-2xl border border-border/70 bg-muted/25 px-4 py-3.5 sm:px-5 sm:py-4",
+                "shadow-sm"
+              )}
+            >
+              <div className="min-w-0 space-y-0.5">
                 <Label
                   htmlFor="account-emi-due"
-                  className="text-[11px] font-bold text-primary sm:text-xs"
+                  className="text-xs font-bold text-foreground sm:text-sm"
                 >
-                  EMI Due
+                  EMI due
                 </Label>
-                <p className="text-[9px] text-muted-foreground sm:text-[10px]">
+                <p className="text-[11px] leading-relaxed text-muted-foreground sm:text-xs">
                   Track EMIs on this account
                 </p>
               </div>
@@ -365,39 +381,49 @@ function AddAccountSheetMounted({ onOpenChange }: MountedProps) {
                 checked={emiDue}
                 onCheckedChange={setEmiDue}
                 aria-label="EMI due tracking"
+                className="shrink-0"
               />
-            </div>
+            </section>
 
             {!emiDue ? (
-              <div>
-                <Label
-                  htmlFor={balanceId}
-                  className="mb-0.5 block text-[11px] font-bold text-primary sm:text-xs"
-                >
-                  How much is in here right now? (₹)
-                </Label>
-                <p className="mb-0.5 text-[9px] text-muted-foreground sm:text-[10px]">
-                  Check your bank app for the current balance
-                </p>
-                <Input
-                  id={balanceId}
-                  inputMode="numeric"
-                  placeholder="0"
-                  value={balance}
-                  onChange={(e) => setBalance(e.target.value.replace(/[^\d]/g, ""))}
-                  className="h-9 rounded-xl border-border bg-muted/60 text-center text-lg font-semibold tabular-nums text-primary/80 placeholder:text-primary/40 sm:h-10 sm:text-xl"
-                />
-              </div>
+              <section className="space-y-2 sm:space-y-2.5">
+                <div className="space-y-2">
+                  <Label
+                    htmlFor={balanceId}
+                    className={cn(sectionLabelClass, "mb-0 normal-case tracking-normal")}
+                  >
+                    Current balance (₹)
+                  </Label>
+                  <p className="text-[11px] leading-relaxed text-muted-foreground sm:text-xs">
+                    Check your bank app for the latest amount
+                  </p>
+                  <Input
+                    id={balanceId}
+                    inputMode="numeric"
+                    placeholder="0"
+                    value={balance}
+                    onChange={(e) => setBalance(e.target.value.replace(/[^\d]/g, ""))}
+                    className={balanceInputClass}
+                  />
+                </div>
+              </section>
             ) : (
-              <LoanEmiFormFields value={emi} onChange={patchEmi} compact showOverdue={false} />
+              <section className="space-y-2">
+                <LoanEmiFormFields value={emi} onChange={patchEmi} compact showOverdue={false} />
+              </section>
             )}
           </div>
 
-          <div className={FORM_OVERLAY_FOOTER}>
+          <div
+            className={cn(
+              FORM_OVERLAY_FOOTER,
+              "border-t border-border/80 bg-card/95 px-4 py-3 backdrop-blur-md supports-backdrop-filter:bg-card/90 sm:px-6 sm:py-4"
+            )}
+          >
             <Button
               type="submit"
               disabled={isSubmitting || accountCreateDisabled}
-              className="h-9 w-full rounded-xl bg-[hsl(230_22%_62%)] text-sm font-bold text-white hover:bg-[hsl(230_22%_56%)] disabled:opacity-60 sm:h-10 sm:text-base"
+              className="h-11 w-full rounded-2xl bg-[hsl(230_22%_62%)] text-sm font-bold text-white shadow-md transition-[transform,box-shadow] hover:bg-[hsl(230_22%_56%)] hover:shadow-lg active:scale-[0.99] disabled:pointer-events-none disabled:opacity-60 sm:h-12 sm:text-base"
             >
               {accountCreateDisabled
                 ? "Unavailable"

@@ -2,9 +2,8 @@ import { Link, useNavigate } from "react-router-dom"
 import { ChevronRight, LogOut } from "lucide-react"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Button } from "@/components/ui/button"
-import { clearToken } from "@/lib/auth/token"
+import { endUserSession } from "@/lib/auth/end-session"
 import { useAppDispatch, useAppSelector } from "@/store/hooks"
-import { clearUser } from "@/store/auth-slice"
 import { cn } from "@/lib/utils"
 
 function initialsFromName(name: string): string {
@@ -28,8 +27,7 @@ export function HeaderProfileMenu() {
       : "?"
 
   function handleSignOut() {
-    clearToken()
-    dispatch(clearUser())
+    endUserSession(dispatch)
     navigate("/login", { replace: true })
   }
 
