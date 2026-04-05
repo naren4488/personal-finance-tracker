@@ -14,6 +14,7 @@ import {
   type AccountsSegmentId,
   type AccountListItem,
 } from "@/features/accounts/accounts-mock-data"
+import { accountBalanceInrFromApi, accountSubtitleForList } from "@/lib/api/account-schemas"
 import { getErrorMessage } from "@/lib/api/errors"
 import { cn } from "@/lib/utils"
 import { useGetAccountsQuery, useGetPeopleQuery } from "@/store/api/base-api"
@@ -36,6 +37,7 @@ export default function AccountsPage() {
   const [cardOpen, setCardOpen] = useState(false)
 
   const meta = ACCOUNTS_SEGMENT_META[segment]
+  const user = useAppSelector((s) => s.auth.user)
   const peopleFromStore = useAppSelector((s) => s.people.items)
 
   const {
@@ -44,7 +46,7 @@ export default function AccountsPage() {
     isError: accountsError,
     error: accountsQueryError,
     refetch: refetchAccounts,
-  } = useGetAccountsQuery()
+  } = useGetAccountsQuery(undefined, { skip: !user })
 
   const {
     data: peopleQueryData,
@@ -91,7 +93,8 @@ export default function AccountsPage() {
       id: a.id,
       name: a.name,
       entryCount: 0,
-      amountInr: 0,
+      amountInr: accountBalanceInrFromApi(a),
+      subtitle: accountSubtitleForList(a),
     }))
   }, [apiAccounts])
 

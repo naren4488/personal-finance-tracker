@@ -1,4 +1,5 @@
 import { zodResolver } from "@hookform/resolvers/zod"
+import { useMemo } from "react"
 import { useForm, useWatch } from "react-hook-form"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
@@ -17,9 +18,11 @@ import {
   toQuickTransactionPayload,
   type QuickTransactionFormValues,
 } from "@/lib/api/schemas"
+import { filterActiveAccounts } from "@/lib/api/account-schemas"
 import { getErrorMessage } from "@/lib/api/errors"
 import { cn } from "@/lib/utils"
-import { useAddTransactionMutation } from "@/store/api/base-api"
+import { useAddTransactionMutation, useGetAccountsQuery } from "@/store/api/base-api"
+import { useAppSelector } from "@/store/hooks"
 
 type QuickTransactionFormProps = {
   onSuccess?: () => void
@@ -28,6 +31,10 @@ type QuickTransactionFormProps = {
 
 export function QuickTransactionForm({ onSuccess, className }: QuickTransactionFormProps) {
   const [addTransaction, { isLoading }] = useAddTransactionMutation()
+  const user = useAppSelector((s) => s.auth.user)
+  const { data: accountsRaw = [] } = useGetAccountsQuery(undefined, { skip: !user })
+  const accounts = useMemo(() => filterActiveAccounts(accountsRaw), [accountsRaw])
+  const defaultAccountId = accounts[0]?.id ?? ""
 
   const form = useForm<QuickTransactionFormValues>({
     resolver: zodResolver(quickTransactionFormSchema),
@@ -41,10 +48,15 @@ export function QuickTransactionForm({ onSuccess, className }: QuickTransactionF
   const transactionType = useWatch({ control: form.control, name: "type" })
 
   const onSubmit = form.handleSubmit(async (values) => {
+    if (!defaultAccountId) {
+      toast.error("Add an account first, then you can log transactions here.")
+      return
+    }
     try {
-      const payload = toQuickTransactionPayload(values)
+      const payload = toQuickTransactionPayload(values, defaultAccountId)
+      console.log("[transactions] quick add — payload:", payload)
       await addTransaction(payload).unwrap()
-      console.log("[transactions] quick add success", payload)
+      console.log("[transactions] quick add — success", payload)
       toast.success("Transaction added")
       form.reset({ title: "", amount: "", type: values.type })
       onSuccess?.()
@@ -119,7 +131,7 @@ export function QuickTransactionForm({ onSuccess, className }: QuickTransactionF
           <Button
             type="submit"
             className="w-full rounded-xl text-base font-semibold"
-            disabled={isLoading}
+            disabled={isLoading || !defaultAccountId}
           >
             {isLoading ? "Saving…" : "Add transaction"}
           </Button>

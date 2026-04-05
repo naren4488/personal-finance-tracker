@@ -28,7 +28,8 @@ function formatSignedInr(amountInr: number): { text: string; positive: boolean; 
 export function AccountRowCard({ item }: { item: AccountListItem }) {
   const { text, positive, zero } = formatSignedInr(item.amountInr)
   const subParts: string[] = [`${item.entryCount} ${item.entryCount === 1 ? "entry" : "entries"}`]
-  if (item.payBy) subParts.push(`Pay by: ${item.payBy}`)
+  if (item.subtitle) subParts.push(item.subtitle)
+  else if (item.payBy) subParts.push(`Pay by: ${item.payBy}`)
 
   return (
     <button

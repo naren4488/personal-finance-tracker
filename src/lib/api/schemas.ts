@@ -33,11 +33,16 @@ export const quickTransactionFormSchema = z.object({
 
 export type QuickTransactionFormValues = z.infer<typeof quickTransactionFormSchema>
 
-/** Full create payload (Txns modal + quick add) → POST /transactions. */
+/** Full create payload (Txns modal + quick add) → built into POST /transactions body per type. */
 export type CreateTransactionPayload = {
   type: "income" | "expense" | "transfer"
   amount: number
+  /** Expense: required for API `category`. */
   category: string
+  /** Income: required for API `incomeSource` (e.g. salary, freelance). */
+  incomeSource?: string
+  /** Transfer: destination account id (from account is `accountId`). */
+  toAccountId?: string
   paymentMethod: "account" | "card"
   sourceName: string
   feeAmount: string
@@ -53,13 +58,15 @@ export type CreateTransactionPayload = {
 }
 
 export function toQuickTransactionPayload(
-  values: QuickTransactionFormValues
+  values: QuickTransactionFormValues,
+  defaultAccountId: string
 ): CreateTransactionPayload {
   const title = values.title.trim()
   return {
     type: values.type,
     amount: Number(values.amount.replace(/,/g, "")),
     category: "Other",
+    incomeSource: values.type === "income" ? "other" : undefined,
     paymentMethod: "account",
     sourceName: "Quick add",
     feeAmount: "0",
@@ -69,5 +76,6 @@ export function toQuickTransactionPayload(
     note: title,
     tags: [],
     displayTitle: title,
+    accountId: defaultAccountId,
   }
 }

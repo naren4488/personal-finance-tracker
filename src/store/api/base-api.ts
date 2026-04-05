@@ -34,6 +34,7 @@ import {
   parseGetAccountsSuccess,
   type Account,
   type CreateAccountRequest,
+  type CreateAccountResult,
 } from "@/lib/api/account-schemas"
 import {
   parseCreatePersonSuccess,
@@ -42,11 +43,12 @@ import {
   type Person,
 } from "@/lib/api/people-schemas"
 import {
+  buildTransactionPostBody,
+  createTransactionApiBodySchema,
   mapApiTransactionToClient,
   parseCreateTransactionSuccess,
   parseGetRecentTransactionsSuccess,
-  payloadToApiBody,
-  createTransactionApiBodySchema,
+  type CreateTransactionApiBody,
   type RecentTransaction,
 } from "@/lib/api/transaction-schemas"
 import { type CreateTransactionPayload, type Transaction } from "@/lib/api/schemas"
@@ -267,12 +269,21 @@ export const baseApi = createApi({
         if (!parsed.ok) {
           return { error: { status: 422, data: parsed.error } }
         }
+        if (import.meta.env.DEV) {
+          const raw = res.data as { message?: string }
+          console.log(
+            "[accounts] GET list — count:",
+            parsed.accounts.length,
+            raw.message ? `message: ${raw.message}` : ""
+          )
+          console.log("[accounts] GET list — accounts:", parsed.accounts)
+        }
         return { data: parsed.accounts }
       },
       providesTags: [{ type: "Account", id: "LIST" }],
     }),
 
-    createAccount: build.mutation<Account, CreateAccountRequest>({
+    createAccount: build.mutation<CreateAccountResult, CreateAccountRequest>({
       async queryFn(body, _api, _extraOptions, baseQuery) {
         if (isAccountCreateApiDisabled()) {
           return {
@@ -283,6 +294,12 @@ export const baseApi = createApi({
           }
         }
         const postBody = buildCreateAccountPostBody(body)
+        console.log("[accounts] create — client mutation arg (CreateAccountRequest):", body)
+        console.log("[accounts] create — POST body (object):", postBody)
+        console.log(
+          "[accounts] create — POST body (exact JSON):",
+          JSON.stringify(postBody, null, 2)
+        )
         const res = await baseQuery({
           url: ACCOUNT_PATHS.create,
           method: "POST",
@@ -290,25 +307,28 @@ export const baseApi = createApi({
         })
         if (res.error) {
           const fe = res.error as { status?: unknown; data?: unknown }
-          if (import.meta.env.DEV) {
-            console.error("[accounts] create failed HTTP status:", fe.status)
-            console.error(
-              "[accounts] create failed response body:",
-              JSON.stringify(fe.data, null, 2)
-            )
-            console.error("[accounts] create request body sent:", JSON.stringify(postBody, null, 2))
-          }
+          console.error("[accounts] create failed — HTTP status:", fe.status)
+          console.error(
+            "[accounts] create failed — response body:",
+            JSON.stringify(fe.data, null, 2)
+          )
+          console.error("[accounts] create failed — request body was:", postBody)
           return { error: normalizeFetchError(res.error) }
         }
+        console.log("[accounts] create — response (raw):", res.data)
         const failMsg = parseApiFailureMessage(res.data)
         if (failMsg) {
+          console.error("[accounts] create — success:false envelope:", failMsg)
           return { error: { status: 400, data: failMsg } }
         }
         const parsed = parseCreateAccountSuccess(res.data)
         if (!parsed.ok) {
+          console.error("[accounts] create — parse error:", parsed.error)
           return { error: { status: 422, data: parsed.error } }
         }
-        return { data: parsed.account }
+        console.log("[accounts] create — success message:", parsed.message)
+        console.log("[accounts] create — parsed account:", parsed.account)
+        return { data: { account: parsed.account, message: parsed.message } }
       },
       invalidatesTags: [{ type: "Account", id: "LIST" }],
     }),
@@ -546,12 +566,27 @@ export const baseApi = createApi({
 
     addTransaction: build.mutation<Transaction, CreateTransactionPayload>({
       async queryFn(body, _api, _extraOptions, baseQuery) {
-        const apiBody = payloadToApiBody(body)
+        let apiBody: CreateTransactionApiBody
+        try {
+          apiBody = buildTransactionPostBody(body)
+        } catch (e) {
+          const msg = e instanceof Error ? e.message : "Invalid transaction payload"
+          console.error("[transactions] build body failed", msg, body)
+          return { error: { status: 422, data: msg } }
+        }
+
         const validated = createTransactionApiBodySchema.safeParse(apiBody)
         if (!validated.success) {
           console.error("[transactions] invalid payload", validated.error.flatten(), apiBody)
           return { error: { status: 422, data: "Invalid transaction payload" } }
         }
+
+        console.log("[transactions] create — client payload (CreateTransactionPayload):", body)
+        console.log("[transactions] create — POST body (object):", validated.data)
+        console.log(
+          "[transactions] create — POST body (exact JSON):",
+          JSON.stringify(validated.data, null, 2)
+        )
 
         const res = await baseQuery({
           url: TRANSACTION_PATHS.create,
@@ -561,13 +596,16 @@ export const baseApi = createApi({
 
         if (res.error) {
           const err = normalizeFetchError(res.error)
-          console.error("[transactions] request failed", err)
+          console.error("[transactions] create failed — HTTP error:", err)
+          console.error("[transactions] create failed — POST body was:", validated.data)
           return { error: err }
         }
 
+        console.log("[transactions] create — response (raw):", res.data)
+
         const failMsg = parseApiFailureMessage(res.data)
         if (failMsg) {
-          console.error("[transactions] API error envelope", failMsg, res.data)
+          console.error("[transactions] create — success:false envelope:", failMsg, res.data)
           return { error: { status: 400, data: failMsg } }
         }
 
@@ -580,13 +618,14 @@ export const baseApi = createApi({
           )
           const tx = mapApiTransactionToClient({}, body)
           mockTransactions.unshift(tx)
-          console.log("[transactions] created (fallback)", tx)
+          console.log("[transactions] created (fallback) — client row:", tx)
           return { data: tx }
         }
 
         const tx = mapApiTransactionToClient(parsed.transaction, body)
         mockTransactions.unshift(tx)
-        console.log("[transactions] created OK", res.data, tx)
+        console.log("[transactions] create — parsed transaction:", parsed.transaction)
+        console.log("[transactions] create — client row:", tx)
         return { data: tx }
       },
       invalidatesTags: [

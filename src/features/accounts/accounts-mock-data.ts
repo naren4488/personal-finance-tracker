@@ -4,7 +4,9 @@ export type AccountListItem = {
   id: string
   name: string
   entryCount: number
-  /** Shown after "Pay by: " when set */
+  /** Extra line under name (e.g. bank · kind) */
+  subtitle?: string
+  /** Shown after "Pay by: " when set (people / udhar) */
   payBy?: string
   /** Negative = owed (red), positive = to receive (green) */
   amountInr: number

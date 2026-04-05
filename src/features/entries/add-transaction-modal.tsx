@@ -1,4 +1,4 @@
-import { useId, useState } from "react"
+import { useEffect, useId, useMemo, useState } from "react"
 import { useNavigate } from "react-router-dom"
 import { CalendarDays, ChevronDown, CreditCard, Gem, Landmark, Tag, X } from "lucide-react"
 import { toast } from "sonner"
@@ -7,11 +7,14 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Skeleton } from "@/components/ui/skeleton"
+import { accountSelectLabel, filterActiveAccounts } from "@/lib/api/account-schemas"
 import { getErrorMessage } from "@/lib/api/errors"
+import { INCOME_SOURCE_OPTIONS } from "@/lib/api/transaction-schemas"
 import { FORM_OVERLAY_FOOTER, FORM_OVERLAY_SCROLL_BODY } from "@/lib/form-overlay-scroll"
 import type { TransactionType } from "@/lib/api/schemas"
 import { cn } from "@/lib/utils"
 import { useAddTransactionMutation, useGetAccountsQuery } from "@/store/api/base-api"
+import { useAppSelector } from "@/store/hooks"
 
 const TX_CATEGORIES = [
   "Food & dining",
@@ -84,10 +87,22 @@ type MountedProps = {
 function AddTransactionModalMounted({ onOpenChange, expenseFlow, onOpenAddAccount }: MountedProps) {
   const titleId = useId()
   const categoryId = useId()
+  const incomeSourceId = useId()
   const accountIdField = useId()
+  const toAccountIdField = useId()
   const navigate = useNavigate()
+  const user = useAppSelector((s) => s.auth.user)
 
-  const { data: accounts = [], isLoading, isError, error, refetch } = useGetAccountsQuery()
+  const {
+    data: accountsRaw = [],
+    isLoading,
+    isError,
+    error,
+    refetch,
+  } = useGetAccountsQuery(undefined, { skip: !user })
+
+  const accounts = useMemo(() => filterActiveAccounts(accountsRaw), [accountsRaw])
+
   const [addTransaction, { isLoading: isSubmitting }] = useAddTransactionMutation()
 
   const [txType, setTxType] = useState<TransactionType>("expense")
@@ -95,7 +110,9 @@ function AddTransactionModalMounted({ onOpenChange, expenseFlow, onOpenAddAccoun
   const [description, setDescription] = useState("")
   const [date, setDate] = useState(todayIsoDate)
   const [category, setCategory] = useState("")
+  const [incomeSource, setIncomeSource] = useState<string>("salary")
   const [accountId, setAccountId] = useState("")
+  const [toAccountId, setToAccountId] = useState("")
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("account")
   const [paidOnBehalf, setPaidOnBehalf] = useState(false)
   const [scheduleUpcoming, setScheduleUpcoming] = useState(false)
@@ -105,14 +122,24 @@ function AddTransactionModalMounted({ onOpenChange, expenseFlow, onOpenAddAccoun
   const [newTag, setNewTag] = useState("")
 
   const effectiveType: TransactionType = expenseFlow ? "expense" : txType
-  /** Backend accounts — drives empty state vs form (TXNS & Expenses). */
-  const hasAccount = accounts.length > 0
+  /** Transfer needs two accounts; income/expense need one. */
+  const hasAccount = effectiveType === "transfer" ? accounts.length >= 2 : accounts.length > 0
   const modalTitle = expenseFlow ? "Add Expense" : "Add Transaction"
   const submitLabel = expenseFlow ? "Add Expense" : "Add Transaction"
 
   function dismiss() {
     onOpenChange(false)
   }
+
+  useEffect(() => {
+    if (!isError || !error) return
+    const msg = getErrorMessage(error)
+    if (/authorization token is required/i.test(msg)) {
+      toast.error(msg)
+      onOpenChange(false)
+      navigate("/login", { replace: true })
+    }
+  }, [isError, error, navigate, onOpenChange])
 
   function addTagFromInputs() {
     const fromPreset = tagPreset.trim()
@@ -148,13 +175,27 @@ function AddTransactionModalMounted({ onOpenChange, expenseFlow, onOpenAddAccoun
       toast.error("Enter a valid amount")
       return
     }
-    if (!category) {
+    if (effectiveType === "expense" && !category) {
       toast.error("Select a category")
       return
     }
-    if (!accountId) {
-      toast.error("Select an account")
+    if (effectiveType === "income" && !incomeSource) {
+      toast.error("Select income source")
       return
+    }
+    if (!accountId) {
+      toast.error(effectiveType === "transfer" ? "Select source account" : "Select an account")
+      return
+    }
+    if (effectiveType === "transfer") {
+      if (!toAccountId) {
+        toast.error("Select destination account")
+        return
+      }
+      if (toAccountId === accountId) {
+        toast.error("Choose a different account to transfer to")
+        return
+      }
     }
 
     const acc = accounts.find((a) => a.id === accountId)
@@ -163,23 +204,29 @@ function AddTransactionModalMounted({ onOpenChange, expenseFlow, onOpenAddAccoun
       ? note.trim()
       : [description.trim(), note.trim()].filter(Boolean).join(" — ")
 
+    const payload = {
+      type: effectiveType,
+      amount: Number(n),
+      category: effectiveType === "expense" ? category : "",
+      incomeSource: effectiveType === "income" ? incomeSource : undefined,
+      toAccountId: effectiveType === "transfer" ? toAccountId : undefined,
+      paymentMethod,
+      sourceName: acc?.name ?? "",
+      feeAmount: "0",
+      paidOnBehalf,
+      scheduled: scheduleUpcoming,
+      date,
+      note: noteForApi,
+      tags,
+      displayTitle,
+      accountId,
+      accountName: acc?.name,
+    }
+
+    console.log("[add-transaction] submit — CreateTransactionPayload:", payload)
+
     try {
-      await addTransaction({
-        type: effectiveType,
-        amount: Number(n),
-        category,
-        paymentMethod,
-        sourceName: acc?.name ?? "",
-        feeAmount: "0",
-        paidOnBehalf,
-        scheduled: scheduleUpcoming,
-        date,
-        note: noteForApi,
-        tags,
-        displayTitle,
-        accountId,
-        accountName: acc?.name,
-      }).unwrap()
+      await addTransaction(payload).unwrap()
       toast.success(expenseFlow ? "Expense added" : "Transaction added")
       dismiss()
     } catch (err) {
@@ -188,13 +235,13 @@ function AddTransactionModalMounted({ onOpenChange, expenseFlow, onOpenAddAccoun
     }
   }
 
-  const accountLabel = expenseFlow
-    ? "Paying From"
+  const fromAccountLabel = expenseFlow
+    ? "Paying from"
     : effectiveType === "income"
       ? "Receiving to"
       : effectiveType === "transfer"
-        ? "Account"
-        : "Paying From"
+        ? "From account"
+        : "Paying from"
 
   const selectFieldClass = cn(
     "h-8 w-full appearance-none rounded-xl border border-border bg-card px-2.5 pr-8 text-xs text-foreground shadow-sm outline-none sm:h-9 sm:px-3 sm:pr-9 sm:text-sm",
@@ -263,7 +310,7 @@ function AddTransactionModalMounted({ onOpenChange, expenseFlow, onOpenAddAccoun
             </div>
           )}
 
-          {!isLoading && !isError && !hasAccount && (
+          {!isLoading && !isError && accounts.length === 0 && (
             <div className={cn(FORM_OVERLAY_SCROLL_BODY, "flex flex-col justify-center px-2 py-2")}>
               <NoAccountsEmptyState
                 onAddAccount={() => {
@@ -274,6 +321,36 @@ function AddTransactionModalMounted({ onOpenChange, expenseFlow, onOpenAddAccoun
               />
             </div>
           )}
+
+          {!isLoading &&
+            !isError &&
+            accounts.length > 0 &&
+            !hasAccount &&
+            !expenseFlow &&
+            effectiveType === "transfer" && (
+              <div
+                className={cn(
+                  FORM_OVERLAY_SCROLL_BODY,
+                  "flex flex-col items-center justify-center gap-3 px-6 py-10 text-center"
+                )}
+              >
+                <p className="text-sm font-semibold text-foreground">Two accounts needed</p>
+                <p className="max-w-xs text-sm text-muted-foreground">
+                  Add another account to transfer money between them.
+                </p>
+                <Button
+                  type="button"
+                  className="mt-2 rounded-xl"
+                  onClick={() => {
+                    dismiss()
+                    if (onOpenAddAccount) onOpenAddAccount()
+                    else navigate("/accounts")
+                  }}
+                >
+                  Add account
+                </Button>
+              </div>
+            )}
 
           {!isLoading && !isError && hasAccount && (
             <form
@@ -300,7 +377,13 @@ function AddTransactionModalMounted({ onOpenChange, expenseFlow, onOpenAddAccoun
                         <ToggleTile
                           key={id}
                           selected={txType === id}
-                          onClick={() => setTxType(id)}
+                          onClick={() => {
+                            if (id === "transfer" && accounts.length < 2) {
+                              toast.message("Add at least two accounts to use transfer")
+                              return
+                            }
+                            setTxType(id)
+                          }}
                           className={cn(
                             txType === id &&
                               id === "expense" &&
@@ -339,28 +422,65 @@ function AddTransactionModalMounted({ onOpenChange, expenseFlow, onOpenAddAccoun
 
                 <div className="grid grid-cols-2 gap-1.5 sm:gap-2">
                   <section>
-                    <Label
-                      htmlFor={categoryId}
-                      className="mb-0.5 block text-[11px] font-bold text-primary sm:text-xs"
-                    >
-                      Category
-                    </Label>
-                    <div className="relative">
-                      <select
-                        id={categoryId}
-                        value={category}
-                        onChange={(e) => setCategory(e.target.value)}
-                        className={cn(selectFieldClass, !category && "text-muted-foreground")}
-                      >
-                        <option value="">Select category</option>
-                        {TX_CATEGORIES.map((c) => (
-                          <option key={c} value={c}>
-                            {c}
-                          </option>
-                        ))}
-                      </select>
-                      <SelectChevron />
-                    </div>
+                    {effectiveType === "income" ? (
+                      <>
+                        <Label
+                          htmlFor={incomeSourceId}
+                          className="mb-0.5 block text-[11px] font-bold text-primary sm:text-xs"
+                        >
+                          Income source
+                        </Label>
+                        <div className="relative">
+                          <select
+                            id={incomeSourceId}
+                            value={incomeSource}
+                            onChange={(e) => setIncomeSource(e.target.value)}
+                            className={selectFieldClass}
+                          >
+                            {INCOME_SOURCE_OPTIONS.map(({ value, label }) => (
+                              <option key={value} value={value}>
+                                {label}
+                              </option>
+                            ))}
+                          </select>
+                          <SelectChevron />
+                        </div>
+                      </>
+                    ) : effectiveType === "transfer" ? (
+                      <>
+                        <Label className="mb-0.5 block text-[11px] font-bold text-primary sm:text-xs">
+                          Transfer
+                        </Label>
+                        <p className="rounded-xl border border-border/60 bg-muted/30 px-2.5 py-2 text-[10px] leading-snug text-muted-foreground sm:text-[11px]">
+                          Money moves from → to the accounts you select below.
+                        </p>
+                      </>
+                    ) : (
+                      <>
+                        <Label
+                          htmlFor={categoryId}
+                          className="mb-0.5 block text-[11px] font-bold text-primary sm:text-xs"
+                        >
+                          Category
+                        </Label>
+                        <div className="relative">
+                          <select
+                            id={categoryId}
+                            value={category}
+                            onChange={(e) => setCategory(e.target.value)}
+                            className={cn(selectFieldClass, !category && "text-muted-foreground")}
+                          >
+                            <option value="">Select category</option>
+                            {TX_CATEGORIES.map((c) => (
+                              <option key={c} value={c}>
+                                {c}
+                              </option>
+                            ))}
+                          </select>
+                          <SelectChevron />
+                        </div>
+                      </>
+                    )}
                   </section>
                   <section>
                     <Label
@@ -420,7 +540,7 @@ function AddTransactionModalMounted({ onOpenChange, expenseFlow, onOpenAddAccoun
                     htmlFor={accountIdField}
                     className="mb-0.5 block text-[11px] font-bold text-primary sm:text-xs"
                   >
-                    {accountLabel}
+                    {fromAccountLabel}
                   </Label>
                   <div className="relative">
                     <select
@@ -429,16 +549,47 @@ function AddTransactionModalMounted({ onOpenChange, expenseFlow, onOpenAddAccoun
                       onChange={(e) => setAccountId(e.target.value)}
                       className={cn(selectFieldClass, !accountId && "text-muted-foreground")}
                     >
-                      <option value="">Select account</option>
+                      <option value="">
+                        {effectiveType === "transfer" ? "Source account" : "Select account"}
+                      </option>
                       {accounts.map((a) => (
                         <option key={a.id} value={a.id}>
-                          {a.name}
+                          {accountSelectLabel(a)}
                         </option>
                       ))}
                     </select>
                     <SelectChevron />
                   </div>
                 </section>
+
+                {effectiveType === "transfer" ? (
+                  <section>
+                    <Label
+                      htmlFor={toAccountIdField}
+                      className="mb-0.5 block text-[11px] font-bold text-primary sm:text-xs"
+                    >
+                      To account
+                    </Label>
+                    <div className="relative">
+                      <select
+                        id={toAccountIdField}
+                        value={toAccountId}
+                        onChange={(e) => setToAccountId(e.target.value)}
+                        className={cn(selectFieldClass, !toAccountId && "text-muted-foreground")}
+                      >
+                        <option value="">Destination account</option>
+                        {accounts
+                          .filter((a) => a.id !== accountId)
+                          .map((a) => (
+                            <option key={a.id} value={a.id}>
+                              {accountSelectLabel(a)}
+                            </option>
+                          ))}
+                      </select>
+                      <SelectChevron />
+                    </div>
+                  </section>
+                ) : null}
 
                 <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-2">
                   <label className="flex cursor-pointer items-start gap-1.5 rounded-lg border border-transparent py-0.5">

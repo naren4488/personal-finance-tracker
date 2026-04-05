@@ -10,7 +10,7 @@ import {
   createInitialLoanEmiModel,
   type LoanEmiFormModel,
 } from "@/features/accounts/loan-emi-model"
-import type { CreateAccountRequest } from "@/lib/api/account-schemas"
+import { formatOpeningBalanceForApi, type CreateAccountRequest } from "@/lib/api/account-schemas"
 import { getErrorMessage } from "@/lib/api/errors"
 import { isAccountCreateApiDisabled } from "@/lib/feature-flags"
 import { FORM_OVERLAY_FOOTER, FORM_OVERLAY_SCROLL_BODY } from "@/lib/form-overlay-scroll"
@@ -85,10 +85,13 @@ function AddAccountSheetMounted({ onOpenChange }: MountedProps) {
   const titleId = useId()
   const nameId = useId()
   const balanceId = useId()
+  const bankNameId = useId()
 
   const [accountType, setAccountType] = useState<string>("bank")
   const [name, setName] = useState("")
+  const [bankName, setBankName] = useState("")
   const [balance, setBalance] = useState("")
+  const [isActive, setIsActive] = useState(true)
   const [emiDue, setEmiDue] = useState(false)
   const [emi, setEmi] = useState<LoanEmiFormModel>(() => createInitialLoanEmiModel())
 
@@ -137,8 +140,8 @@ function AddAccountSheetMounted({ onOpenChange }: MountedProps) {
       return
     }
 
-    let initialBalanceInr = 0
-    let emiLoan: CreateAccountRequest["emiLoan"] = undefined
+    let balanceInr = 0
+    let bankNameOut = bankName.trim()
 
     if (emiDue) {
       const p = emi.principal.replace(/\D/g, "")
@@ -146,34 +149,45 @@ function AddAccountSheetMounted({ onOpenChange }: MountedProps) {
         toast.error("Enter a valid principal amount")
         return
       }
-      initialBalanceInr = Number(p)
-      emiLoan = {
-        bankLender: emi.bankLender.trim() || undefined,
-        loanAccountNo: emi.loanAccountNo.trim() || undefined,
-        principalInr: Number(p),
-        interestRatePercent: Number(emi.interestRate.replace(/[^\d.]/g, "")) || 0,
-        tenureMonths: Number(emi.tenureMonths.replace(/\D/g, "")) || 0,
-        startDate: emi.startDate,
-        emiDueDay: Number(emi.emiDueDay),
-        dueDateCycle: emi.dueCycle,
-        overrideEmi: emi.overrideEmi,
-        customEmiAmountInr: emi.overrideEmi
-          ? Number(emi.overrideEmiAmount.replace(/\D/g, "")) || 0
-          : undefined,
-      }
+      balanceInr = Number(p)
+      bankNameOut = bankNameOut || emi.bankLender.trim() || n.split(/\s+/)[0] || "Loan"
     } else {
       const digits = balance.replace(/\D/g, "")
-      initialBalanceInr = digits === "" ? 0 : Number(digits)
+      balanceInr = digits === "" ? 0 : Number(digits)
+      if (!bankNameOut) {
+        toast.error("Add bank / institution name (bankName)")
+        return
+      }
     }
 
+    const payload: CreateAccountRequest = {
+      name: n,
+      kind: accountType,
+      balanceInr,
+      bankName: bankNameOut,
+      isActive,
+    }
+
+    console.log("[add-account] submit — CreateAccountRequest (client):", payload)
+    console.log(
+      "[add-account] submit — wire JSON preview:",
+      JSON.stringify(
+        {
+          name: payload.name,
+          kind: payload.kind,
+          openingBalance: formatOpeningBalanceForApi(payload.balanceInr),
+          bankName: payload.bankName,
+          isActive: payload.isActive,
+        },
+        null,
+        2
+      )
+    )
+
     try {
-      await createAccount({
-        name: n,
-        accountType,
-        initialBalanceInr,
-        ...(emiLoan ? { emiLoan } : {}),
-      }).unwrap()
-      toast.success("Account added")
+      const result = await createAccount(payload).unwrap()
+      console.log("[add-account] success — API result:", result)
+      toast.success(result.message ?? "Account created successfully")
       dismiss()
     } catch (err) {
       toast.error(getErrorMessage(err))
@@ -356,6 +370,52 @@ function AddAccountSheetMounted({ onOpenChange }: MountedProps) {
                 onChange={(e) => setName(e.target.value)}
                 placeholder="e.g. SBI Savings, HDFC Current"
                 className={fieldClass}
+              />
+            </section>
+
+            <section className="space-y-2 sm:space-y-2.5">
+              <Label
+                htmlFor={bankNameId}
+                className={cn(sectionLabelClass, "mb-0 normal-case tracking-normal")}
+              >
+                Bank / institution
+              </Label>
+              <p className="text-[11px] leading-relaxed text-muted-foreground sm:text-xs">
+                Sent as <code className="rounded bg-muted px-1 py-0.5 text-[10px]">bankName</code>
+                {emiDue ? " — optional if Bank / lender is set in EMI details below." : "."}
+              </p>
+              <Input
+                id={bankNameId}
+                value={bankName}
+                onChange={(e) => setBankName(e.target.value)}
+                placeholder="e.g. SBI, HDFC, Paytm"
+                className={fieldClass}
+              />
+            </section>
+
+            <section
+              className={cn(
+                "flex items-center justify-between gap-4 rounded-2xl border border-border/70 bg-muted/25 px-4 py-3.5 sm:px-5 sm:py-4",
+                "shadow-sm"
+              )}
+            >
+              <div className="min-w-0 space-y-0.5">
+                <Label
+                  htmlFor="account-active"
+                  className="text-xs font-bold text-foreground sm:text-sm"
+                >
+                  Active account
+                </Label>
+                <p className="text-[11px] leading-relaxed text-muted-foreground sm:text-xs">
+                  Inactive accounts stay hidden from most flows
+                </p>
+              </div>
+              <Switch
+                id="account-active"
+                checked={isActive}
+                onCheckedChange={setIsActive}
+                aria-label="Account active"
+                className="shrink-0"
               />
             </section>
 

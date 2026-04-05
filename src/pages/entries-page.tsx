@@ -23,6 +23,7 @@ import { ACCOUNTS_MOCK_BY_SEGMENT } from "@/features/accounts/accounts-mock-data
 import { AddTransactionModal } from "@/features/entries/add-transaction-modal"
 import { QuickTransactionForm } from "@/features/entries/quick-transaction-form"
 import { RecentTransactionRow } from "@/features/entries/recent-transaction-row"
+import { accountSelectLabel } from "@/lib/api/account-schemas"
 import { getErrorMessage } from "@/lib/api/errors"
 import type { TransactionType } from "@/lib/api/schemas"
 import { parseSignedAmountString, type RecentTransaction } from "@/lib/api/transaction-schemas"
@@ -147,6 +148,7 @@ export default function EntriesPage() {
   const [txTypeFilter, setTxTypeFilter] = useState<"all" | TransactionType>("all")
   const [txAccountFilter, setTxAccountFilter] = useState<string>("all")
 
+  const user = useAppSelector((s) => s.auth.user)
   const {
     data: recentTransactions = [],
     isLoading,
@@ -154,6 +156,12 @@ export default function EntriesPage() {
     error,
     refetch,
   } = useGetRecentTransactionsQuery(RECENT_TX_LIMIT)
+
+  const {
+    data: accounts = [],
+    isError: accountsQueryError,
+    error: accountsError,
+  } = useGetAccountsQuery(undefined, { skip: !user })
 
   useEffect(() => {
     if (!isError || !error) return
@@ -163,7 +171,15 @@ export default function EntriesPage() {
       navigate("/login", { replace: true })
     }
   }, [isError, error, navigate])
-  const { data: accounts = [] } = useGetAccountsQuery()
+
+  useEffect(() => {
+    if (!accountsQueryError || !accountsError) return
+    const msg = getErrorMessage(accountsError)
+    if (/authorization token is required/i.test(msg)) {
+      toast.error(msg)
+      navigate("/login", { replace: true })
+    }
+  }, [accountsQueryError, accountsError, navigate])
   const {
     isLoading: peopleLoading,
     isError: peopleError,
@@ -423,7 +439,7 @@ export default function EntriesPage() {
               <option value="all">All accounts</option>
               {accounts.map((a) => (
                 <option key={a.id} value={a.id}>
-                  {a.name}
+                  {accountSelectLabel(a)}
                 </option>
               ))}
             </select>

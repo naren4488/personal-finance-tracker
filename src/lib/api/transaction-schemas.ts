@@ -2,22 +2,55 @@ import { z } from "zod"
 import type { CreateTransactionPayload, Transaction } from "@/lib/api/schemas"
 import { transactionTypeSchema } from "@/lib/api/schemas"
 
-/** POST /transactions JSON body (amounts as strings per API). */
-export const createTransactionApiBodySchema = z.object({
-  type: transactionTypeSchema,
+/** POST /transactions — income (matches backend contract). */
+export const createTransactionIncomeBodySchema = z.object({
+  type: z.literal("income"),
   amount: z.string().min(1),
-  category: z.string(),
-  paymentMethod: z.string(),
-  sourceName: z.string(),
-  feeAmount: z.string(),
-  paidOnBehalf: z.boolean(),
-  scheduled: z.boolean(),
+  incomeSource: z.string().min(1),
+  accountId: z.string().min(1),
   date: z.string(),
   note: z.string(),
   tags: z.array(z.string()),
 })
 
+/** POST /transactions — expense. */
+export const createTransactionExpenseBodySchema = z.object({
+  type: z.literal("expense"),
+  amount: z.string().min(1),
+  category: z.string().min(1),
+  accountId: z.string().min(1),
+  date: z.string(),
+  note: z.string(),
+  tags: z.array(z.string()),
+})
+
+/** POST /transactions — transfer between accounts. */
+export const createTransactionTransferBodySchema = z.object({
+  type: z.literal("transfer"),
+  amount: z.string().min(1),
+  fromAccountId: z.string().min(1),
+  toAccountId: z.string().min(1),
+  date: z.string(),
+  note: z.string(),
+  tags: z.array(z.string()),
+})
+
+export const createTransactionApiBodySchema = z.discriminatedUnion("type", [
+  createTransactionIncomeBodySchema,
+  createTransactionExpenseBodySchema,
+  createTransactionTransferBodySchema,
+])
+
 export type CreateTransactionApiBody = z.infer<typeof createTransactionApiBodySchema>
+
+export const INCOME_SOURCE_OPTIONS = [
+  { value: "salary", label: "Salary" },
+  { value: "freelance", label: "Freelance" },
+  { value: "investment", label: "Investment" },
+  { value: "gift", label: "Gift" },
+  { value: "business", label: "Business" },
+  { value: "other", label: "Other" },
+] as const
 
 const looseTransactionFields = z.object({
   id: z.string().optional(),
@@ -29,6 +62,10 @@ const looseTransactionFields = z.object({
   tags: z.array(z.string()).optional(),
   sourceName: z.string().optional(),
   title: z.string().optional(),
+  accountId: z.string().optional(),
+  fromAccountId: z.string().optional(),
+  toAccountId: z.string().optional(),
+  incomeSource: z.string().optional(),
 })
 
 function parseAmount(v: unknown): number {
@@ -98,6 +135,13 @@ export function mapApiTransactionToClient(
   const sourceName =
     typeof t.sourceName === "string" ? t.sourceName : fallback.sourceName || fallback.accountName
 
+  const accountIdFromApi =
+    typeof t.accountId === "string"
+      ? t.accountId
+      : typeof t.fromAccountId === "string"
+        ? t.fromAccountId
+        : fallback.accountId
+
   return {
     id,
     title: title.trim() || "Transaction",
@@ -105,24 +149,67 @@ export function mapApiTransactionToClient(
     type,
     date,
     category: category || undefined,
-    accountId: fallback.accountId,
+    accountId: accountIdFromApi,
     accountName: sourceName || fallback.accountName,
   }
 }
 
-export function payloadToApiBody(body: CreateTransactionPayload): CreateTransactionApiBody {
+function amountToApiString(amount: number): string {
+  if (!Number.isFinite(amount) || amount <= 0) return "0"
+  return String(Math.round(amount * 100) / 100)
+}
+
+/**
+ * Maps client payload → exact POST /transactions JSON per `type`.
+ * Only fields the backend expects are included (no paymentMethod, etc.).
+ */
+export function buildTransactionPostBody(body: CreateTransactionPayload): CreateTransactionApiBody {
+  const amount = amountToApiString(body.amount)
+  const date = body.date
+  const note = body.note
+  const tags = body.tags
+
+  if (body.type === "income") {
+    if (!body.accountId) {
+      throw new Error("income requires accountId")
+    }
+    return {
+      type: "income",
+      amount,
+      incomeSource: (body.incomeSource ?? "other").trim() || "other",
+      accountId: body.accountId,
+      date,
+      note,
+      tags,
+    }
+  }
+
+  if (body.type === "expense") {
+    if (!body.accountId) {
+      throw new Error("expense requires accountId")
+    }
+    return {
+      type: "expense",
+      amount,
+      category: body.category.trim() || "other",
+      accountId: body.accountId,
+      date,
+      note,
+      tags,
+    }
+  }
+
+  if (!body.accountId || !body.toAccountId) {
+    throw new Error("transfer requires accountId (from) and toAccountId")
+  }
   return {
-    type: body.type,
-    amount: String(body.amount),
-    category: body.category,
-    paymentMethod: body.paymentMethod,
-    sourceName: body.sourceName,
-    feeAmount: body.feeAmount,
-    paidOnBehalf: body.paidOnBehalf,
-    scheduled: body.scheduled,
-    date: body.date,
-    note: body.note,
-    tags: body.tags,
+    type: "transfer",
+    amount,
+    fromAccountId: body.accountId,
+    toAccountId: body.toAccountId,
+    date,
+    note,
+    tags,
   }
 }
 

@@ -1,14 +1,25 @@
 import { z } from "zod"
 
-export const accountSchema = z.object({
-  id: z.string(),
-  name: z.string(),
-})
+/** Single account from API (GET list / POST create); relaxed so varied backends parse. */
+export const accountSchema = z
+  .object({
+    id: z.coerce.string(),
+    name: z.coerce.string(),
+    kind: z.string().optional(),
+    type: z.string().optional(),
+    balance: z.union([z.string(), z.number()]).optional(),
+    openingBalance: z.union([z.string(), z.number()]).optional(),
+    bankName: z.string().optional(),
+    provider: z.string().optional(),
+    isActive: z.boolean().optional(),
+  })
+  .passthrough()
 
 export type Account = z.infer<typeof accountSchema>
 
 const envelopeWithAccountsKey = z.object({
   success: z.literal(true),
+  message: z.string().optional(),
   data: z.object({
     accounts: z.array(accountSchema),
   }),
@@ -37,6 +48,36 @@ export function parseGetAccountsSuccess(
   return { ok: false, error: "Invalid accounts response." }
 }
 
+/** Numeric INR from `balance` or `openingBalance` (string or number from API). */
+export function accountBalanceInrFromApi(
+  account: Pick<Account, "balance" | "openingBalance">
+): number {
+  const raw = account.balance ?? account.openingBalance
+  if (raw === undefined || raw === null) return 0
+  if (typeof raw === "number") return Number.isFinite(raw) ? raw : 0
+  const n = Number(String(raw).replace(/,/g, "").trim())
+  return Number.isFinite(n) ? n : 0
+}
+
+/** Secondary line for lists: bank + kind/type. */
+export function accountSubtitleForList(account: Account): string | undefined {
+  const bank = account.bankName?.trim() || account.provider?.trim()
+  const kind = account.kind?.trim() || account.type?.trim()
+  const parts = [bank, kind].filter(Boolean)
+  return parts.length ? parts.join(" · ") : undefined
+}
+
+/** Dropdown / filter label. */
+export function accountSelectLabel(account: Account): string {
+  const sub = accountSubtitleForList(account)
+  return sub ? `${account.name} (${sub})` : account.name
+}
+
+/** Treat missing `isActive` as active. */
+export function filterActiveAccounts(accounts: Account[]): Account[] {
+  return accounts.filter((a) => a.isActive !== false)
+}
+
 export type AccountEmiLoanPayload = {
   bankLender?: string
   loanAccountNo?: string
@@ -50,112 +91,59 @@ export type AccountEmiLoanPayload = {
   customEmiAmountInr?: number
 }
 
+/**
+ * Client-side values before building POST JSON (openingBalance is formatted in the builder).
+ */
 export type CreateAccountRequest = {
   name: string
-  accountType: string
-  initialBalanceInr: number
-  emiLoan?: AccountEmiLoanPayload
+  kind: string
+  balanceInr: number
+  bankName: string
+  isActive: boolean
+}
+
+export type CreateAccountResult = {
+  account: Account
+  message?: string
+}
+
+/** API expects `openingBalance` as a string with two decimals (e.g. "312586.00"). */
+export function formatOpeningBalanceForApi(balanceInr: number): string {
+  const n = Number.isFinite(balanceInr) ? balanceInr : 0
+  const rounded = Math.round(n * 100) / 100
+  return rounded.toFixed(2)
 }
 
 /**
- * Default **snake_case** (typical Go `json` tags). Set `VITE_ACCOUNTS_CAMEL_CASE=true` for camelCase
- * (same style as POST /transactions).
- */
-function accountsUseCamelCaseJson(): boolean {
-  const v = import.meta.env.VITE_ACCOUNTS_CAMEL_CASE
-  return String(v).toLowerCase() === "true" || v === "1"
-}
-
-/**
- * Default **numeric** JSON for INR fields (strings often fail `float64` unmarshaling).
- * Set `VITE_ACCOUNTS_STRING_AMOUNTS=true` to send amounts as strings.
- */
-function accountsUseStringAmounts(): boolean {
-  const v = import.meta.env.VITE_ACCOUNTS_STRING_AMOUNTS
-  return String(v).toLowerCase() === "true" || v === "1"
-}
-
-function n(v: number, asString: boolean): number | string {
-  return asString ? String(v) : v
-}
-
-function emiLoanToSnakeCase(
-  emi: AccountEmiLoanPayload,
-  asString: boolean
-): Record<string, unknown> {
-  const out: Record<string, unknown> = {
-    principal_inr: n(emi.principalInr, asString),
-    interest_rate_percent: n(emi.interestRatePercent, asString),
-    tenure_months: n(emi.tenureMonths, asString),
-    start_date: emi.startDate,
-    emi_due_day: n(emi.emiDueDay, asString),
-    due_date_cycle: emi.dueDateCycle,
-    override_emi: emi.overrideEmi,
-  }
-  if (emi.bankLender?.trim()) out.bank_lender = emi.bankLender.trim()
-  if (emi.loanAccountNo?.trim()) out.loan_account_no = emi.loanAccountNo.trim()
-  if (emi.overrideEmi && emi.customEmiAmountInr !== undefined) {
-    out.custom_emi_amount_inr = n(emi.customEmiAmountInr, asString)
-  }
-  return out
-}
-
-function emiLoanToCamelCase(
-  emi: AccountEmiLoanPayload,
-  asString: boolean
-): Record<string, unknown> {
-  const out: Record<string, unknown> = {
-    principalInr: n(emi.principalInr, asString),
-    interestRatePercent: n(emi.interestRatePercent, asString),
-    tenureMonths: n(emi.tenureMonths, asString),
-    startDate: emi.startDate,
-    emiDueDay: n(emi.emiDueDay, asString),
-    dueDateCycle: emi.dueDateCycle,
-    overrideEmi: emi.overrideEmi,
-  }
-  if (emi.bankLender?.trim()) out.bankLender = emi.bankLender.trim()
-  if (emi.loanAccountNo?.trim()) out.loanAccountNo = emi.loanAccountNo.trim()
-  if (emi.overrideEmi && emi.customEmiAmountInr !== undefined) {
-    out.customEmiAmountInr = n(emi.customEmiAmountInr, asString)
-  }
-  return out
-}
-
-/**
- * JSON body for POST /accounts.
- * - Default: **snake_case** + **numeric** amounts (common for Go backends).
- * - `VITE_ACCOUNTS_CAMEL_CASE=true` → camelCase keys.
- * - `VITE_ACCOUNTS_STRING_AMOUNTS=true` → amount fields as strings.
+ * JSON body for POST /api/v1/accounts — keys must match backend exactly.
  */
 export function buildCreateAccountPostBody(body: CreateAccountRequest): Record<string, unknown> {
-  const name = body.name.trim()
-  const forceSnake = !accountsUseCamelCaseJson()
-  const asString = accountsUseStringAmounts()
-
-  if (!forceSnake) {
-    const payload: Record<string, unknown> = {
-      name,
-      accountType: body.accountType,
-      initialBalanceInr: n(body.initialBalanceInr, asString),
-    }
-    if (body.emiLoan) payload.emiLoan = emiLoanToCamelCase(body.emiLoan, asString)
-    return payload
+  return {
+    name: body.name.trim(),
+    kind: body.kind,
+    openingBalance: formatOpeningBalanceForApi(body.balanceInr),
+    bankName: body.bankName.trim(),
+    isActive: body.isActive,
   }
-
-  const payload: Record<string, unknown> = {
-    name,
-    account_type: body.accountType,
-    initial_balance_inr: n(body.initialBalanceInr, asString),
-  }
-  if (body.emiLoan) {
-    payload.emi_loan = emiLoanToSnakeCase(body.emiLoan, asString)
-  }
-  return payload
 }
+
+const createAccountSuccessEnvelope = z.object({
+  success: z.literal(true),
+  message: z.string().optional(),
+  data: z.object({ account: accountSchema }),
+})
 
 export function parseCreateAccountSuccess(
   raw: unknown
-): { ok: true; account: Account } | { ok: false; error: string } {
+): { ok: true; account: Account; message?: string } | { ok: false; error: string } {
+  const envelope = createAccountSuccessEnvelope.safeParse(raw)
+  if (envelope.success) {
+    return {
+      ok: true,
+      account: envelope.data.data.account,
+      message: envelope.data.message,
+    }
+  }
   const direct = accountSchema.safeParse(raw)
   if (direct.success) {
     return { ok: true, account: direct.data }
