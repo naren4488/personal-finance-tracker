@@ -20,11 +20,14 @@ import { AddLoanSheet } from "@/features/accounts/add-loan-sheet"
 import { AddUdharEntrySheet } from "@/features/accounts/add-udhar-entry-sheet"
 import { AccountRowCard } from "@/features/accounts/account-list-rows"
 import { ACCOUNTS_MOCK_BY_SEGMENT } from "@/features/accounts/accounts-mock-data"
+import { CreditCardDetailView } from "@/features/accounts/credit-card-detail-view"
+import { CreditCardList } from "@/features/accounts/credit-card-list"
 import { UdharDetailsModal } from "@/features/accounts/udhar-details-modal"
 import { UdharEntryRow } from "@/features/accounts/udhar-entry-row"
 import { AddTransactionModal } from "@/features/entries/add-transaction-modal"
 import { QuickTransactionForm } from "@/features/entries/quick-transaction-form"
 import { RecentTransactionRow } from "@/features/entries/recent-transaction-row"
+import type { Account } from "@/lib/api/account-schemas"
 import { accountSelectLabel } from "@/lib/api/account-schemas"
 import { getErrorMessage } from "@/lib/api/errors"
 import type { TransactionType } from "@/lib/api/schemas"
@@ -37,7 +40,11 @@ import {
 } from "@/lib/api/transaction-schemas"
 import { formatCurrency } from "@/lib/format"
 import { cn } from "@/lib/utils"
-import { useGetAccountsQuery, useGetRecentTransactionsQuery } from "@/store/api/base-api"
+import {
+  useGetAccountsQuery,
+  useGetCreditCardsQuery,
+  useGetRecentTransactionsQuery,
+} from "@/store/api/base-api"
 import { useAppSelector } from "@/store/hooks"
 
 type EntrySegment = "txns" | "expenses" | "udhar" | "loans" | "cards"
@@ -152,6 +159,7 @@ export default function EntriesPage() {
   const [txTypeFilter, setTxTypeFilter] = useState<"all" | TransactionType>("all")
   const [txAccountFilter, setTxAccountFilter] = useState<string>("all")
   const [selectedUdharTx, setSelectedUdharTx] = useState<RecentTransaction | null>(null)
+  const [selectedCreditCard, setSelectedCreditCard] = useState<Account | null>(null)
 
   const user = useAppSelector((s) => s.auth.user)
   const {
@@ -167,6 +175,14 @@ export default function EntriesPage() {
     isError: accountsQueryError,
     error: accountsError,
   } = useGetAccountsQuery(undefined, { skip: !user })
+
+  const {
+    data: creditCards = [],
+    isLoading: creditCardsLoading,
+    isError: creditCardsError,
+    error: creditCardsQueryError,
+    refetch: refetchCreditCards,
+  } = useGetCreditCardsQuery(undefined, { skip: !user || segment !== "cards" })
 
   useEffect(() => {
     if (!isError || !error) return
@@ -185,6 +201,15 @@ export default function EntriesPage() {
       navigate("/login", { replace: true })
     }
   }, [accountsQueryError, accountsError, navigate])
+
+  useEffect(() => {
+    if (!creditCardsError || !creditCardsQueryError) return
+    const msg = getErrorMessage(creditCardsQueryError)
+    if (/authorization token is required/i.test(msg)) {
+      toast.error("Session expired, please login again")
+      navigate("/login", { replace: true })
+    }
+  }, [creditCardsError, creditCardsQueryError, navigate])
   const udharTransactions = useMemo(
     () =>
       recentTransactions
@@ -199,7 +224,6 @@ export default function EntriesPage() {
   }, [selectedUdharTx, udharTransactions])
 
   const loansMockList = ACCOUNTS_MOCK_BY_SEGMENT.loans
-  const cardsMockList = ACCOUNTS_MOCK_BY_SEGMENT.cards
 
   const filtered = useMemo(() => {
     const now = new Date()
@@ -235,7 +259,9 @@ export default function EntriesPage() {
       return !isLoading && !isError && udharTransactions.length > 0
     }
     if (segment === "loans") return loansMockList.length > 0
-    if (segment === "cards") return cardsMockList.length > 0
+    if (segment === "cards") {
+      return !creditCardsLoading && !creditCardsError && creditCards.length > 0
+    }
     return false
   }, [
     segment,
@@ -244,14 +270,18 @@ export default function EntriesPage() {
     filtered.length,
     udharTransactions.length,
     loansMockList.length,
-    cardsMockList.length,
+    creditCardsLoading,
+    creditCardsError,
+    creditCards.length,
   ])
 
-  const segmentListLoading = segment === "loans" || segment === "cards" ? false : isLoading
+  const segmentListLoading =
+    segment === "loans" ? false : segment === "cards" ? creditCardsLoading : isLoading
 
-  const segmentListError = segment === "loans" || segment === "cards" ? false : isError
+  const segmentListError =
+    segment === "loans" ? false : segment === "cards" ? creditCardsError : isError
 
-  const segmentError = error
+  const segmentError = segment === "cards" ? creditCardsQueryError : error
 
   const totalDisplay = headerTotalLabel(segment, filtered)
 
@@ -351,6 +381,13 @@ export default function EntriesPage() {
       <AddUdharEntrySheet open={udharSheetOpen} onOpenChange={setUdharSheetOpen} />
       <AddLoanSheet open={loanSheetOpen} onOpenChange={setLoanSheetOpen} />
       <AddCreditCardSheet open={cardSheetOpen} onOpenChange={setCardSheetOpen} />
+      <CreditCardDetailView
+        open={!!selectedCreditCard}
+        onOpenChange={(v) => {
+          if (!v) setSelectedCreditCard(null)
+        }}
+        account={selectedCreditCard}
+      />
       <UdharDetailsModal
         open={!!selectedUdharTx}
         onOpenChange={(v) => {
@@ -503,7 +540,10 @@ export default function EntriesPage() {
             variant="outline"
             size="sm"
             className="rounded-xl"
-            onClick={() => refetch()}
+            onClick={() => {
+              if (segment === "cards") void refetchCreditCards()
+              else void refetch()
+            }}
           >
             Retry
           </Button>
@@ -633,13 +673,11 @@ export default function EntriesPage() {
       )}
 
       {!segmentListLoading && !segmentListError && entriesHasList && segment === "cards" && (
-        <ul className="flex list-none flex-col gap-2.5" aria-label="Credit cards list">
-          {cardsMockList.map((item) => (
-            <li key={item.id}>
-              <AccountRowCard item={item} />
-            </li>
-          ))}
-        </ul>
+        <CreditCardList
+          accounts={creditCards}
+          variant="entries"
+          onSelectCard={setSelectedCreditCard}
+        />
       )}
 
       {showAddForm &&

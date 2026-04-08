@@ -1,14 +1,26 @@
 import { useCallback, useEffect, useId, useState } from "react"
+import { useNavigate } from "react-router-dom"
 import { ChevronDown, X } from "lucide-react"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { BILLING_DAY_OPTIONS } from "@/lib/billing-day-options"
+import { type CreateAccountRequest } from "@/lib/api/account-schemas"
+import { getErrorMessage } from "@/lib/api/errors"
+import { endUserSession } from "@/lib/auth/end-session"
 import { FORM_OVERLAY_FOOTER, FORM_OVERLAY_SCROLL_BODY } from "@/lib/form-overlay-scroll"
 import { cn } from "@/lib/utils"
+import { useCreateAccountMutation } from "@/store/api/base-api"
+import { useAppDispatch } from "@/store/hooks"
 
-const CARD_NETWORKS = ["Visa", "Mastercard", "RuPay", "American Express", "Other"] as const
+const CARD_NETWORKS = [
+  { value: "visa", label: "Visa" },
+  { value: "mastercard", label: "Mastercard" },
+  { value: "rupay", label: "RuPay" },
+  { value: "american_express", label: "American Express" },
+  { value: "other", label: "Other" },
+] as const
 
 function SelectChevron({ compact }: { compact?: boolean }) {
   return (
@@ -32,6 +44,8 @@ type MountedProps = {
 }
 
 function AddCreditCardSheetMounted({ onOpenChange }: MountedProps) {
+  const navigate = useNavigate()
+  const dispatch = useAppDispatch()
   const titleId = useId()
   const networkId = useId()
 
@@ -45,11 +59,25 @@ function AddCreditCardSheetMounted({ onOpenChange }: MountedProps) {
   const [dueDay, setDueDay] = useState("5")
   const [interestRate, setInterestRate] = useState("3.5")
   const [minDuePercent, setMinDuePercent] = useState("5")
+  const [createAccount, { isLoading: isSubmitting }] = useCreateAccountMutation()
 
   const dismiss = useCallback(() => {
     document.body.style.overflow = ""
     onOpenChange(false)
   }, [onOpenChange])
+
+  function resetForm() {
+    setCardName("")
+    setBankName("")
+    setCardNetwork("")
+    setLast4("")
+    setCreditLimit("")
+    setOutstanding("")
+    setBillDay("1")
+    setDueDay("5")
+    setInterestRate("3.5")
+    setMinDuePercent("5")
+  }
 
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
@@ -66,11 +94,16 @@ function AddCreditCardSheetMounted({ onOpenChange }: MountedProps) {
     }
   }, [])
 
-  function handleSubmit(e: React.FormEvent) {
+  async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     const name = cardName.trim()
     if (!name) {
       toast.error("Enter card name")
+      return
+    }
+    const bank = bankName.trim()
+    if (!bank) {
+      toast.error("Enter bank name")
       return
     }
     if (!cardNetwork) {
@@ -82,22 +115,49 @@ function AddCreditCardSheetMounted({ onOpenChange }: MountedProps) {
       toast.error("Enter last 4 digits")
       return
     }
+    const limitDigits = creditLimit.replace(/\D/g, "")
+    if (!limitDigits || Number(limitDigits) <= 0) {
+      toast.error("Enter valid credit limit")
+      return
+    }
+    if (!billDay) {
+      toast.error("Select bill generation day")
+      return
+    }
+    if (!dueDay) {
+      toast.error("Select payment due day")
+      return
+    }
 
-    console.log("[Cards] Add Credit Card (demo)", {
-      cardName: name,
-      bankName: bankName.trim() || undefined,
+    const payload: CreateAccountRequest = {
+      name,
+      kind: "credit_card",
+      balanceInr: Number(outstanding.replace(/\D/g, "")) || 0,
+      bankName: bank,
+      isActive: true,
       cardNetwork,
-      last4: l4,
-      creditLimitInr: Number(creditLimit.replace(/\D/g, "")) || 0,
-      outstandingInr: Number(outstanding.replace(/\D/g, "")) || 0,
+      last4Digits: l4,
+      creditLimitInr: Number(limitDigits),
       billGenerationDay: Number(billDay),
       paymentDueDay: Number(dueDay),
-      interestRatePercent: Number(interestRate.replace(/,/g, "")) || 0,
-      minDuePercent: Number(minDuePercent.replace(/,/g, "")) || 0,
-    })
+    }
 
-    toast.success("Card saved (demo)")
-    dismiss()
+    try {
+      await createAccount(payload).unwrap()
+      toast.success("Account created successfully")
+      resetForm()
+      dismiss()
+    } catch (err) {
+      const msg = getErrorMessage(err)
+      if (/authorization token is required/i.test(msg)) {
+        toast.error("Session expired, please login again")
+        endUserSession(dispatch)
+        dismiss()
+        navigate("/login", { replace: true })
+        return
+      }
+      toast.error(msg)
+    }
   }
 
   const lb = "mb-0.5 block text-[10px] font-bold text-primary sm:text-xs"
@@ -190,8 +250,8 @@ function AddCreditCardSheetMounted({ onOpenChange }: MountedProps) {
                   >
                     <option value="">Select</option>
                     {CARD_NETWORKS.map((n) => (
-                      <option key={n} value={n}>
-                        {n}
+                      <option key={n.value} value={n.value}>
+                        {n.label}
                       </option>
                     ))}
                   </select>
@@ -329,9 +389,10 @@ function AddCreditCardSheetMounted({ onOpenChange }: MountedProps) {
           <div className={FORM_OVERLAY_FOOTER}>
             <Button
               type="submit"
+              disabled={isSubmitting}
               className="h-9 w-full rounded-xl bg-[hsl(230_22%_62%)] text-sm font-bold text-white hover:bg-[hsl(230_22%_56%)] sm:h-10 sm:text-base"
             >
-              Add Card
+              {isSubmitting ? "Saving..." : "Add Card"}
             </Button>
           </div>
         </form>

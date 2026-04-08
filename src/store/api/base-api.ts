@@ -36,6 +36,7 @@ import {
   type CreateAccountRequest,
   type CreateAccountResult,
 } from "@/lib/api/account-schemas"
+import { isCreditCardAccount } from "@/lib/api/credit-card-map"
 import {
   parseCreatePersonSuccess,
   parseGetPeopleSuccess,
@@ -290,6 +291,31 @@ export const baseApi = createApi({
       providesTags: [{ type: "Account", id: "LIST" }],
     }),
 
+    /** GET /accounts?kind=credit_card — same list endpoint, filtered for card UI. */
+    getCreditCards: build.query<Account[], void>({
+      async queryFn(_arg, _api, _extraOptions, baseQuery) {
+        const res = await baseQuery({
+          url: ACCOUNT_PATHS.list,
+          method: "GET",
+          params: { kind: "credit_card" },
+        })
+        if (res.error) {
+          return { error: normalizeFetchError(res.error) }
+        }
+        const failMsg = parseApiFailureMessage(res.data)
+        if (failMsg) {
+          return { error: { status: 400, data: failMsg } }
+        }
+        const parsed = parseGetAccountsSuccess(res.data)
+        if (!parsed.ok) {
+          return { error: { status: 422, data: parsed.error } }
+        }
+        const onlyCards = parsed.accounts.filter(isCreditCardAccount)
+        return { data: onlyCards.length > 0 ? onlyCards : parsed.accounts }
+      },
+      providesTags: [{ type: "Account", id: "LIST" }],
+    }),
+
     createAccount: build.mutation<CreateAccountResult, CreateAccountRequest>({
       async queryFn(body, _api, _extraOptions, baseQuery) {
         if (isAccountCreateApiDisabled()) {
@@ -334,8 +360,13 @@ export const baseApi = createApi({
           return { error: { status: 422, data: parsed.error } }
         }
         console.log("[accounts] create — success message:", parsed.message)
-        console.log("[accounts] create — parsed account:", parsed.account)
-        return { data: { account: parsed.account, message: parsed.message } }
+        console.log("[accounts] create — parsed account:", parsed.account ?? null)
+        return {
+          data: {
+            ...(parsed.account ? { account: parsed.account } : {}),
+            ...(parsed.message ? { message: parsed.message } : {}),
+          },
+        }
       },
       invalidatesTags: [{ type: "Account", id: "LIST" }],
     }),
@@ -692,6 +723,7 @@ export const {
   useLogoutMutation,
   useRefreshTokenMutation,
   useGetAccountsQuery,
+  useGetCreditCardsQuery,
   useCreateAccountMutation,
   useGetPeopleQuery,
   useCreatePersonMutation,

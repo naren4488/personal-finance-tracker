@@ -100,10 +100,15 @@ export type CreateAccountRequest = {
   balanceInr: number
   bankName: string
   isActive: boolean
+  cardNetwork?: string
+  last4Digits?: string
+  creditLimitInr?: number
+  billGenerationDay?: number
+  paymentDueDay?: number
 }
 
 export type CreateAccountResult = {
-  account: Account
+  account?: Account
   message?: string
 }
 
@@ -118,13 +123,38 @@ export function formatOpeningBalanceForApi(balanceInr: number): string {
  * JSON body for POST /api/v1/accounts — keys must match backend exactly.
  */
 export function buildCreateAccountPostBody(body: CreateAccountRequest): Record<string, unknown> {
-  return {
+  const base: Record<string, unknown> = {
     name: body.name.trim(),
     kind: body.kind,
     openingBalance: formatOpeningBalanceForApi(body.balanceInr),
     bankName: body.bankName.trim(),
     isActive: body.isActive,
   }
+
+  if (body.kind === "credit_card") {
+    const network = body.cardNetwork?.trim().toLowerCase()
+    const last4 = body.last4Digits?.replace(/\D/g, "")
+    const limit = Number.isFinite(body.creditLimitInr) ? Math.max(0, body.creditLimitInr ?? 0) : 0
+    const billDay = Number.isFinite(body.billGenerationDay)
+      ? Math.trunc(body.billGenerationDay ?? 0)
+      : 0
+    const dueDay = Number.isFinite(body.paymentDueDay) ? Math.trunc(body.paymentDueDay ?? 0) : 0
+
+    if (!network) throw new Error("cardNetwork is required for credit cards")
+    if (!last4 || last4.length !== 4) throw new Error("last4Digits must be exactly 4 digits")
+    if (!Number.isFinite(limit) || limit <= 0)
+      throw new Error("creditLimit must be a positive value")
+    if (billDay < 1 || billDay > 31) throw new Error("billGenerationDay must be between 1 and 31")
+    if (dueDay < 1 || dueDay > 31) throw new Error("paymentDueDay must be between 1 and 31")
+
+    base.cardNetwork = network
+    base.last4Digits = last4
+    base.creditLimit = formatOpeningBalanceForApi(limit)
+    base.billGenerationDay = String(billDay)
+    base.paymentDueDay = String(dueDay)
+  }
+
+  return base
 }
 
 const createAccountSuccessEnvelope = z.object({
@@ -135,7 +165,7 @@ const createAccountSuccessEnvelope = z.object({
 
 export function parseCreateAccountSuccess(
   raw: unknown
-): { ok: true; account: Account; message?: string } | { ok: false; error: string } {
+): { ok: true; account?: Account; message?: string } | { ok: false; error: string } {
   const envelope = createAccountSuccessEnvelope.safeParse(raw)
   if (envelope.success) {
     return {
@@ -164,6 +194,15 @@ export function parseCreateAccountSuccess(
     .safeParse(raw)
   if (nested.success) {
     return { ok: true, account: nested.data.data.account }
+  }
+  const successMessageOnly = z
+    .object({
+      success: z.literal(true),
+      message: z.string().optional(),
+    })
+    .safeParse(raw)
+  if (successMessageOnly.success) {
+    return { ok: true, message: successMessageOnly.data.message }
   }
   return { ok: false, error: "Invalid create account response." }
 }

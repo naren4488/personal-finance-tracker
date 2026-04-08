@@ -1,4 +1,6 @@
-import { useMemo, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
+import { useNavigate } from "react-router-dom"
+import { toast } from "sonner"
 import { CreditCard, Landmark, Users, Wallet } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
@@ -14,8 +16,11 @@ import {
   type AccountsSegmentId,
   type AccountListItem,
 } from "@/features/accounts/accounts-mock-data"
+import { CreditCardDetailView } from "@/features/accounts/credit-card-detail-view"
+import { CreditCardList } from "@/features/accounts/credit-card-list"
 import { UdharDetailsModal } from "@/features/accounts/udhar-details-modal"
 import { UdharEntryRow } from "@/features/accounts/udhar-entry-row"
+import type { Account } from "@/lib/api/account-schemas"
 import { accountBalanceInrFromApi, accountSubtitleForList } from "@/lib/api/account-schemas"
 import { getErrorMessage } from "@/lib/api/errors"
 import {
@@ -26,7 +31,11 @@ import {
   udharDirectionLabel,
 } from "@/lib/api/transaction-schemas"
 import { cn } from "@/lib/utils"
-import { useGetAccountsQuery, useGetRecentTransactionsQuery } from "@/store/api/base-api"
+import {
+  useGetAccountsQuery,
+  useGetCreditCardsQuery,
+  useGetRecentTransactionsQuery,
+} from "@/store/api/base-api"
 import { useAppSelector } from "@/store/hooks"
 
 const SEGMENT_ORDER: AccountsSegmentId[] = ["accounts", "people", "loans", "cards"]
@@ -46,12 +55,14 @@ type PersonUdharGroup = {
 }
 
 export default function AccountsPage() {
+  const navigate = useNavigate()
   const [segment, setSegment] = useState<AccountsSegmentId>("accounts")
   const [udharOpen, setUdharOpen] = useState(false)
   const [addAccountOpen, setAddAccountOpen] = useState(false)
   const [loanOpen, setLoanOpen] = useState(false)
   const [cardOpen, setCardOpen] = useState(false)
   const [selectedGroupId, setSelectedGroupId] = useState<string | null>(null)
+  const [selectedCreditCard, setSelectedCreditCard] = useState<Account | null>(null)
 
   const meta = ACCOUNTS_SEGMENT_META[segment]
   const user = useAppSelector((s) => s.auth.user)
@@ -65,12 +76,29 @@ export default function AccountsPage() {
   } = useGetAccountsQuery(undefined, { skip: !user })
 
   const {
+    data: creditCards = [],
+    isLoading: creditCardsLoading,
+    isError: creditCardsError,
+    error: creditCardsQueryError,
+    refetch: refetchCreditCards,
+  } = useGetCreditCardsQuery(undefined, { skip: !user || segment !== "cards" })
+
+  const {
     data: recentTransactions = [],
     isLoading: recentLoading,
     isError: recentError,
     error: recentQueryError,
     refetch: refetchRecent,
   } = useGetRecentTransactionsQuery(5000, { refetchOnMountOrArgChange: true })
+
+  useEffect(() => {
+    if (!creditCardsError || !creditCardsQueryError) return
+    const msg = getErrorMessage(creditCardsQueryError)
+    if (/authorization token is required/i.test(msg)) {
+      toast.error("Session expired, please login again")
+      navigate("/login", { replace: true })
+    }
+  }, [creditCardsError, creditCardsQueryError, navigate])
 
   const peopleGroups = useMemo((): PersonUdharGroup[] => {
     const aggregate = new Map<string, PersonUdharGroup>()
@@ -132,7 +160,9 @@ export default function AccountsPage() {
       ? peopleRows
       : segment === "accounts"
         ? accountListFromApi
-        : ACCOUNTS_MOCK_BY_SEGMENT[segment]
+        : segment === "cards"
+          ? []
+          : ACCOUNTS_MOCK_BY_SEGMENT[segment]
 
   const showPeopleLoading = segment === "people" && recentLoading
   const showPeopleError = segment === "people" && recentError
@@ -161,7 +191,8 @@ export default function AccountsPage() {
   }
 
   const showLoansEmpty = segment === "loans" && items.length === 0
-  const showCardsEmpty = segment === "cards" && items.length === 0
+  const showCardsEmpty =
+    segment === "cards" && !creditCardsLoading && !creditCardsError && creditCards.length === 0
 
   const showHeaderAdd =
     (segment === "accounts" &&
@@ -170,7 +201,7 @@ export default function AccountsPage() {
       accountListFromApi.length > 0) ||
     (segment === "people" && !showPeopleLoading && !showPeopleError && peopleRows.length > 0) ||
     (segment === "loans" && !showLoansEmpty) ||
-    (segment === "cards" && !showCardsEmpty)
+    (segment === "cards" && !creditCardsLoading && !creditCardsError && creditCards.length > 0)
 
   return (
     <main className="flex min-h-0 flex-1 flex-col overflow-hidden bg-background px-4 py-4 pb-28">
@@ -178,6 +209,13 @@ export default function AccountsPage() {
       <AddUdharEntrySheet open={udharOpen} onOpenChange={setUdharOpen} />
       <AddLoanSheet open={loanOpen} onOpenChange={setLoanOpen} />
       <AddCreditCardSheet open={cardOpen} onOpenChange={setCardOpen} />
+      <CreditCardDetailView
+        open={!!selectedCreditCard}
+        onOpenChange={(v) => {
+          if (!v) setSelectedCreditCard(null)
+        }}
+        account={selectedCreditCard}
+      />
       <UdharDetailsModal
         open={!!selectedPeopleGroup}
         onOpenChange={(v) => {
@@ -299,6 +337,24 @@ export default function AccountsPage() {
               Retry
             </Button>
           </div>
+        ) : segment === "cards" && creditCardsLoading ? (
+          <div className="flex flex-col gap-2">
+            <Skeleton className="h-18 w-full rounded-2xl" />
+            <Skeleton className="h-18 w-full rounded-2xl" />
+          </div>
+        ) : segment === "cards" && creditCardsError ? (
+          <div className="space-y-3 rounded-2xl border border-destructive/30 bg-destructive/5 px-4 py-4">
+            <p className="text-sm text-destructive">{getErrorMessage(creditCardsQueryError)}</p>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="rounded-xl"
+              onClick={() => refetchCreditCards()}
+            >
+              Retry
+            </Button>
+          </div>
         ) : showLoansEmpty ? (
           <Card className="flex min-h-0 flex-1 flex-col border-2 border-dashed border-border/90 bg-card py-0 shadow-none">
             <CardContent className="flex flex-1 flex-col items-center justify-center px-6 py-12 text-center">
@@ -339,26 +395,34 @@ export default function AccountsPage() {
           </Card>
         ) : (
           <div className="min-h-0 flex-1 overflow-y-auto [-ms-overflow-style:none] [scrollbar-width:thin]">
-            <ul className="flex list-none flex-col gap-2.5" aria-label={`${meta.listTitle} list`}>
-              {segment === "people"
-                ? peopleGroups.map((group) => (
-                    <li key={group.id}>
-                      <UdharEntryRow
-                        personName={group.name}
-                        amountInr={Math.abs(group.amountInr)}
-                        direction={group.amountInr >= 0 ? "given" : "taken"}
-                        entryCount={group.entries.length}
-                        statusLabel={group.amountInr >= 0 ? "to receive" : "to pay"}
-                        onClick={() => setSelectedGroupId(group.id)}
-                      />
-                    </li>
-                  ))
-                : items.map((item) => (
-                    <li key={item.id}>
-                      <AccountRowCard item={item} />
-                    </li>
-                  ))}
-            </ul>
+            {segment === "cards" ? (
+              <CreditCardList
+                accounts={creditCards}
+                variant="accounts"
+                onSelectCard={setSelectedCreditCard}
+              />
+            ) : (
+              <ul className="flex list-none flex-col gap-2.5" aria-label={`${meta.listTitle} list`}>
+                {segment === "people"
+                  ? peopleGroups.map((group) => (
+                      <li key={group.id}>
+                        <UdharEntryRow
+                          personName={group.name}
+                          amountInr={Math.abs(group.amountInr)}
+                          direction={group.amountInr >= 0 ? "given" : "taken"}
+                          entryCount={group.entries.length}
+                          statusLabel={group.amountInr >= 0 ? "to receive" : "to pay"}
+                          onClick={() => setSelectedGroupId(group.id)}
+                        />
+                      </li>
+                    ))
+                  : items.map((item) => (
+                      <li key={item.id}>
+                        <AccountRowCard item={item} />
+                      </li>
+                    ))}
+              </ul>
+            )}
           </div>
         )}
       </div>
