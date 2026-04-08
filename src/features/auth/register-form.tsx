@@ -13,6 +13,7 @@ import {
 } from "@/components/ui/form"
 import { Input } from "@/components/ui/input"
 import { Separator } from "@/components/ui/separator"
+import { PasswordInput } from "@/features/auth/password-input"
 import { registerRequestSchema, type RegisterRequest } from "@/lib/api/auth-schemas"
 import { getAuthErrorMessage } from "@/lib/api/errors"
 import { useRegisterMutation } from "@/store/api/base-api"
@@ -113,8 +114,7 @@ export function RegisterForm() {
               <FormItem>
                 <FormLabel>Password</FormLabel>
                 <FormControl>
-                  <Input
-                    type="password"
+                  <PasswordInput
                     placeholder="••••••••"
                     autoComplete="new-password"
                     className="h-11 rounded-lg bg-muted/30 dark:bg-input/30"

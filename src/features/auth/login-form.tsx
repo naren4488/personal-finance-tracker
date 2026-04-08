@@ -13,6 +13,7 @@ import {
 } from "@/components/ui/form"
 import { Input } from "@/components/ui/input"
 import { Separator } from "@/components/ui/separator"
+import { PasswordInput } from "@/features/auth/password-input"
 import { loginRequestSchema, type LoginRequest } from "@/lib/api/auth-schemas"
 import { getAuthErrorMessage } from "@/lib/api/errors"
 import { useLoginMutation } from "@/store/api/base-api"
@@ -91,8 +92,7 @@ export function LoginForm() {
               <FormItem>
                 <FormLabel>Password</FormLabel>
                 <FormControl>
-                  <Input
-                    type="password"
+                  <PasswordInput
                     placeholder="••••••••"
                     autoComplete="current-password"
                     className="h-11 rounded-lg bg-muted/30 dark:bg-input/30"
