@@ -234,26 +234,233 @@ export const recentTransactionItemSchema = z
 
 export type RecentTransaction = z.infer<typeof recentTransactionItemSchema>
 
-const recentTransactionsSuccessSchema = z.object({
-  success: z.literal(true),
-  message: z.string().optional(),
-  data: z.object({
-    transactions: z.array(recentTransactionItemSchema),
-  }),
-})
+function extractRecentTransactionsArray(raw: unknown): unknown[] | null {
+  if (Array.isArray(raw)) return raw
+  if (raw === null || typeof raw !== "object") return null
+  const o = raw as Record<string, unknown>
+
+  const data = o.data
+  if (Array.isArray(data)) return data
+  if (data !== null && typeof data === "object" && !Array.isArray(data)) {
+    const d = data as Record<string, unknown>
+    const keys = ["transactions", "items", "recentTransactions", "records"] as const
+    for (const k of keys) {
+      const v = d[k]
+      if (Array.isArray(v)) return v
+    }
+    const inner = d.data
+    if (Array.isArray(inner)) return inner
+  }
+  return null
+}
+
+/** Drop list rows that are account objects (loan / card) mistakenly mixed into a feed. */
+function shouldExcludeAsNonTransactionRow(rec: Record<string, unknown>): boolean {
+  const kind = typeof rec.kind === "string" ? rec.kind.trim().toLowerCase() : ""
+  if (kind === "loan" || kind === "credit_card") return true
+
+  const looksLikeLoanAccount =
+    rec.lenderName != null &&
+    (rec.loanType != null || rec.loanAccountNumber != null || rec.principalAmount != null)
+  if (looksLikeLoanAccount && rec.type == null && rec.category == null && rec.title == null) {
+    return true
+  }
+
+  const looksLikeCreditCardAccount =
+    rec.cardNetwork != null &&
+    rec.creditLimit != null &&
+    (rec.last4Digits != null || rec.billGenerationDay != null)
+  if (looksLikeCreditCardAccount && rec.type == null && rec.category == null && rec.title == null) {
+    return true
+  }
+
+  return false
+}
+
+function normalizeRecentType(v: unknown): "income" | "expense" | "transfer" {
+  const s = typeof v === "string" ? v.trim().toLowerCase() : ""
+  if (s === "income" || s === "expense" || s === "transfer") return s
+  return "expense"
+}
+
+function normalizeRecentSignedAmount(rec: Record<string, unknown>): string {
+  const signed = rec.signedAmount
+  if (signed !== undefined && signed !== null) {
+    return String(signed).replace(/\s/g, "").trim() || "0"
+  }
+  const rawAmt = rec.amount
+  const amtStr =
+    rawAmt !== undefined && rawAmt !== null
+      ? String(rawAmt).replace(/,/g, "").replace(/\s/g, "").trim()
+      : "0"
+  const dir = typeof rec.direction === "string" ? rec.direction.trim().toLowerCase() : ""
+  if (!amtStr || amtStr === "0") return "0"
+  const hasSign = amtStr.startsWith("-") || amtStr.startsWith("+")
+  if (hasSign) return amtStr
+  if (dir === "debit") return amtStr.startsWith("-") ? amtStr : `-${amtStr}`
+  if (dir === "credit") return amtStr.startsWith("-") ? amtStr.slice(1) : amtStr
+  return amtStr
+}
+
+function normalizeRecentTitle(rec: Record<string, unknown>): string {
+  const keys = ["title", "description", "note", "category", "sourceName", "merchantName"] as const
+  for (const k of keys) {
+    const v = rec[k]
+    if (typeof v === "string" && v.trim()) return v.trim()
+  }
+  return "Transaction"
+}
+
+function normalizeRecentDate(rec: Record<string, unknown>): string | null {
+  const d = rec.date
+  if (typeof d === "string" && d.trim()) {
+    const t = d.trim()
+    return t.length >= 10 ? t.slice(0, 10) : t
+  }
+  const c = rec.createdAt
+  if (typeof c === "string" && c.includes("T")) return c.slice(0, 10)
+  return null
+}
+
+function normalizeRawToRecentTransaction(rec: Record<string, unknown>): RecentTransaction | null {
+  const date = normalizeRecentDate(rec)
+  if (!date) return null
+
+  const id = rec.id !== undefined && rec.id !== null ? String(rec.id).trim() : crypto.randomUUID()
+  const title = normalizeRecentTitle(rec)
+  const subtitle =
+    typeof rec.subtitle === "string"
+      ? rec.subtitle
+      : typeof rec.paymentMethod === "string"
+        ? rec.paymentMethod
+        : ""
+
+  const type = normalizeRecentType(rec.type)
+  const directionParsed = recentTransactionDirectionSchema.safeParse(rec.direction)
+  const direction = directionParsed.success ? directionParsed.data : undefined
+
+  const signedAmount = normalizeRecentSignedAmount(rec)
+  const amountStr =
+    rec.amount !== undefined && rec.amount !== null
+      ? String(rec.amount).replace(/,/g, "").replace(/\s/g, "").trim()
+      : signedAmount
+
+  const paymentMethod = typeof rec.paymentMethod === "string" ? rec.paymentMethod : undefined
+  const sourceName = typeof rec.sourceName === "string" ? rec.sourceName : undefined
+  const accountId =
+    typeof rec.accountId === "string"
+      ? rec.accountId
+      : typeof rec.sourceAccountId === "string"
+        ? rec.sourceAccountId
+        : typeof rec.fromAccountId === "string"
+          ? rec.fromAccountId
+          : undefined
+
+  return {
+    id,
+    title,
+    subtitle,
+    type,
+    direction,
+    amount: amountStr,
+    signedAmount,
+    date,
+    paymentMethod,
+    sourceName,
+    accountId,
+  } as RecentTransaction
+}
 
 export function parseGetRecentTransactionsSuccess(
   raw: unknown
 ): { ok: true; transactions: RecentTransaction[] } | { ok: false; error: string } {
-  const parsed = recentTransactionsSuccessSchema.safeParse(raw)
-  if (parsed.success) {
-    return { ok: true, transactions: parsed.data.data.transactions }
+  const strict = z
+    .object({
+      success: z.literal(true),
+      message: z.string().optional(),
+      data: z.object({
+        transactions: z.array(recentTransactionItemSchema),
+      }),
+    })
+    .safeParse(raw)
+  if (strict.success) {
+    const txs = strict.data.data.transactions.filter(
+      (t) => !shouldExcludeAsNonTransactionRow(t as unknown as Record<string, unknown>)
+    )
+    return { ok: true, transactions: txs }
   }
-  return { ok: false, error: "Invalid recent transactions response." }
+
+  const arr = extractRecentTransactionsArray(raw)
+  if (arr === null) {
+    return { ok: false, error: "Invalid recent transactions response." }
+  }
+
+  const out: RecentTransaction[] = []
+  let excluded = 0
+  for (const item of arr) {
+    if (!item || typeof item !== "object" || Array.isArray(item)) continue
+    const rec = item as Record<string, unknown>
+    if (shouldExcludeAsNonTransactionRow(rec)) {
+      excluded += 1
+      continue
+    }
+    const row = normalizeRawToRecentTransaction(rec)
+    if (row) out.push(row)
+  }
+
+  if (import.meta.env.DEV && excluded > 0) {
+    console.warn(
+      "[transactions] GET recent — excluded",
+      excluded,
+      "row(s) that look like accounts, not transactions"
+    )
+  }
+
+  return { ok: true, transactions: out }
 }
 
 /** Parse `signedAmount` / `amount` string to a finite number (handles commas, leading sign). */
 export function parseSignedAmountString(s: string): number {
   const n = Number(String(s).replace(/,/g, "").replace(/\s/g, ""))
   return Number.isFinite(n) ? n : 0
+}
+
+/** Heuristic Udhar detection from recent row text until backend adds explicit tags. */
+export function isUdharRecentTransaction(tx: RecentTransaction): boolean {
+  const hay = `${tx.title} ${tx.subtitle} ${tx.sourceName ?? ""}`.toLowerCase()
+  return (
+    hay.includes("udhar") ||
+    hay.includes("borrow") ||
+    hay.includes("lent") ||
+    hay.includes("money given") ||
+    hay.includes("money taken") ||
+    hay.includes("payment received") ||
+    hay.includes("payment made")
+  )
+}
+
+export function udharDirectionLabel(tx: RecentTransaction): "given" | "taken" {
+  const n = parseSignedAmountString(tx.signedAmount)
+  if (n < 0) return "given"
+  if (n > 0) return "taken"
+  if (tx.direction === "debit") return "given"
+  return "taken"
+}
+
+export function inferUdharPersonKey(tx: RecentTransaction): string {
+  const sub = tx.subtitle.trim()
+  if (sub) return sub.toLowerCase()
+  const title = tx.title.trim()
+  if (title) return title.toLowerCase()
+  return tx.id
+}
+
+export function inferUdharPersonName(tx: RecentTransaction): string {
+  const rec = tx as unknown as Record<string, unknown>
+  if (typeof rec.personName === "string" && rec.personName.trim()) {
+    return rec.personName.trim()
+  }
+  if (tx.subtitle.trim()) return tx.subtitle.trim()
+  if (tx.title.trim()) return tx.title.trim()
+  return "Unknown"
 }

@@ -18,22 +18,26 @@ import { AddAccountSheet } from "@/features/accounts/add-account-sheet"
 import { AddCreditCardSheet } from "@/features/accounts/add-credit-card-sheet"
 import { AddLoanSheet } from "@/features/accounts/add-loan-sheet"
 import { AddUdharEntrySheet } from "@/features/accounts/add-udhar-entry-sheet"
-import { AccountRowCard, PeopleApiRow } from "@/features/accounts/account-list-rows"
+import { AccountRowCard } from "@/features/accounts/account-list-rows"
 import { ACCOUNTS_MOCK_BY_SEGMENT } from "@/features/accounts/accounts-mock-data"
+import { UdharDetailsModal } from "@/features/accounts/udhar-details-modal"
+import { UdharEntryRow } from "@/features/accounts/udhar-entry-row"
 import { AddTransactionModal } from "@/features/entries/add-transaction-modal"
 import { QuickTransactionForm } from "@/features/entries/quick-transaction-form"
 import { RecentTransactionRow } from "@/features/entries/recent-transaction-row"
 import { accountSelectLabel } from "@/lib/api/account-schemas"
 import { getErrorMessage } from "@/lib/api/errors"
 import type { TransactionType } from "@/lib/api/schemas"
-import { parseSignedAmountString, type RecentTransaction } from "@/lib/api/transaction-schemas"
+import {
+  inferUdharPersonName,
+  isUdharRecentTransaction,
+  parseSignedAmountString,
+  type RecentTransaction,
+  udharDirectionLabel,
+} from "@/lib/api/transaction-schemas"
 import { formatCurrency } from "@/lib/format"
 import { cn } from "@/lib/utils"
-import {
-  useGetAccountsQuery,
-  useGetPeopleQuery,
-  useGetRecentTransactionsQuery,
-} from "@/store/api/base-api"
+import { useGetAccountsQuery, useGetRecentTransactionsQuery } from "@/store/api/base-api"
 import { useAppSelector } from "@/store/hooks"
 
 type EntrySegment = "txns" | "expenses" | "udhar" | "loans" | "cards"
@@ -147,6 +151,7 @@ export default function EntriesPage() {
   const [addAccountSheetOpen, setAddAccountSheetOpen] = useState(false)
   const [txTypeFilter, setTxTypeFilter] = useState<"all" | TransactionType>("all")
   const [txAccountFilter, setTxAccountFilter] = useState<string>("all")
+  const [selectedUdharTx, setSelectedUdharTx] = useState<RecentTransaction | null>(null)
 
   const user = useAppSelector((s) => s.auth.user)
   const {
@@ -180,18 +185,18 @@ export default function EntriesPage() {
       navigate("/login", { replace: true })
     }
   }, [accountsQueryError, accountsError, navigate])
-  const {
-    isLoading: peopleLoading,
-    isError: peopleError,
-    error: peopleQueryError,
-    refetch: refetchPeople,
-  } = useGetPeopleQuery()
-  const peopleFromStore = useAppSelector((s) => s.people.items)
-
-  const mockPeopleById = useMemo(
-    () => Object.fromEntries(ACCOUNTS_MOCK_BY_SEGMENT.people.map((p) => [p.id, p])),
-    []
+  const udharTransactions = useMemo(
+    () =>
+      recentTransactions
+        .filter(isUdharRecentTransaction)
+        .sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0)),
+    [recentTransactions]
   )
+  const selectedUdharPersonEntries = useMemo(() => {
+    if (!selectedUdharTx) return []
+    const selectedName = inferUdharPersonName(selectedUdharTx).toLowerCase()
+    return udharTransactions.filter((tx) => inferUdharPersonName(tx).toLowerCase() === selectedName)
+  }, [selectedUdharTx, udharTransactions])
 
   const loansMockList = ACCOUNTS_MOCK_BY_SEGMENT.loans
   const cardsMockList = ACCOUNTS_MOCK_BY_SEGMENT.cards
@@ -227,7 +232,7 @@ export default function EntriesPage() {
       return !isLoading && !isError && filtered.length > 0
     }
     if (segment === "udhar") {
-      return !peopleLoading && !peopleError && peopleFromStore.length > 0
+      return !isLoading && !isError && udharTransactions.length > 0
     }
     if (segment === "loans") return loansMockList.length > 0
     if (segment === "cards") return cardsMockList.length > 0
@@ -237,24 +242,16 @@ export default function EntriesPage() {
     isLoading,
     isError,
     filtered.length,
-    peopleLoading,
-    peopleError,
-    peopleFromStore.length,
+    udharTransactions.length,
     loansMockList.length,
     cardsMockList.length,
   ])
 
-  const segmentListLoading =
-    segment === "udhar"
-      ? peopleLoading
-      : segment === "loans" || segment === "cards"
-        ? false
-        : isLoading
+  const segmentListLoading = segment === "loans" || segment === "cards" ? false : isLoading
 
-  const segmentListError =
-    segment === "udhar" ? peopleError : segment === "loans" || segment === "cards" ? false : isError
+  const segmentListError = segment === "loans" || segment === "cards" ? false : isError
 
-  const segmentError = segment === "udhar" ? peopleQueryError : error
+  const segmentError = error
 
   const totalDisplay = headerTotalLabel(segment, filtered)
 
@@ -324,7 +321,7 @@ export default function EntriesPage() {
       : segment === "expenses"
         ? "No expenses match your filters"
         : segment === "udhar"
-          ? "Add a person and start tracking lent or borrowed money"
+          ? "Add an udhar entry to track money given or taken"
           : segment === "loans"
             ? "Add a loan to track EMIs and payments"
             : segment === "cards"
@@ -354,6 +351,14 @@ export default function EntriesPage() {
       <AddUdharEntrySheet open={udharSheetOpen} onOpenChange={setUdharSheetOpen} />
       <AddLoanSheet open={loanSheetOpen} onOpenChange={setLoanSheetOpen} />
       <AddCreditCardSheet open={cardSheetOpen} onOpenChange={setCardSheetOpen} />
+      <UdharDetailsModal
+        open={!!selectedUdharTx}
+        onOpenChange={(v) => {
+          if (!v) setSelectedUdharTx(null)
+        }}
+        personName={selectedUdharTx ? inferUdharPersonName(selectedUdharTx) : ""}
+        entries={selectedUdharPersonEntries}
+      />
 
       <div className="mb-3 grid grid-cols-5 gap-1" role="tablist" aria-label="Entry categories">
         {ENTRY_SEGMENTS.map(({ id, label, icon: Icon }) => {
@@ -498,7 +503,7 @@ export default function EntriesPage() {
             variant="outline"
             size="sm"
             className="rounded-xl"
-            onClick={() => (segment === "udhar" ? refetchPeople() : refetch())}
+            onClick={() => refetch()}
           >
             Retry
           </Button>
@@ -604,9 +609,14 @@ export default function EntriesPage() {
 
       {!segmentListLoading && !segmentListError && entriesHasList && segment === "udhar" && (
         <ul className="flex list-none flex-col gap-2.5" aria-label="Udhar list">
-          {peopleFromStore.map((person) => (
-            <li key={person.id}>
-              <PeopleApiRow person={person} balanceRow={mockPeopleById[person.id]} />
+          {udharTransactions.map((tx) => (
+            <li key={tx.id}>
+              <UdharEntryRow
+                personName={inferUdharPersonName(tx)}
+                amountInr={Math.abs(parseSignedAmountString(tx.signedAmount))}
+                direction={udharDirectionLabel(tx)}
+                onClick={() => setSelectedUdharTx(tx)}
+              />
             </li>
           ))}
         </ul>

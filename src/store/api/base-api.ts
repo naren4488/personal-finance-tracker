@@ -51,6 +51,13 @@ import {
   type CreateTransactionApiBody,
   type RecentTransaction,
 } from "@/lib/api/transaction-schemas"
+import {
+  buildUdharEntryPostBody,
+  createUdharEntryRequestSchema,
+  parseCreateUdharEntrySuccess,
+  type CreateUdharEntryRequest,
+  type CreateUdharEntryResult,
+} from "@/lib/api/udhar-schemas"
 import { type CreateTransactionPayload, type Transaction } from "@/lib/api/schemas"
 import { mockTransactions } from "@/lib/api/mock-transactions"
 import { getToken } from "@/lib/auth/token"
@@ -541,7 +548,7 @@ export const baseApi = createApi({
       async queryFn(limitArg, _api, _extraOptions, baseQuery) {
         const limit =
           typeof limitArg === "number" && Number.isFinite(limitArg) && limitArg > 0
-            ? Math.min(Math.floor(limitArg), 200)
+            ? Math.floor(limitArg)
             : 50
         const res = await baseQuery({
           url: TRANSACTION_PATHS.recent,
@@ -633,6 +640,49 @@ export const baseApi = createApi({
         { type: "Transaction", id: "RECENT" },
       ],
     }),
+
+    createUdharEntry: build.mutation<CreateUdharEntryResult, CreateUdharEntryRequest>({
+      async queryFn(body, _api, _extraOptions, baseQuery) {
+        const validated = createUdharEntryRequestSchema.safeParse(body)
+        if (!validated.success) {
+          const first = validated.error.flatten().formErrors[0]
+          return { error: { status: 422, data: first ?? "Invalid udhar entry payload" } }
+        }
+        const postBody = buildUdharEntryPostBody(validated.data)
+        const res = await baseQuery({
+          url: TRANSACTION_PATHS.udhar,
+          method: "POST",
+          body: postBody,
+        })
+        if (res.error) {
+          return { error: normalizeFetchError(res.error) }
+        }
+        const failMsg = parseApiFailureMessage(res.data)
+        if (failMsg) {
+          return { error: { status: 400, data: failMsg } }
+        }
+        const parsed = parseCreateUdharEntrySuccess(res.data)
+        if (!parsed.ok) {
+          return { error: { status: 422, data: parsed.error } }
+        }
+        const message =
+          parsed.message?.trim() && parsed.message.trim().length > 0
+            ? parsed.message.trim()
+            : "udhar entry created successfully"
+        return {
+          data: {
+            message,
+            ...(parsed.entry ? { entry: parsed.entry } : {}),
+          },
+        }
+      },
+      invalidatesTags: [
+        { type: "Transaction", id: "LIST" },
+        { type: "Transaction", id: "RECENT" },
+        { type: "People", id: "LIST" },
+        { type: "Account", id: "LIST" },
+      ],
+    }),
   }),
 })
 
@@ -647,6 +697,7 @@ export const {
   useCreatePersonMutation,
   useGetRecentTransactionsQuery,
   useAddTransactionMutation,
+  useCreateUdharEntryMutation,
   useGetMeQuery,
   useUpdateMeMutation,
   useDeleteMeMutation,

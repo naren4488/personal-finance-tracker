@@ -11,7 +11,7 @@ import { parseSignedAmountString } from "@/lib/api/transaction-schemas"
 import { formatCurrency } from "@/lib/format"
 import { useGetRecentTransactionsQuery } from "@/store/api/base-api"
 
-const HOME_RECENT_LIMIT = 100
+const HOME_RECENT_LIMIT = 5
 
 export default function HomePage() {
   const navigate = useNavigate()

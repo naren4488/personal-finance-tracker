@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useId, useState } from "react"
+import { useCallback, useEffect, useId, useMemo, useState } from "react"
 import { useNavigate } from "react-router-dom"
 import {
   ArrowDown,
@@ -7,8 +7,6 @@ import {
   ArrowUp,
   CalendarDays,
   ChevronDown,
-  CreditCard,
-  Gem,
   X,
 } from "lucide-react"
 import { toast } from "sonner"
@@ -16,24 +14,28 @@ import { ToggleTile } from "@/components/toggle-tile"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { accountSelectLabel, filterActiveAccounts } from "@/lib/api/account-schemas"
 import { getErrorMessage } from "@/lib/api/errors"
+import type { CreateUdharEntryRequest } from "@/lib/api/udhar-schemas"
 import { endUserSession } from "@/lib/auth/end-session"
 import { FORM_OVERLAY_FOOTER, FORM_OVERLAY_SCROLL_BODY } from "@/lib/form-overlay-scroll"
 import { cn } from "@/lib/utils"
-import { useCreatePersonMutation, useGetPeopleQuery } from "@/store/api/base-api"
+import {
+  useCreatePersonMutation,
+  useCreateUdharEntryMutation,
+  useGetAccountsQuery,
+  useGetPeopleQuery,
+} from "@/store/api/base-api"
 import { useAppDispatch, useAppSelector } from "@/store/hooks"
 
-const PAID_FROM_OPTIONS = ["HDFC Savings", "Cash wallet", "UPI — Primary"] as const
-
 const ENTRY_TYPES = [
-  { id: "lent" as const, label: "Money Given (Lent)", Icon: ArrowUp },
-  { id: "borrowed" as const, label: "Money Taken (Borrowed)", Icon: ArrowDown },
-  { id: "received" as const, label: "Payment Received", Icon: ArrowLeft },
-  { id: "paid" as const, label: "Payment Made", Icon: ArrowRight },
+  { id: "money_given" as const, label: "Money Given (Lent)", Icon: ArrowUp },
+  { id: "money_taken" as const, label: "Money Taken (Borrowed)", Icon: ArrowDown },
+  { id: "payment_received" as const, label: "Payment Received", Icon: ArrowLeft },
+  { id: "payment_made" as const, label: "Payment Made", Icon: ArrowRight },
 ]
 
 type EntryTypeId = (typeof ENTRY_TYPES)[number]["id"]
-type PaymentMethod = "account" | "card"
 type PersonMode = "existing" | "new"
 
 function todayIsoDate(): string {
@@ -51,10 +53,9 @@ export type UdharFormState = {
   personPhone: string
   entryType: EntryTypeId
   amount: string
-  paymentMethod: PaymentMethod
-  paidFrom: string
+  accountId: string
   date: string
-  askBackBy: string
+  dueDate: string
   note: string
 }
 
@@ -64,12 +65,11 @@ function initialFormState(): UdharFormState {
     selectedPersonId: "",
     personName: "",
     personPhone: "",
-    entryType: "lent",
+    entryType: "money_given",
     amount: "",
-    paymentMethod: "account",
-    paidFrom: "",
+    accountId: "",
     date: todayIsoDate(),
-    askBackBy: "",
+    dueDate: "",
     note: "",
   }
 }
@@ -104,10 +104,19 @@ function AddUdharEntrySheetMounted({ onOpenChange }: MountedProps) {
   const selectPersonId = useId()
   const navigate = useNavigate()
   const dispatch = useAppDispatch()
+  const user = useAppSelector((s) => s.auth.user)
   const people = useAppSelector((s) => s.people.items)
   const { isLoading: peopleQueryLoading, isFetching: peopleQueryFetching } = useGetPeopleQuery()
   const [createPerson, { isLoading: isCreatingPerson }] = useCreatePersonMutation()
+  const [createUdharEntry, { isLoading: isUdharSubmitting }] = useCreateUdharEntryMutation()
+  const {
+    data: accountsRaw = [],
+    isLoading: accountsLoading,
+    isFetching: accountsFetching,
+  } = useGetAccountsQuery(undefined, { skip: !user })
+  const accounts = useMemo(() => filterActiveAccounts(accountsRaw), [accountsRaw])
   const peopleListLoading = peopleQueryLoading || peopleQueryFetching
+  const accountsListLoading = accountsLoading || accountsFetching
 
   const [form, setForm] = useState(() => initialFormState())
 
@@ -135,7 +144,6 @@ function AddUdharEntrySheetMounted({ onOpenChange }: MountedProps) {
     e.preventDefault()
 
     let effectivePersonId = form.selectedPersonId
-    let resolvedPersonName: string | undefined
 
     if (form.personMode === "new") {
       const name = form.personName.trim()
@@ -148,7 +156,6 @@ function AddUdharEntrySheetMounted({ onOpenChange }: MountedProps) {
           name,
           phoneNumber: form.personPhone.trim() || undefined,
         }).unwrap()
-        console.log("Success", response)
         toast.success("Person added")
         setForm((f) => ({
           ...f,
@@ -158,9 +165,7 @@ function AddUdharEntrySheetMounted({ onOpenChange }: MountedProps) {
           selectedPersonId: response.id,
         }))
         effectivePersonId = response.id
-        resolvedPersonName = response.name
       } catch (err) {
-        console.error("Error", err)
         const msg = getErrorMessage(err)
         if (isAuthTokenRequiredMessage(msg)) {
           toast.error("Please sign in again")
@@ -178,7 +183,6 @@ function AddUdharEntrySheetMounted({ onOpenChange }: MountedProps) {
         return
       }
       effectivePersonId = form.selectedPersonId
-      resolvedPersonName = people.find((p) => p.id === form.selectedPersonId)?.name
     }
 
     const n = form.amount.replace(/\D/g, "")
@@ -186,25 +190,41 @@ function AddUdharEntrySheetMounted({ onOpenChange }: MountedProps) {
       toast.error("Enter a valid amount")
       return
     }
-    if (!form.paidFrom) {
+    if (!form.accountId) {
       toast.error("Select an account")
       return
     }
+    if (!form.dueDate) {
+      toast.error("Select due date")
+      return
+    }
 
-    console.log("[Udhar] Add Entry (demo log — no udhar API yet)", {
+    const payload: CreateUdharEntryRequest = {
       entryType: form.entryType,
-      selectedPersonId: effectivePersonId,
-      personName: resolvedPersonName,
-      amountInr: Number(n),
-      paymentMethod: form.paymentMethod,
-      paidFrom: form.paidFrom,
+      personId: effectivePersonId,
+      amount: String(Number(n)),
+      accountId: form.accountId,
       date: form.date,
-      askBackBy: form.askBackBy || undefined,
-      note: form.note.trim() || undefined,
-    })
+      dueDate: form.dueDate,
+      ...(form.note.trim() ? { note: form.note.trim() } : {}),
+    }
 
-    toast.success("Entry saved (demo)")
-    dismiss()
+    try {
+      await createUdharEntry(payload).unwrap()
+      toast.success("udhar entry created successfully")
+      setForm(initialFormState())
+      dismiss()
+    } catch (err) {
+      const msg = getErrorMessage(err)
+      if (isAuthTokenRequiredMessage(msg)) {
+        toast.error("Please sign in again")
+        endUserSession(dispatch)
+        dismiss()
+        navigate("/login", { replace: true })
+        return
+      }
+      toast.error(msg)
+    }
   }
 
   const fieldClass =
@@ -359,51 +379,36 @@ function AddUdharEntrySheetMounted({ onOpenChange }: MountedProps) {
             </section>
 
             <section>
-              <Label className="mb-0.5 block text-xs font-bold text-primary">Payment Method</Label>
-              <div className="grid grid-cols-2 gap-1.5">
-                <ToggleTile
-                  selected={form.paymentMethod === "account"}
-                  onClick={() => setForm((f) => ({ ...f, paymentMethod: "account" }))}
-                >
-                  <CreditCard
-                    className="size-4 shrink-0 text-primary"
-                    strokeWidth={2}
-                    aria-hidden
-                  />
-                  <span>Account / Cash / UPI</span>
-                </ToggleTile>
-                <ToggleTile
-                  selected={form.paymentMethod === "card"}
-                  onClick={() => setForm((f) => ({ ...f, paymentMethod: "card" }))}
-                >
-                  <Gem className="size-4 shrink-0 text-primary" strokeWidth={2} aria-hidden />
-                  <span>Credit Card</span>
-                </ToggleTile>
-              </div>
-            </section>
-
-            <section>
               <Label
-                htmlFor="udhar-paid-from"
+                htmlFor="udhar-account"
                 className="mb-0.5 block text-xs font-bold text-primary"
               >
-                Paid From
+                Account
               </Label>
               <div className="relative">
+                {accountsListLoading ? (
+                  <p className="text-xs text-muted-foreground">Loading accounts…</p>
+                ) : accounts.length === 0 ? (
+                  <p className="text-xs text-muted-foreground">
+                    Add an account first to link this entry.
+                  </p>
+                ) : null}
                 <select
-                  id="udhar-paid-from"
-                  value={form.paidFrom}
-                  onChange={(e) => setForm((f) => ({ ...f, paidFrom: e.target.value }))}
+                  id="udhar-account"
+                  value={form.accountId}
+                  disabled={accountsListLoading || accounts.length === 0}
+                  onChange={(e) => setForm((f) => ({ ...f, accountId: e.target.value }))}
                   className={cn(
                     fieldClass,
                     "w-full appearance-none pr-9",
-                    !form.paidFrom && "text-muted-foreground"
+                    !form.accountId && "text-muted-foreground",
+                    "disabled:cursor-not-allowed disabled:opacity-60"
                   )}
                 >
                   <option value="">Select account</option>
-                  {PAID_FROM_OPTIONS.map((opt) => (
-                    <option key={opt} value={opt}>
-                      {opt}
+                  {accounts.map((a) => (
+                    <option key={a.id} value={a.id}>
+                      {accountSelectLabel(a)}
                     </option>
                   ))}
                 </select>
@@ -432,17 +437,17 @@ function AddUdharEntrySheetMounted({ onOpenChange }: MountedProps) {
               </section>
               <section>
                 <Label
-                  htmlFor="udhar-ask-back"
+                  htmlFor="udhar-due-date"
                   className="mb-0.5 block text-xs font-bold text-primary"
                 >
-                  Ask money back by
+                  Due date
                 </Label>
                 <div className="relative">
                   <Input
-                    id="udhar-ask-back"
+                    id="udhar-due-date"
                     type="date"
-                    value={form.askBackBy}
-                    onChange={(e) => setForm((f) => ({ ...f, askBackBy: e.target.value }))}
+                    value={form.dueDate}
+                    onChange={(e) => setForm((f) => ({ ...f, dueDate: e.target.value }))}
                     className={cn(fieldClass, "pr-9 scheme-light dark:scheme-dark")}
                   />
                   <CalendarDays
@@ -452,17 +457,14 @@ function AddUdharEntrySheetMounted({ onOpenChange }: MountedProps) {
                 </div>
               </section>
             </div>
-            <p className="-mt-1 text-[10px] text-muted-foreground sm:text-[11px]">
-              When should this person return the money?
-            </p>
 
             <section>
               <Label htmlFor="udhar-note" className="mb-0.5 block text-xs font-bold text-primary">
-                Note
+                Note <span className="font-normal text-muted-foreground">(optional)</span>
               </Label>
               <textarea
                 id="udhar-note"
-                rows={1}
+                rows={2}
                 placeholder="What was this for?"
                 value={form.note}
                 onChange={(e) => setForm((f) => ({ ...f, note: e.target.value }))}
@@ -478,10 +480,10 @@ function AddUdharEntrySheetMounted({ onOpenChange }: MountedProps) {
           <div className={cn(FORM_OVERLAY_FOOTER, "px-4")}>
             <Button
               type="submit"
-              disabled={isCreatingPerson}
+              disabled={isCreatingPerson || isUdharSubmitting}
               className="h-10 w-full rounded-xl bg-[hsl(230_22%_62%)] text-sm font-bold text-white hover:bg-[hsl(230_22%_56%)] disabled:opacity-60 sm:h-11 sm:text-base"
             >
-              {isCreatingPerson ? "Saving…" : "Add Entry"}
+              {isCreatingPerson ? "Saving…" : isUdharSubmitting ? "Submitting…" : "Add Entry"}
             </Button>
           </div>
         </form>

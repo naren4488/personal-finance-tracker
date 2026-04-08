@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react"
+import { useMemo, useState } from "react"
 import { CreditCard, Landmark, Users, Wallet } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
@@ -7,17 +7,26 @@ import { AddAccountSheet } from "@/features/accounts/add-account-sheet"
 import { AddCreditCardSheet } from "@/features/accounts/add-credit-card-sheet"
 import { AddLoanSheet } from "@/features/accounts/add-loan-sheet"
 import { AddUdharEntrySheet } from "@/features/accounts/add-udhar-entry-sheet"
-import { AccountRowCard, PeopleApiRow } from "@/features/accounts/account-list-rows"
+import { AccountRowCard } from "@/features/accounts/account-list-rows"
 import {
   ACCOUNTS_MOCK_BY_SEGMENT,
   ACCOUNTS_SEGMENT_META,
   type AccountsSegmentId,
   type AccountListItem,
 } from "@/features/accounts/accounts-mock-data"
+import { UdharDetailsModal } from "@/features/accounts/udhar-details-modal"
+import { UdharEntryRow } from "@/features/accounts/udhar-entry-row"
 import { accountBalanceInrFromApi, accountSubtitleForList } from "@/lib/api/account-schemas"
 import { getErrorMessage } from "@/lib/api/errors"
+import {
+  inferUdharPersonName,
+  isUdharRecentTransaction,
+  parseSignedAmountString,
+  type RecentTransaction,
+  udharDirectionLabel,
+} from "@/lib/api/transaction-schemas"
 import { cn } from "@/lib/utils"
-import { useGetAccountsQuery, useGetPeopleQuery } from "@/store/api/base-api"
+import { useGetAccountsQuery, useGetRecentTransactionsQuery } from "@/store/api/base-api"
 import { useAppSelector } from "@/store/hooks"
 
 const SEGMENT_ORDER: AccountsSegmentId[] = ["accounts", "people", "loans", "cards"]
@@ -29,16 +38,23 @@ const SEGMENT_ICONS: Record<AccountsSegmentId, typeof Users> = {
   cards: CreditCard,
 }
 
+type PersonUdharGroup = {
+  id: string
+  name: string
+  amountInr: number
+  entries: RecentTransaction[]
+}
+
 export default function AccountsPage() {
   const [segment, setSegment] = useState<AccountsSegmentId>("accounts")
   const [udharOpen, setUdharOpen] = useState(false)
   const [addAccountOpen, setAddAccountOpen] = useState(false)
   const [loanOpen, setLoanOpen] = useState(false)
   const [cardOpen, setCardOpen] = useState(false)
+  const [selectedGroupId, setSelectedGroupId] = useState<string | null>(null)
 
   const meta = ACCOUNTS_SEGMENT_META[segment]
   const user = useAppSelector((s) => s.auth.user)
-  const peopleFromStore = useAppSelector((s) => s.people.items)
 
   const {
     data: apiAccounts,
@@ -49,42 +65,55 @@ export default function AccountsPage() {
   } = useGetAccountsQuery(undefined, { skip: !user })
 
   const {
-    data: peopleQueryData,
-    isLoading: peopleLoading,
-    isError: peopleError,
-    error: peopleQueryError,
-    refetch: refetchPeople,
-    isFetching: peopleFetching,
-  } = useGetPeopleQuery()
+    data: recentTransactions = [],
+    isLoading: recentLoading,
+    isError: recentError,
+    error: recentQueryError,
+    refetch: refetchRecent,
+  } = useGetRecentTransactionsQuery(5000, { refetchOnMountOrArgChange: true })
 
-  useEffect(() => {
-    if (peopleQueryData) {
-      console.log("People:", peopleQueryData)
-    }
-  }, [peopleQueryData])
+  const peopleGroups = useMemo((): PersonUdharGroup[] => {
+    const aggregate = new Map<string, PersonUdharGroup>()
 
-  useEffect(() => {
-    if (peopleError) {
-      console.error("Error:", peopleQueryError)
+    for (const tx of recentTransactions) {
+      if (!isUdharRecentTransaction(tx)) continue
+      const rec = tx as unknown as Record<string, unknown>
+      const personId =
+        typeof rec.personId === "string" && rec.personId.trim() ? rec.personId : undefined
+      const key = personId
+        ? `person:${personId}`
+        : inferUdharPersonName(tx).trim().toLowerCase() || tx.id
+      const signed = parseSignedAmountString(tx.signedAmount)
+      const direction = udharDirectionLabel(tx)
+      const amt = direction === "given" ? -Math.abs(signed) : Math.abs(signed)
+      const name = inferUdharPersonName(tx)
+      const prev = aggregate.get(key)
+      if (prev) {
+        prev.amountInr += amt
+        prev.entries.push(tx)
+      } else {
+        aggregate.set(key, { id: key, name, amountInr: amt, entries: [tx] })
+      }
     }
-  }, [peopleError, peopleQueryError])
+
+    const groups = Array.from(aggregate.values())
+    groups.forEach((g) => {
+      g.entries.sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0))
+    })
+    return groups.sort((a, b) => b.entries.length - a.entries.length)
+  }, [recentTransactions])
 
   const peopleRows = useMemo((): AccountListItem[] => {
-    const mockById = Object.fromEntries(ACCOUNTS_MOCK_BY_SEGMENT.people.map((p) => [p.id, p]))
-    return peopleFromStore.map(
-      (p) =>
-        mockById[p.id] ?? {
-          id: p.id,
-          name: p.name,
-          entryCount: 0,
-          amountInr: 0,
-        }
-    )
-  }, [peopleFromStore])
-
-  const mockById = useMemo(
-    () => Object.fromEntries(ACCOUNTS_MOCK_BY_SEGMENT.people.map((p) => [p.id, p])),
-    []
+    return peopleGroups.map((g) => ({
+      id: g.id,
+      name: g.name,
+      amountInr: g.amountInr,
+      entryCount: g.entries.length,
+    }))
+  }, [peopleGroups])
+  const selectedPeopleGroup = useMemo(
+    () => (selectedGroupId ? (peopleGroups.find((g) => g.id === selectedGroupId) ?? null) : null),
+    [selectedGroupId, peopleGroups]
   )
 
   const accountListFromApi: AccountListItem[] = useMemo(() => {
@@ -105,9 +134,8 @@ export default function AccountsPage() {
         ? accountListFromApi
         : ACCOUNTS_MOCK_BY_SEGMENT[segment]
 
-  const showPeopleLoading =
-    segment === "people" && (peopleLoading || peopleFetching) && !peopleQueryData
-  const showPeopleError = segment === "people" && peopleError
+  const showPeopleLoading = segment === "people" && recentLoading
+  const showPeopleError = segment === "people" && recentError
 
   const showAccountsLoading = segment === "accounts" && accountsLoading
   const showAccountsError = segment === "accounts" && accountsError
@@ -150,6 +178,14 @@ export default function AccountsPage() {
       <AddUdharEntrySheet open={udharOpen} onOpenChange={setUdharOpen} />
       <AddLoanSheet open={loanOpen} onOpenChange={setLoanOpen} />
       <AddCreditCardSheet open={cardOpen} onOpenChange={setCardOpen} />
+      <UdharDetailsModal
+        open={!!selectedPeopleGroup}
+        onOpenChange={(v) => {
+          if (!v) setSelectedGroupId(null)
+        }}
+        personName={selectedPeopleGroup?.name ?? ""}
+        entries={selectedPeopleGroup?.entries ?? []}
+      />
 
       <div
         className="mb-3 grid grid-cols-4 gap-1 sm:mb-4"
@@ -250,13 +286,15 @@ export default function AccountsPage() {
           <p className="py-8 text-center text-sm text-muted-foreground">Loading…</p>
         ) : showPeopleError ? (
           <div className="space-y-3 rounded-2xl border border-destructive/30 bg-destructive/5 px-4 py-4">
-            <p className="text-sm text-destructive">{getErrorMessage(peopleQueryError)}</p>
+            <p className="text-sm text-destructive">{getErrorMessage(recentQueryError)}</p>
             <Button
               type="button"
               variant="outline"
               size="sm"
               className="rounded-xl"
-              onClick={() => refetchPeople()}
+              onClick={() => {
+                refetchRecent()
+              }}
             >
               Retry
             </Button>
@@ -303,9 +341,16 @@ export default function AccountsPage() {
           <div className="min-h-0 flex-1 overflow-y-auto [-ms-overflow-style:none] [scrollbar-width:thin]">
             <ul className="flex list-none flex-col gap-2.5" aria-label={`${meta.listTitle} list`}>
               {segment === "people"
-                ? peopleFromStore.map((person) => (
-                    <li key={person.id}>
-                      <PeopleApiRow person={person} balanceRow={mockById[person.id]} />
+                ? peopleGroups.map((group) => (
+                    <li key={group.id}>
+                      <UdharEntryRow
+                        personName={group.name}
+                        amountInr={Math.abs(group.amountInr)}
+                        direction={group.amountInr >= 0 ? "given" : "taken"}
+                        entryCount={group.entries.length}
+                        statusLabel={group.amountInr >= 0 ? "to receive" : "to pay"}
+                        onClick={() => setSelectedGroupId(group.id)}
+                      />
                     </li>
                   ))
                 : items.map((item) => (
