@@ -105,6 +105,38 @@ export type CreateAccountRequest = {
   creditLimitInr?: number
   billGenerationDay?: number
   paymentDueDay?: number
+  /** `kind === "loan"` — API slug, e.g. `personal`, `home` */
+  loanType?: string
+  /** `kind === "loan"` — required by API (same as bank/lender in UI) */
+  lenderName?: string
+  loanAccountNumber?: string
+  principalAmountInr?: number
+  /** Sent as string in POST body, e.g. `"8.5"` */
+  interestRate?: string
+  tenureMonths?: number
+  startDate?: string
+  emiDueDay?: number
+  dueDateCycle?: "fixed" | "rolling"
+  overrideEmiAmountOn?: boolean
+}
+
+/** Map UI loan type label to POST `loanType` slug. */
+export function loanTypeLabelToApiSlug(label: string): string {
+  const map: Record<string, string> = {
+    "Personal Loan": "personal",
+    "Home Loan": "home",
+    "Vehicle Loan": "vehicle",
+    "Education Loan": "education",
+    "Business Loan": "business",
+    "Gold Loan": "gold",
+    Other: "other",
+  }
+  const fallback = label.trim().toLowerCase().replace(/\s+/g, "_") || "other"
+  return map[label] ?? fallback
+}
+
+function dueDateCycleForApi(cycle: "fixed" | "rolling"): string {
+  return cycle === "fixed" ? "fixed_monthly_date" : "rolling"
 }
 
 export type CreateAccountResult = {
@@ -152,6 +184,46 @@ export function buildCreateAccountPostBody(body: CreateAccountRequest): Record<s
     base.creditLimit = formatOpeningBalanceForApi(limit)
     base.billGenerationDay = String(billDay)
     base.paymentDueDay = String(dueDay)
+  }
+
+  if (body.kind === "loan") {
+    const lender = (body.lenderName ?? body.bankName).trim()
+    if (!lender) throw new Error("lenderName is required for loans")
+
+    const principal = body.principalAmountInr
+    if (principal == null || !Number.isFinite(principal) || principal <= 0) {
+      throw new Error("principalAmount must be a positive value")
+    }
+
+    const tenure = body.tenureMonths
+    if (tenure == null || !Number.isFinite(tenure) || tenure < 1) {
+      throw new Error("tenureMonths must be a positive integer")
+    }
+
+    const startDate = (body.startDate ?? "").trim()
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(startDate)) {
+      throw new Error("startDate must be YYYY-MM-DD")
+    }
+
+    const emiDay = Number.isFinite(body.emiDueDay) ? Math.trunc(body.emiDueDay ?? 0) : 0
+    if (emiDay < 1 || emiDay > 31) throw new Error("emiDueDay must be between 1 and 31")
+
+    const cycle = body.dueDateCycle === "rolling" ? "rolling" : "fixed"
+    const rateStr = (body.interestRate ?? "").trim() || "0"
+    const loanType = (body.loanType ?? "personal").trim().toLowerCase() || "personal"
+    const acctNo = body.loanAccountNumber?.trim()
+
+    base.bankName = lender
+    base.loanType = loanType
+    base.lenderName = lender
+    if (acctNo) base.loanAccountNumber = acctNo
+    base.principalAmount = formatOpeningBalanceForApi(principal)
+    base.interestRate = rateStr
+    base.tenureMonths = Math.trunc(tenure)
+    base.startDate = startDate
+    base.emiDueDay = String(emiDay)
+    base.dueDateCycle = dueDateCycleForApi(cycle)
+    base.overrideEmiAmountOn = Boolean(body.overrideEmiAmountOn)
   }
 
   return base

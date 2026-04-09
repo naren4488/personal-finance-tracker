@@ -18,10 +18,10 @@ import { AddAccountSheet } from "@/features/accounts/add-account-sheet"
 import { AddCreditCardSheet } from "@/features/accounts/add-credit-card-sheet"
 import { AddLoanSheet } from "@/features/accounts/add-loan-sheet"
 import { AddUdharEntrySheet } from "@/features/accounts/add-udhar-entry-sheet"
-import { AccountRowCard } from "@/features/accounts/account-list-rows"
-import { ACCOUNTS_MOCK_BY_SEGMENT } from "@/features/accounts/accounts-mock-data"
 import { CreditCardDetailView } from "@/features/accounts/credit-card-detail-view"
 import { CreditCardList } from "@/features/accounts/credit-card-list"
+import { LoanDetailView } from "@/features/accounts/loan-detail-view"
+import { LoanList } from "@/features/accounts/loan-list"
 import { UdharDetailsModal } from "@/features/accounts/udhar-details-modal"
 import { UdharEntryRow } from "@/features/accounts/udhar-entry-row"
 import { AddTransactionModal } from "@/features/entries/add-transaction-modal"
@@ -43,6 +43,7 @@ import { cn } from "@/lib/utils"
 import {
   useGetAccountsQuery,
   useGetCreditCardsQuery,
+  useGetLoansQuery,
   useGetRecentTransactionsQuery,
 } from "@/store/api/base-api"
 import { useAppSelector } from "@/store/hooks"
@@ -160,6 +161,7 @@ export default function EntriesPage() {
   const [txAccountFilter, setTxAccountFilter] = useState<string>("all")
   const [selectedUdharTx, setSelectedUdharTx] = useState<RecentTransaction | null>(null)
   const [selectedCreditCard, setSelectedCreditCard] = useState<Account | null>(null)
+  const [selectedLoan, setSelectedLoan] = useState<Account | null>(null)
 
   const user = useAppSelector((s) => s.auth.user)
   const {
@@ -183,6 +185,14 @@ export default function EntriesPage() {
     error: creditCardsQueryError,
     refetch: refetchCreditCards,
   } = useGetCreditCardsQuery(undefined, { skip: !user || segment !== "cards" })
+
+  const {
+    data: loans = [],
+    isLoading: loansLoading,
+    isError: loansError,
+    error: loansQueryError,
+    refetch: refetchLoans,
+  } = useGetLoansQuery(undefined, { skip: !user || segment !== "loans" })
 
   useEffect(() => {
     if (!isError || !error) return
@@ -210,6 +220,16 @@ export default function EntriesPage() {
       navigate("/login", { replace: true })
     }
   }, [creditCardsError, creditCardsQueryError, navigate])
+
+  useEffect(() => {
+    if (!loansError || !loansQueryError) return
+    const msg = getErrorMessage(loansQueryError)
+    if (/authorization token is required/i.test(msg)) {
+      toast.error("Session expired, please login again")
+      navigate("/login", { replace: true })
+    }
+  }, [loansError, loansQueryError, navigate])
+
   const udharTransactions = useMemo(
     () =>
       recentTransactions
@@ -222,8 +242,6 @@ export default function EntriesPage() {
     const selectedName = inferUdharPersonName(selectedUdharTx).toLowerCase()
     return udharTransactions.filter((tx) => inferUdharPersonName(tx).toLowerCase() === selectedName)
   }, [selectedUdharTx, udharTransactions])
-
-  const loansMockList = ACCOUNTS_MOCK_BY_SEGMENT.loans
 
   const filtered = useMemo(() => {
     const now = new Date()
@@ -258,7 +276,9 @@ export default function EntriesPage() {
     if (segment === "udhar") {
       return !isLoading && !isError && udharTransactions.length > 0
     }
-    if (segment === "loans") return loansMockList.length > 0
+    if (segment === "loans") {
+      return !loansLoading && !loansError && loans.length > 0
+    }
     if (segment === "cards") {
       return !creditCardsLoading && !creditCardsError && creditCards.length > 0
     }
@@ -269,19 +289,22 @@ export default function EntriesPage() {
     isError,
     filtered.length,
     udharTransactions.length,
-    loansMockList.length,
+    loansLoading,
+    loansError,
+    loans.length,
     creditCardsLoading,
     creditCardsError,
     creditCards.length,
   ])
 
   const segmentListLoading =
-    segment === "loans" ? false : segment === "cards" ? creditCardsLoading : isLoading
+    segment === "loans" ? loansLoading : segment === "cards" ? creditCardsLoading : isLoading
 
   const segmentListError =
-    segment === "loans" ? false : segment === "cards" ? creditCardsError : isError
+    segment === "loans" ? loansError : segment === "cards" ? creditCardsError : isError
 
-  const segmentError = segment === "cards" ? creditCardsQueryError : error
+  const segmentError =
+    segment === "cards" ? creditCardsQueryError : segment === "loans" ? loansQueryError : error
 
   const totalDisplay = headerTotalLabel(segment, filtered)
 
@@ -341,7 +364,7 @@ export default function EntriesPage() {
         : segment === "udhar"
           ? "No udhar entries"
           : segment === "loans"
-            ? "No loans"
+            ? "No loans found"
             : segment === "cards"
               ? "No credit cards"
               : "No entries found"
@@ -387,6 +410,14 @@ export default function EntriesPage() {
           if (!v) setSelectedCreditCard(null)
         }}
         account={selectedCreditCard}
+      />
+      <LoanDetailView
+        open={!!selectedLoan}
+        onOpenChange={(v) => {
+          if (!v) setSelectedLoan(null)
+        }}
+        account={selectedLoan}
+        onLoanUpdated={(a) => setSelectedLoan(a)}
       />
       <UdharDetailsModal
         open={!!selectedUdharTx}
@@ -542,6 +573,7 @@ export default function EntriesPage() {
             className="rounded-xl"
             onClick={() => {
               if (segment === "cards") void refetchCreditCards()
+              else if (segment === "loans") void refetchLoans()
               else void refetch()
             }}
           >
@@ -663,13 +695,7 @@ export default function EntriesPage() {
       )}
 
       {!segmentListLoading && !segmentListError && entriesHasList && segment === "loans" && (
-        <ul className="flex list-none flex-col gap-2.5" aria-label="Loans list">
-          {loansMockList.map((item) => (
-            <li key={item.id}>
-              <AccountRowCard item={item} />
-            </li>
-          ))}
-        </ul>
+        <LoanList accounts={loans} variant="entries" onSelectLoan={(a) => setSelectedLoan(a)} />
       )}
 
       {!segmentListLoading && !segmentListError && entriesHasList && segment === "cards" && (

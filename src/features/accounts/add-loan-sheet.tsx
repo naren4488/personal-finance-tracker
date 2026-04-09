@@ -1,16 +1,22 @@
 import { useCallback, useEffect, useId, useState } from "react"
+import { useNavigate } from "react-router-dom"
 import { ChevronDown, X } from "lucide-react"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { FORM_OVERLAY_FOOTER, FORM_OVERLAY_SCROLL_BODY } from "@/lib/form-overlay-scroll"
-import { cn } from "@/lib/utils"
+import { loanTypeLabelToApiSlug, type CreateAccountRequest } from "@/lib/api/account-schemas"
+import { getErrorMessage } from "@/lib/api/errors"
+import { endUserSession } from "@/lib/auth/end-session"
 import { LoanEmiFormFields } from "@/features/accounts/loan-emi-form-fields"
 import {
   createInitialLoanEmiModel,
   type LoanEmiFormModel,
 } from "@/features/accounts/loan-emi-model"
+import { FORM_OVERLAY_FOOTER, FORM_OVERLAY_SCROLL_BODY } from "@/lib/form-overlay-scroll"
+import { cn } from "@/lib/utils"
+import { useCreateAccountMutation } from "@/store/api/base-api"
+import { useAppDispatch } from "@/store/hooks"
 
 const LOAN_TYPES = [
   "Personal Loan",
@@ -41,12 +47,15 @@ type MountedProps = {
 }
 
 function AddLoanSheetMounted({ onOpenChange }: MountedProps) {
+  const navigate = useNavigate()
+  const dispatch = useAppDispatch()
   const titleId = useId()
   const loanTypeId = useId()
 
   const [loanType, setLoanType] = useState<string>(LOAN_TYPES[0])
   const [loanName, setLoanName] = useState("")
   const [emi, setEmi] = useState<LoanEmiFormModel>(() => createInitialLoanEmiModel())
+  const [createAccount, { isLoading: isSubmitting }] = useCreateAccountMutation()
 
   const dismiss = useCallback(() => {
     document.body.style.overflow = ""
@@ -72,11 +81,23 @@ function AddLoanSheetMounted({ onOpenChange }: MountedProps) {
     setEmi((s) => ({ ...s, ...p }))
   }
 
-  function handleSubmit(e: React.FormEvent) {
+  function resetForm() {
+    setLoanType(LOAN_TYPES[0])
+    setLoanName("")
+    setEmi(createInitialLoanEmiModel())
+  }
+
+  async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     const name = loanName.trim()
     if (!name) {
       toast.error("Enter a loan name")
+      return
+    }
+
+    const lender = emi.bankLender.trim()
+    if (!lender) {
+      toast.error("Enter bank or lender name")
       return
     }
 
@@ -86,27 +107,61 @@ function AddLoanSheetMounted({ onOpenChange }: MountedProps) {
       return
     }
 
-    console.log("[Loan] Add Loan (demo — no loans API yet)", {
-      loanType,
-      loanName: name,
-      bankLender: emi.bankLender.trim() || undefined,
-      loanAccountNo: emi.loanAccountNo.trim() || undefined,
-      principalInr: Number(p),
-      interestRatePercent: Number(emi.interestRate.replace(/,/g, "")) || 0,
-      tenureMonths: Number(emi.tenureMonths.replace(/\D/g, "")) || 0,
-      startDate: emi.startDate,
-      emiDueDay: Number(emi.emiDueDay),
-      dueDateCycle: emi.dueCycle,
-      overrideEmi: emi.overrideEmi,
-      customEmiAmountInr: emi.overrideEmi
-        ? Number(emi.overrideEmiAmount.replace(/\D/g, "")) || 0
-        : undefined,
-      overdue: emi.overdue,
-      overdueAmountInr: emi.overdue ? Number(emi.overdueAmount.replace(/\D/g, "")) || 0 : undefined,
-    })
+    const tenure = Number(emi.tenureMonths.replace(/\D/g, "")) || 0
+    if (tenure < 1) {
+      toast.error("Enter tenure in months")
+      return
+    }
 
-    toast.success("Loan saved (demo)")
-    dismiss()
+    if (!emi.startDate || !/^\d{4}-\d{2}-\d{2}$/.test(emi.startDate)) {
+      toast.error("Enter a valid start date")
+      return
+    }
+
+    const emiDay = Number(String(emi.emiDueDay).replace(/\D/g, "")) || 0
+    if (emiDay < 1 || emiDay > 31) {
+      toast.error("Select EMI due day")
+      return
+    }
+
+    const principalDigits = Number(p)
+    const overdueExtra = emi.overdue ? Number(emi.overdueAmount.replace(/\D/g, "")) || 0 : 0
+    const balanceInr = principalDigits + overdueExtra
+
+    const payload: CreateAccountRequest = {
+      name,
+      kind: "loan",
+      balanceInr,
+      bankName: lender,
+      isActive: true,
+      loanType: loanTypeLabelToApiSlug(loanType),
+      lenderName: lender,
+      loanAccountNumber: emi.loanAccountNo.trim() || undefined,
+      principalAmountInr: principalDigits,
+      interestRate: emi.interestRate.trim() || "0",
+      tenureMonths: tenure,
+      startDate: emi.startDate,
+      emiDueDay: emiDay,
+      dueDateCycle: emi.dueCycle,
+      overrideEmiAmountOn: emi.overrideEmi,
+    }
+
+    try {
+      await createAccount(payload).unwrap()
+      toast.success("Loan account created successfully")
+      resetForm()
+      dismiss()
+    } catch (err) {
+      const msg = getErrorMessage(err)
+      if (/authorization token is required/i.test(msg)) {
+        toast.error("Session expired, please login again")
+        endUserSession(dispatch)
+        dismiss()
+        navigate("/login", { replace: true })
+        return
+      }
+      toast.error(msg)
+    }
   }
 
   const fieldBase =
@@ -201,9 +256,10 @@ function AddLoanSheetMounted({ onOpenChange }: MountedProps) {
           <div className={FORM_OVERLAY_FOOTER}>
             <Button
               type="submit"
+              disabled={isSubmitting}
               className="h-9 w-full rounded-xl bg-[hsl(230_22%_62%)] text-sm font-bold text-white hover:bg-[hsl(230_22%_56%)] sm:h-10 sm:text-base"
             >
-              Add Loan
+              {isSubmitting ? "Saving..." : "Add Loan"}
             </Button>
           </div>
         </form>

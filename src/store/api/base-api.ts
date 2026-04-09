@@ -37,6 +37,7 @@ import {
   type CreateAccountResult,
 } from "@/lib/api/account-schemas"
 import { isCreditCardAccount } from "@/lib/api/credit-card-map"
+import { isLoanAccount } from "@/lib/api/loan-account-map"
 import {
   parseCreatePersonSuccess,
   parseGetPeopleSuccess,
@@ -316,6 +317,31 @@ export const baseApi = createApi({
       providesTags: [{ type: "Account", id: "LIST" }],
     }),
 
+    /** GET /accounts?kind=loan — same list endpoint, filtered for loan UI. */
+    getLoans: build.query<Account[], void>({
+      async queryFn(_arg, _api, _extraOptions, baseQuery) {
+        const res = await baseQuery({
+          url: ACCOUNT_PATHS.list,
+          method: "GET",
+          params: { kind: "loan" },
+        })
+        if (res.error) {
+          return { error: normalizeFetchError(res.error) }
+        }
+        const failMsg = parseApiFailureMessage(res.data)
+        if (failMsg) {
+          return { error: { status: 400, data: failMsg } }
+        }
+        const parsed = parseGetAccountsSuccess(res.data)
+        if (!parsed.ok) {
+          return { error: { status: 422, data: parsed.error } }
+        }
+        const onlyLoans = parsed.accounts.filter(isLoanAccount)
+        return { data: onlyLoans.length > 0 ? onlyLoans : parsed.accounts }
+      },
+      providesTags: [{ type: "Account", id: "LIST" }],
+    }),
+
     createAccount: build.mutation<CreateAccountResult, CreateAccountRequest>({
       async queryFn(body, _api, _extraOptions, baseQuery) {
         if (isAccountCreateApiDisabled()) {
@@ -361,6 +387,41 @@ export const baseApi = createApi({
         }
         console.log("[accounts] create — success message:", parsed.message)
         console.log("[accounts] create — parsed account:", parsed.account ?? null)
+        return {
+          data: {
+            ...(parsed.account ? { account: parsed.account } : {}),
+            ...(parsed.message ? { message: parsed.message } : {}),
+          },
+        }
+      },
+      invalidatesTags: [{ type: "Account", id: "LIST" }],
+    }),
+
+    updateAccount: build.mutation<
+      CreateAccountResult,
+      { id: string; body: Record<string, unknown> }
+    >({
+      async queryFn(arg, _api, _extraOptions, baseQuery) {
+        const id = arg.id.trim()
+        if (!id) {
+          return { error: { status: 422, data: "Account id is required" } }
+        }
+        const res = await baseQuery({
+          url: `${ACCOUNT_PATHS.create}/${encodeURIComponent(id)}`,
+          method: "PUT",
+          body: arg.body,
+        })
+        if (res.error) {
+          return { error: normalizeFetchError(res.error) }
+        }
+        const failMsg = parseApiFailureMessage(res.data)
+        if (failMsg) {
+          return { error: { status: 400, data: failMsg } }
+        }
+        const parsed = parseCreateAccountSuccess(res.data)
+        if (!parsed.ok) {
+          return { error: { status: 422, data: parsed.error } }
+        }
         return {
           data: {
             ...(parsed.account ? { account: parsed.account } : {}),
@@ -724,7 +785,9 @@ export const {
   useRefreshTokenMutation,
   useGetAccountsQuery,
   useGetCreditCardsQuery,
+  useGetLoansQuery,
   useCreateAccountMutation,
+  useUpdateAccountMutation,
   useGetPeopleQuery,
   useCreatePersonMutation,
   useGetRecentTransactionsQuery,

@@ -18,6 +18,8 @@ import {
 } from "@/features/accounts/accounts-mock-data"
 import { CreditCardDetailView } from "@/features/accounts/credit-card-detail-view"
 import { CreditCardList } from "@/features/accounts/credit-card-list"
+import { LoanDetailView } from "@/features/accounts/loan-detail-view"
+import { LoanList } from "@/features/accounts/loan-list"
 import { UdharDetailsModal } from "@/features/accounts/udhar-details-modal"
 import { UdharEntryRow } from "@/features/accounts/udhar-entry-row"
 import type { Account } from "@/lib/api/account-schemas"
@@ -34,6 +36,7 @@ import { cn } from "@/lib/utils"
 import {
   useGetAccountsQuery,
   useGetCreditCardsQuery,
+  useGetLoansQuery,
   useGetRecentTransactionsQuery,
 } from "@/store/api/base-api"
 import { useAppSelector } from "@/store/hooks"
@@ -63,6 +66,7 @@ export default function AccountsPage() {
   const [cardOpen, setCardOpen] = useState(false)
   const [selectedGroupId, setSelectedGroupId] = useState<string | null>(null)
   const [selectedCreditCard, setSelectedCreditCard] = useState<Account | null>(null)
+  const [selectedLoan, setSelectedLoan] = useState<Account | null>(null)
 
   const meta = ACCOUNTS_SEGMENT_META[segment]
   const user = useAppSelector((s) => s.auth.user)
@@ -84,6 +88,14 @@ export default function AccountsPage() {
   } = useGetCreditCardsQuery(undefined, { skip: !user || segment !== "cards" })
 
   const {
+    data: loans = [],
+    isLoading: loansLoading,
+    isError: loansError,
+    error: loansQueryError,
+    refetch: refetchLoans,
+  } = useGetLoansQuery(undefined, { skip: !user || segment !== "loans" })
+
+  const {
     data: recentTransactions = [],
     isLoading: recentLoading,
     isError: recentError,
@@ -99,6 +111,15 @@ export default function AccountsPage() {
       navigate("/login", { replace: true })
     }
   }, [creditCardsError, creditCardsQueryError, navigate])
+
+  useEffect(() => {
+    if (!loansError || !loansQueryError) return
+    const msg = getErrorMessage(loansQueryError)
+    if (/authorization token is required/i.test(msg)) {
+      toast.error("Session expired, please login again")
+      navigate("/login", { replace: true })
+    }
+  }, [loansError, loansQueryError, navigate])
 
   const peopleGroups = useMemo((): PersonUdharGroup[] => {
     const aggregate = new Map<string, PersonUdharGroup>()
@@ -160,7 +181,7 @@ export default function AccountsPage() {
       ? peopleRows
       : segment === "accounts"
         ? accountListFromApi
-        : segment === "cards"
+        : segment === "cards" || segment === "loans"
           ? []
           : ACCOUNTS_MOCK_BY_SEGMENT[segment]
 
@@ -190,7 +211,9 @@ export default function AccountsPage() {
     cards: "Add credit card",
   }
 
-  const showLoansEmpty = segment === "loans" && items.length === 0
+  const showLoansLoading = segment === "loans" && loansLoading
+  const showLoansError = segment === "loans" && loansError
+  const showLoansEmpty = segment === "loans" && !loansLoading && !loansError && loans.length === 0
   const showCardsEmpty =
     segment === "cards" && !creditCardsLoading && !creditCardsError && creditCards.length === 0
 
@@ -200,7 +223,7 @@ export default function AccountsPage() {
       !showAccountsError &&
       accountListFromApi.length > 0) ||
     (segment === "people" && !showPeopleLoading && !showPeopleError && peopleRows.length > 0) ||
-    (segment === "loans" && !showLoansEmpty) ||
+    (segment === "loans" && !loansLoading && !loansError && loans.length > 0) ||
     (segment === "cards" && !creditCardsLoading && !creditCardsError && creditCards.length > 0)
 
   return (
@@ -215,6 +238,14 @@ export default function AccountsPage() {
           if (!v) setSelectedCreditCard(null)
         }}
         account={selectedCreditCard}
+      />
+      <LoanDetailView
+        open={!!selectedLoan}
+        onOpenChange={(v) => {
+          if (!v) setSelectedLoan(null)
+        }}
+        account={selectedLoan}
+        onLoanUpdated={(a) => setSelectedLoan(a)}
       />
       <UdharDetailsModal
         open={!!selectedPeopleGroup}
@@ -355,13 +386,31 @@ export default function AccountsPage() {
               Retry
             </Button>
           </div>
+        ) : showLoansLoading ? (
+          <div className="flex flex-col gap-2">
+            <Skeleton className="h-18 w-full rounded-2xl" />
+            <Skeleton className="h-18 w-full rounded-2xl" />
+          </div>
+        ) : showLoansError ? (
+          <div className="space-y-3 rounded-2xl border border-destructive/30 bg-destructive/5 px-4 py-4">
+            <p className="text-sm text-destructive">{getErrorMessage(loansQueryError)}</p>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="rounded-xl"
+              onClick={() => refetchLoans()}
+            >
+              Retry
+            </Button>
+          </div>
         ) : showLoansEmpty ? (
           <Card className="flex min-h-0 flex-1 flex-col border-2 border-dashed border-border/90 bg-card py-0 shadow-none">
             <CardContent className="flex flex-1 flex-col items-center justify-center px-6 py-12 text-center">
               <div className="mb-4 flex size-14 items-center justify-center rounded-2xl bg-muted/80">
                 <Landmark className="size-7 text-primary" strokeWidth={2} aria-hidden />
               </div>
-              <p className="text-base font-bold text-primary">No loans</p>
+              <p className="text-base font-bold text-primary">No loans found</p>
               <p className="mt-1 max-w-xs text-sm text-muted-foreground">
                 Add a loan to track EMIs
               </p>
@@ -400,6 +449,12 @@ export default function AccountsPage() {
                 accounts={creditCards}
                 variant="accounts"
                 onSelectCard={setSelectedCreditCard}
+              />
+            ) : segment === "loans" ? (
+              <LoanList
+                accounts={loans}
+                variant="accounts"
+                onSelectLoan={(a) => setSelectedLoan(a)}
               />
             ) : (
               <ul className="flex list-none flex-col gap-2.5" aria-label={`${meta.listTitle} list`}>
