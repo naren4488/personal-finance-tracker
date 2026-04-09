@@ -1,6 +1,5 @@
 import { useMemo } from "react"
 import { CalendarDays, ChevronRight, CreditCard } from "lucide-react"
-import { toast } from "sonner"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Button } from "@/components/ui/button"
 import type { Account } from "@/lib/api/account-schemas"
@@ -55,15 +54,17 @@ function CreditCardRowAccounts({
 
 function CreditCardTileEntries({
   model,
+  account,
   onOpenDetail,
+  onAddSpend,
+  onPayBill,
 }: {
   model: CreditCardViewModel
+  account: Account
   onOpenDetail?: () => void
+  onAddSpend?: (account: Account) => void
+  onPayBill?: (account: Account) => void
 }) {
-  function comingSoon(action: string) {
-    toast.message("Coming soon", { description: `${action} will be available soon.` })
-  }
-
   return (
     <div className="overflow-hidden rounded-2xl border border-border/80 bg-card shadow-sm">
       <button
@@ -124,7 +125,7 @@ function CreditCardTileEntries({
             className="h-10 rounded-xl border-primary text-primary hover:bg-primary/10"
             onClick={(e) => {
               e.stopPropagation()
-              comingSoon("Add spend")
+              onAddSpend?.(account)
             }}
           >
             Add Spend
@@ -134,7 +135,7 @@ function CreditCardTileEntries({
             className="h-10 rounded-xl bg-primary font-semibold text-primary-foreground hover:bg-primary/90"
             onClick={(e) => {
               e.stopPropagation()
-              comingSoon("Pay bill")
+              onPayBill?.(account)
             }}
           >
             Pay Bill
@@ -149,9 +150,17 @@ export type CreditCardListProps = {
   accounts: Account[]
   variant: "entries" | "accounts"
   onSelectCard?: (account: Account) => void
+  onAddSpend?: (account: Account) => void
+  onPayBill?: (account: Account) => void
 }
 
-export function CreditCardList({ accounts, variant, onSelectCard }: CreditCardListProps) {
+export function CreditCardList({
+  accounts,
+  variant,
+  onSelectCard,
+  onAddSpend,
+  onPayBill,
+}: CreditCardListProps) {
   const rows = useMemo(
     () => accounts.map((account) => ({ account, model: mapAccountToCreditCardView(account) })),
     [accounts]
@@ -164,7 +173,13 @@ export function CreditCardList({ accounts, variant, onSelectCard }: CreditCardLi
           {variant === "accounts" ? (
             <CreditCardRowAccounts model={model} onPress={() => onSelectCard?.(account)} />
           ) : (
-            <CreditCardTileEntries model={model} onOpenDetail={() => onSelectCard?.(account)} />
+            <CreditCardTileEntries
+              model={model}
+              account={account}
+              onOpenDetail={() => onSelectCard?.(account)}
+              onAddSpend={onAddSpend}
+              onPayBill={onPayBill}
+            />
           )}
         </li>
       ))}

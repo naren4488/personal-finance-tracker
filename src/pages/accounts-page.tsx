@@ -238,6 +238,7 @@ export default function AccountsPage() {
           if (!v) setSelectedCreditCard(null)
         }}
         account={selectedCreditCard}
+        onCardUpdated={(a) => setSelectedCreditCard(a)}
       />
       <LoanDetailView
         open={!!selectedLoan}

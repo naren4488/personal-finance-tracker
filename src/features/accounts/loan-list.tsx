@@ -1,6 +1,5 @@
 import { useMemo } from "react"
 import { CalendarDays, ChevronRight, Landmark } from "lucide-react"
-import { toast } from "sonner"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Button } from "@/components/ui/button"
 import type { Account } from "@/lib/api/account-schemas"
@@ -52,16 +51,13 @@ function LoanTileEntries({
   account,
   model,
   onSelect,
+  onPayEmi,
 }: {
   account: Account
   model: LoanViewModel
   onSelect?: (account: Account) => void
+  onPayEmi?: (account: Account) => void
 }) {
-  function comingSoon(e: React.MouseEvent) {
-    e.stopPropagation()
-    toast.message("Coming soon", { description: "Pay EMI will be available soon." })
-  }
-
   return (
     <div className="overflow-hidden rounded-2xl border border-border/80 bg-card shadow-sm">
       <button
@@ -133,7 +129,10 @@ function LoanTileEntries({
           type="button"
           variant="secondary"
           className="h-10 w-full rounded-xl font-semibold"
-          onClick={comingSoon}
+          onClick={(e) => {
+            e.stopPropagation()
+            onPayEmi?.(account)
+          }}
         >
           Pay EMI
         </Button>
@@ -146,9 +145,11 @@ export type LoanListProps = {
   accounts: Account[]
   variant: "entries" | "accounts"
   onSelectLoan?: (account: Account) => void
+  /** Entries tile: Pay EMI → same flow as loan detail Pay EMI */
+  onPayEmi?: (account: Account) => void
 }
 
-export function LoanList({ accounts, variant, onSelectLoan }: LoanListProps) {
+export function LoanList({ accounts, variant, onSelectLoan, onPayEmi }: LoanListProps) {
   const rows = useMemo(
     () => accounts.map((account) => ({ account, model: mapAccountToLoanView(account) })),
     [accounts]
@@ -161,7 +162,12 @@ export function LoanList({ accounts, variant, onSelectLoan }: LoanListProps) {
           {variant === "accounts" ? (
             <LoanRowAccounts account={account} model={model} onSelect={onSelectLoan} />
           ) : (
-            <LoanTileEntries account={account} model={model} onSelect={onSelectLoan} />
+            <LoanTileEntries
+              account={account}
+              model={model}
+              onSelect={onSelectLoan}
+              onPayEmi={onPayEmi}
+            />
           )}
         </li>
       ))}

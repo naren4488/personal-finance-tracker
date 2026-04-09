@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useNavigate } from "react-router-dom"
 import { toast } from "sonner"
 import {
@@ -31,6 +31,7 @@ import type { Account } from "@/lib/api/account-schemas"
 import { accountSelectLabel } from "@/lib/api/account-schemas"
 import { getErrorMessage } from "@/lib/api/errors"
 import type { TransactionType } from "@/lib/api/schemas"
+import type { LoanPaymentMode } from "@/features/accounts/record-loan-payment-sheet"
 import {
   inferUdharPersonName,
   isUdharRecentTransaction,
@@ -162,6 +163,18 @@ export default function EntriesPage() {
   const [selectedUdharTx, setSelectedUdharTx] = useState<RecentTransaction | null>(null)
   const [selectedCreditCard, setSelectedCreditCard] = useState<Account | null>(null)
   const [selectedLoan, setSelectedLoan] = useState<Account | null>(null)
+  const [loanPaymentRequest, setLoanPaymentRequest] = useState<{ mode: LoanPaymentMode } | null>(
+    null
+  )
+  const [cardSheetRequest, setCardSheetRequest] = useState<"spend" | "pay_bill" | null>(null)
+
+  const consumeLoanPaymentRequest = useCallback(() => {
+    setLoanPaymentRequest(null)
+  }, [])
+
+  const consumeCardSheetRequest = useCallback(() => {
+    setCardSheetRequest(null)
+  }, [])
 
   const user = useAppSelector((s) => s.auth.user)
   const {
@@ -407,17 +420,28 @@ export default function EntriesPage() {
       <CreditCardDetailView
         open={!!selectedCreditCard}
         onOpenChange={(v) => {
-          if (!v) setSelectedCreditCard(null)
+          if (!v) {
+            setSelectedCreditCard(null)
+            setCardSheetRequest(null)
+          }
         }}
         account={selectedCreditCard}
+        onCardUpdated={(a) => setSelectedCreditCard(a)}
+        openSheetRequest={cardSheetRequest}
+        onOpenSheetRequestConsumed={consumeCardSheetRequest}
       />
       <LoanDetailView
         open={!!selectedLoan}
         onOpenChange={(v) => {
-          if (!v) setSelectedLoan(null)
+          if (!v) {
+            setSelectedLoan(null)
+            setLoanPaymentRequest(null)
+          }
         }}
         account={selectedLoan}
         onLoanUpdated={(a) => setSelectedLoan(a)}
+        openPaymentRequest={loanPaymentRequest}
+        onOpenPaymentRequestConsumed={consumeLoanPaymentRequest}
       />
       <UdharDetailsModal
         open={!!selectedUdharTx}
@@ -695,7 +719,15 @@ export default function EntriesPage() {
       )}
 
       {!segmentListLoading && !segmentListError && entriesHasList && segment === "loans" && (
-        <LoanList accounts={loans} variant="entries" onSelectLoan={(a) => setSelectedLoan(a)} />
+        <LoanList
+          accounts={loans}
+          variant="entries"
+          onSelectLoan={(a) => setSelectedLoan(a)}
+          onPayEmi={(a) => {
+            setSelectedLoan(a)
+            setLoanPaymentRequest({ mode: "pay_emi" })
+          }}
+        />
       )}
 
       {!segmentListLoading && !segmentListError && entriesHasList && segment === "cards" && (
@@ -703,6 +735,14 @@ export default function EntriesPage() {
           accounts={creditCards}
           variant="entries"
           onSelectCard={setSelectedCreditCard}
+          onAddSpend={(a) => {
+            setSelectedCreditCard(a)
+            setCardSheetRequest("spend")
+          }}
+          onPayBill={(a) => {
+            setSelectedCreditCard(a)
+            setCardSheetRequest("pay_bill")
+          }}
         />
       )}
 

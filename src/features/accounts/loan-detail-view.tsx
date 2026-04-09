@@ -73,12 +73,17 @@ export function LoanDetailView({
   onOpenChange,
   account,
   onLoanUpdated,
+  openPaymentRequest,
+  onOpenPaymentRequestConsumed,
 }: {
   open: boolean
   onOpenChange: (open: boolean) => void
   account: Account | null
   /** Optimistic local save until PATCH /accounts exists */
   onLoanUpdated?: (account: Account) => void
+  /** When set with detail open, opens Record Loan Payment with this mode (e.g. list → Pay EMI). */
+  openPaymentRequest?: { mode: LoanPaymentMode } | null
+  onOpenPaymentRequestConsumed?: () => void
 }) {
   const navigate = useNavigate()
   const [updateAccount, { isLoading: isSavingLoan }] = useUpdateAccountMutation()
@@ -223,7 +228,13 @@ export function LoanDetailView({
     }
 
     try {
-      console.log("[loan] update request", { id: accountId, payload })
+      console.log("[loan] saving to backend", {
+        method: "PUT",
+        path: `/accounts/${accountId}`,
+        accountId,
+        payload,
+      })
+      console.log("[loan] backend body (JSON exactly as sent):", JSON.stringify(payload, null, 2))
       const updated = await updateAccount({ id: accountId, body: payload }).unwrap()
       console.log("[loan] update success", {
         id: accountId,
@@ -268,6 +279,15 @@ export function LoanDetailView({
       document.body.style.overflow = prev
     }
   }, [open])
+
+  useEffect(() => {
+    if (!open || !account || !openPaymentRequest) return
+    /* eslint-disable react-hooks/set-state-in-effect -- open payment sheet from parent request when detail opens */
+    setPaymentMode(openPaymentRequest.mode)
+    setPaymentOpen(true)
+    /* eslint-enable react-hooks/set-state-in-effect */
+    onOpenPaymentRequestConsumed?.()
+  }, [open, account, openPaymentRequest, onOpenPaymentRequestConsumed])
 
   if (!open || !account) return null
 
