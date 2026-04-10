@@ -74,6 +74,11 @@ export type AddTransactionModalProps = {
   onOpenChange: (open: boolean) => void
   /** Expenses tab flow: locked expense type, “Add Expense”, note-first title. */
   expenseFlow?: boolean
+  /**
+   * Initial type when the modal opens (same shell as Add Transaction).
+   * Use `"transfer"` when opening from “Add Transfer”.
+   */
+  initialType?: TransactionType
   /** When set, “Add Account” opens the shared Accounts sheet instead of navigating away. */
   onOpenAddAccount?: () => void
 }
@@ -81,15 +86,22 @@ export type AddTransactionModalProps = {
 type MountedProps = {
   onOpenChange: (open: boolean) => void
   expenseFlow: boolean
+  initialType: TransactionType
   onOpenAddAccount?: () => void
 }
 
-function AddTransactionModalMounted({ onOpenChange, expenseFlow, onOpenAddAccount }: MountedProps) {
+function AddTransactionModalMounted({
+  onOpenChange,
+  expenseFlow,
+  initialType,
+  onOpenAddAccount,
+}: MountedProps) {
   const titleId = useId()
   const categoryId = useId()
   const incomeSourceId = useId()
   const accountIdField = useId()
   const toAccountIdField = useId()
+  const transferDestinationTypeId = useId()
   const navigate = useNavigate()
   const user = useAppSelector((s) => s.auth.user)
 
@@ -105,7 +117,9 @@ function AddTransactionModalMounted({ onOpenChange, expenseFlow, onOpenAddAccoun
 
   const [addTransaction, { isLoading: isSubmitting }] = useAddTransactionMutation()
 
-  const [txType, setTxType] = useState<TransactionType>("expense")
+  const [txType, setTxType] = useState<TransactionType>(() =>
+    expenseFlow ? "expense" : initialType
+  )
   const [amount, setAmount] = useState("")
   const [description, setDescription] = useState("")
   const [date, setDate] = useState(todayIsoDate)
@@ -120,6 +134,8 @@ function AddTransactionModalMounted({ onOpenChange, expenseFlow, onOpenAddAccoun
   const [tags, setTags] = useState<string[]>([])
   const [tagPreset, setTagPreset] = useState("")
   const [newTag, setNewTag] = useState("")
+  /** Transfer only — future: person / external; UI matches reference form. */
+  const [transferDestinationType, setTransferDestinationType] = useState<"account">("account")
 
   const effectiveType: TransactionType = expenseFlow ? "expense" : txType
   /** Transfer needs two accounts; income/expense need one. */
@@ -162,6 +178,8 @@ function AddTransactionModalMounted({ onOpenChange, expenseFlow, onOpenAddAccoun
         toast.error("Add a note (what was this for?)")
         return
       }
+    } else if (effectiveType === "transfer") {
+      titleBase = note.trim() || "Transfer"
     } else {
       titleBase = description.trim()
       if (!titleBase) {
@@ -202,7 +220,9 @@ function AddTransactionModalMounted({ onOpenChange, expenseFlow, onOpenAddAccoun
     const displayTitle = [titleBase, ...tags].filter(Boolean).join(" · ")
     const noteForApi = expenseFlow
       ? note.trim()
-      : [description.trim(), note.trim()].filter(Boolean).join(" — ")
+      : effectiveType === "transfer"
+        ? note.trim()
+        : [description.trim(), note.trim()].filter(Boolean).join(" — ")
 
     const payload = {
       type: effectiveType,
@@ -227,7 +247,13 @@ function AddTransactionModalMounted({ onOpenChange, expenseFlow, onOpenAddAccoun
 
     try {
       await addTransaction(payload).unwrap()
-      toast.success(expenseFlow ? "Expense added" : "Transaction added")
+      toast.success(
+        expenseFlow
+          ? "Expense added"
+          : effectiveType === "transfer"
+            ? "Transfer added"
+            : "Transaction added"
+      )
       dismiss()
     } catch (err) {
       console.error("[transactions] submit error", err)
@@ -403,227 +429,361 @@ function AddTransactionModalMounted({ onOpenChange, expenseFlow, onOpenAddAccoun
                   </section>
                 )}
 
-                <section>
-                  <Label
-                    htmlFor="at-amount"
-                    className="mb-0.5 block text-[11px] font-bold text-primary sm:text-xs"
-                  >
-                    Amount (₹)
-                  </Label>
-                  <Input
-                    id="at-amount"
-                    inputMode="numeric"
-                    placeholder="0"
-                    value={amount}
-                    onChange={(e) => setAmount(e.target.value.replace(/[^\d]/g, ""))}
-                    className="h-10 rounded-xl border-border bg-muted/60 text-center text-xl font-semibold tabular-nums text-primary/80 placeholder:text-primary/40 sm:text-2xl"
-                  />
-                </section>
-
-                <div className="grid grid-cols-2 gap-1.5 sm:gap-2">
-                  <section>
-                    {effectiveType === "income" ? (
-                      <>
-                        <Label
-                          htmlFor={incomeSourceId}
-                          className="mb-0.5 block text-[11px] font-bold text-primary sm:text-xs"
-                        >
-                          Income source
-                        </Label>
-                        <div className="relative">
-                          <select
-                            id={incomeSourceId}
-                            value={incomeSource}
-                            onChange={(e) => setIncomeSource(e.target.value)}
-                            className={selectFieldClass}
-                          >
-                            {INCOME_SOURCE_OPTIONS.map(({ value, label }) => (
-                              <option key={value} value={value}>
-                                {label}
-                              </option>
-                            ))}
-                          </select>
-                          <SelectChevron />
-                        </div>
-                      </>
-                    ) : effectiveType === "transfer" ? (
-                      <>
-                        <Label className="mb-0.5 block text-[11px] font-bold text-primary sm:text-xs">
-                          Transfer
-                        </Label>
-                        <p className="rounded-xl border border-border/60 bg-muted/30 px-2.5 py-2 text-[10px] leading-snug text-muted-foreground sm:text-[11px]">
-                          Money moves from → to the accounts you select below.
-                        </p>
-                      </>
-                    ) : (
-                      <>
-                        <Label
-                          htmlFor={categoryId}
-                          className="mb-0.5 block text-[11px] font-bold text-primary sm:text-xs"
-                        >
-                          Category
-                        </Label>
-                        <div className="relative">
-                          <select
-                            id={categoryId}
-                            value={category}
-                            onChange={(e) => setCategory(e.target.value)}
-                            className={cn(selectFieldClass, !category && "text-muted-foreground")}
-                          >
-                            <option value="">Select category</option>
-                            {TX_CATEGORIES.map((c) => (
-                              <option key={c} value={c}>
-                                {c}
-                              </option>
-                            ))}
-                          </select>
-                          <SelectChevron />
-                        </div>
-                      </>
-                    )}
-                  </section>
-                  <section>
-                    <Label
-                      htmlFor="at-date"
-                      className="mb-0.5 block text-[11px] font-bold text-primary sm:text-xs"
-                    >
-                      Date
-                    </Label>
-                    <div className="relative">
-                      <Input
-                        id="at-date"
-                        type="date"
-                        value={date}
-                        onChange={(e) => setDate(e.target.value)}
-                        className="h-8 rounded-xl border-border bg-card px-2.5 pr-8 text-xs shadow-sm scheme-light dark:scheme-dark sm:h-9 sm:px-3 sm:pr-9 sm:text-sm"
-                      />
-                      <CalendarDays
-                        className="pointer-events-none absolute right-2 top-1/2 size-4 -translate-y-1/2 text-muted-foreground"
-                        aria-hidden
-                      />
-                    </div>
-                  </section>
-                </div>
-
-                <section>
-                  <Label className="mb-0.5 block text-[11px] font-bold text-primary sm:text-xs">
-                    Payment Method
-                  </Label>
-                  <div className="grid grid-cols-2 gap-1">
-                    <ToggleTile
-                      selected={paymentMethod === "account"}
-                      onClick={() => setPaymentMethod("account")}
-                    >
-                      <CreditCard
-                        className="size-3.5 shrink-0 text-primary sm:size-4"
-                        strokeWidth={2}
-                        aria-hidden
-                      />
-                      <span>Account / Cash / UPI</span>
-                    </ToggleTile>
-                    <ToggleTile
-                      selected={paymentMethod === "card"}
-                      onClick={() => setPaymentMethod("card")}
-                    >
-                      <Gem
-                        className="size-3.5 shrink-0 text-primary sm:size-4"
-                        strokeWidth={2}
-                        aria-hidden
-                      />
-                      <span>Credit Card</span>
-                    </ToggleTile>
-                  </div>
-                </section>
-
-                <section>
-                  <Label
-                    htmlFor={accountIdField}
-                    className="mb-0.5 block text-[11px] font-bold text-primary sm:text-xs"
-                  >
-                    {fromAccountLabel}
-                  </Label>
-                  <div className="relative">
-                    <select
-                      id={accountIdField}
-                      value={accountId}
-                      onChange={(e) => setAccountId(e.target.value)}
-                      className={cn(selectFieldClass, !accountId && "text-muted-foreground")}
-                    >
-                      <option value="">
-                        {effectiveType === "transfer" ? "Source account" : "Select account"}
-                      </option>
-                      {accounts.map((a) => (
-                        <option key={a.id} value={a.id}>
-                          {accountSelectLabel(a)}
-                        </option>
-                      ))}
-                    </select>
-                    <SelectChevron />
-                  </div>
-                </section>
-
                 {effectiveType === "transfer" ? (
-                  <section>
-                    <Label
-                      htmlFor={toAccountIdField}
-                      className="mb-0.5 block text-[11px] font-bold text-primary sm:text-xs"
-                    >
-                      To account
-                    </Label>
-                    <div className="relative">
-                      <select
-                        id={toAccountIdField}
-                        value={toAccountId}
-                        onChange={(e) => setToAccountId(e.target.value)}
-                        className={cn(selectFieldClass, !toAccountId && "text-muted-foreground")}
+                  <>
+                    <div className="grid grid-cols-2 gap-1.5 sm:gap-2">
+                      <section>
+                        <Label
+                          htmlFor={accountIdField}
+                          className="mb-0.5 block text-[11px] font-bold text-primary sm:text-xs"
+                        >
+                          {fromAccountLabel}
+                        </Label>
+                        <div className="relative">
+                          <select
+                            id={accountIdField}
+                            value={accountId}
+                            onChange={(e) => setAccountId(e.target.value)}
+                            className={cn(selectFieldClass, !accountId && "text-muted-foreground")}
+                          >
+                            <option value="">Select account</option>
+                            {accounts.map((a) => (
+                              <option key={a.id} value={a.id}>
+                                {accountSelectLabel(a)}
+                              </option>
+                            ))}
+                          </select>
+                          <SelectChevron />
+                        </div>
+                      </section>
+                      <section>
+                        <Label
+                          htmlFor={transferDestinationTypeId}
+                          className="mb-0.5 block text-[11px] font-bold text-primary sm:text-xs"
+                        >
+                          Destination type
+                        </Label>
+                        <div className="relative">
+                          <select
+                            id={transferDestinationTypeId}
+                            value={transferDestinationType}
+                            onChange={(e) =>
+                              setTransferDestinationType(e.target.value as "account")
+                            }
+                            className={selectFieldClass}
+                            aria-label="Destination type"
+                          >
+                            <option value="account">Account</option>
+                          </select>
+                          <SelectChevron />
+                        </div>
+                      </section>
+                    </div>
+
+                    {transferDestinationType === "account" ? (
+                      <section>
+                        <Label
+                          htmlFor={toAccountIdField}
+                          className="mb-0.5 block text-[11px] font-bold text-primary sm:text-xs"
+                        >
+                          To account
+                        </Label>
+                        <div className="relative">
+                          <select
+                            id={toAccountIdField}
+                            value={toAccountId}
+                            onChange={(e) => setToAccountId(e.target.value)}
+                            className={cn(
+                              selectFieldClass,
+                              !toAccountId && "text-muted-foreground"
+                            )}
+                          >
+                            <option value="">Select account</option>
+                            {accounts
+                              .filter((a) => a.id !== accountId)
+                              .map((a) => (
+                                <option key={a.id} value={a.id}>
+                                  {accountSelectLabel(a)}
+                                </option>
+                              ))}
+                          </select>
+                          <SelectChevron />
+                        </div>
+                      </section>
+                    ) : null}
+
+                    <div className="grid grid-cols-2 gap-1.5 sm:gap-2">
+                      <section>
+                        <Label
+                          htmlFor="at-amount-transfer"
+                          className="mb-0.5 block text-[11px] font-bold text-primary sm:text-xs"
+                        >
+                          Amount (₹)
+                        </Label>
+                        <Input
+                          id="at-amount-transfer"
+                          inputMode="numeric"
+                          placeholder="0"
+                          value={amount}
+                          onChange={(e) => setAmount(e.target.value.replace(/[^\d]/g, ""))}
+                          className="h-9 rounded-xl border-border bg-muted/60 text-center text-base font-semibold tabular-nums text-primary/80 placeholder:text-primary/40 sm:h-10 sm:text-lg"
+                        />
+                      </section>
+                      <section>
+                        <Label
+                          htmlFor="at-date-transfer"
+                          className="mb-0.5 block text-[11px] font-bold text-primary sm:text-xs"
+                        >
+                          Date
+                        </Label>
+                        <div className="relative">
+                          <Input
+                            id="at-date-transfer"
+                            type="date"
+                            value={date}
+                            onChange={(e) => setDate(e.target.value)}
+                            className="h-8 rounded-xl border-border bg-card px-2.5 pr-8 text-xs shadow-sm scheme-light dark:scheme-dark sm:h-9 sm:px-3 sm:pr-9 sm:text-sm"
+                          />
+                          <CalendarDays
+                            className="pointer-events-none absolute right-2 top-1/2 size-4 -translate-y-1/2 text-muted-foreground"
+                            aria-hidden
+                          />
+                        </div>
+                      </section>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <section>
+                      <Label
+                        htmlFor="at-amount"
+                        className="mb-0.5 block text-[11px] font-bold text-primary sm:text-xs"
                       >
-                        <option value="">Destination account</option>
-                        {accounts
-                          .filter((a) => a.id !== accountId)
-                          .map((a) => (
+                        Amount (₹)
+                      </Label>
+                      <Input
+                        id="at-amount"
+                        inputMode="numeric"
+                        placeholder="0"
+                        value={amount}
+                        onChange={(e) => setAmount(e.target.value.replace(/[^\d]/g, ""))}
+                        className="h-10 rounded-xl border-border bg-muted/60 text-center text-xl font-semibold tabular-nums text-primary/80 placeholder:text-primary/40 sm:text-2xl"
+                      />
+                    </section>
+
+                    <div className="grid grid-cols-2 gap-1.5 sm:gap-2">
+                      <section>
+                        {effectiveType === "income" ? (
+                          <>
+                            <Label
+                              htmlFor={incomeSourceId}
+                              className="mb-0.5 block text-[11px] font-bold text-primary sm:text-xs"
+                            >
+                              Income source
+                            </Label>
+                            <div className="relative">
+                              <select
+                                id={incomeSourceId}
+                                value={incomeSource}
+                                onChange={(e) => setIncomeSource(e.target.value)}
+                                className={selectFieldClass}
+                              >
+                                {INCOME_SOURCE_OPTIONS.map(({ value, label }) => (
+                                  <option key={value} value={value}>
+                                    {label}
+                                  </option>
+                                ))}
+                              </select>
+                              <SelectChevron />
+                            </div>
+                          </>
+                        ) : (
+                          <>
+                            <Label
+                              htmlFor={categoryId}
+                              className="mb-0.5 block text-[11px] font-bold text-primary sm:text-xs"
+                            >
+                              Category
+                            </Label>
+                            <div className="relative">
+                              <select
+                                id={categoryId}
+                                value={category}
+                                onChange={(e) => setCategory(e.target.value)}
+                                className={cn(
+                                  selectFieldClass,
+                                  !category && "text-muted-foreground"
+                                )}
+                              >
+                                <option value="">Select category</option>
+                                {TX_CATEGORIES.map((c) => (
+                                  <option key={c} value={c}>
+                                    {c}
+                                  </option>
+                                ))}
+                              </select>
+                              <SelectChevron />
+                            </div>
+                          </>
+                        )}
+                      </section>
+                      <section>
+                        <Label
+                          htmlFor="at-date"
+                          className="mb-0.5 block text-[11px] font-bold text-primary sm:text-xs"
+                        >
+                          Date
+                        </Label>
+                        <div className="relative">
+                          <Input
+                            id="at-date"
+                            type="date"
+                            value={date}
+                            onChange={(e) => setDate(e.target.value)}
+                            className="h-8 rounded-xl border-border bg-card px-2.5 pr-8 text-xs shadow-sm scheme-light dark:scheme-dark sm:h-9 sm:px-3 sm:pr-9 sm:text-sm"
+                          />
+                          <CalendarDays
+                            className="pointer-events-none absolute right-2 top-1/2 size-4 -translate-y-1/2 text-muted-foreground"
+                            aria-hidden
+                          />
+                        </div>
+                      </section>
+                    </div>
+
+                    <section>
+                      <Label className="mb-0.5 block text-[11px] font-bold text-primary sm:text-xs">
+                        Payment Method
+                      </Label>
+                      <div className="grid grid-cols-2 gap-1">
+                        <ToggleTile
+                          selected={paymentMethod === "account"}
+                          onClick={() => setPaymentMethod("account")}
+                        >
+                          <CreditCard
+                            className="size-3.5 shrink-0 text-primary sm:size-4"
+                            strokeWidth={2}
+                            aria-hidden
+                          />
+                          <span>Account / Cash / UPI</span>
+                        </ToggleTile>
+                        <ToggleTile
+                          selected={paymentMethod === "card"}
+                          onClick={() => setPaymentMethod("card")}
+                        >
+                          <Gem
+                            className="size-3.5 shrink-0 text-primary sm:size-4"
+                            strokeWidth={2}
+                            aria-hidden
+                          />
+                          <span>Credit Card</span>
+                        </ToggleTile>
+                      </div>
+                    </section>
+
+                    <section>
+                      <Label
+                        htmlFor={accountIdField}
+                        className="mb-0.5 block text-[11px] font-bold text-primary sm:text-xs"
+                      >
+                        {fromAccountLabel}
+                      </Label>
+                      <div className="relative">
+                        <select
+                          id={accountIdField}
+                          value={accountId}
+                          onChange={(e) => setAccountId(e.target.value)}
+                          className={cn(selectFieldClass, !accountId && "text-muted-foreground")}
+                        >
+                          <option value="">Select account</option>
+                          {accounts.map((a) => (
                             <option key={a.id} value={a.id}>
                               {accountSelectLabel(a)}
                             </option>
                           ))}
-                      </select>
-                      <SelectChevron />
-                    </div>
-                  </section>
-                ) : null}
-
-                <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-2">
-                  <label className="flex cursor-pointer items-start gap-1.5 rounded-lg border border-transparent py-0.5">
-                    <input
-                      type="checkbox"
-                      checked={paidOnBehalf}
-                      onChange={(e) => setPaidOnBehalf(e.target.checked)}
-                      className="mt-0.5 size-3.5 shrink-0 rounded border-border"
-                    />
-                    <span className="text-[10px] leading-tight text-foreground sm:text-[11px]">
-                      Paid on behalf of someone (add to their dues)
-                    </span>
-                  </label>
-                  <div className="rounded-xl border border-border/80 bg-muted/30 p-1.5">
-                    <label className="flex cursor-pointer items-start justify-between gap-1.5">
-                      <div className="min-w-0">
-                        <span className="text-[11px] font-semibold text-foreground">
-                          Schedule upcoming
-                        </span>
-                        <p className="text-[9px] leading-tight text-muted-foreground sm:text-[10px]">
-                          Planned only; no balance change yet.
-                        </p>
+                        </select>
+                        <SelectChevron />
                       </div>
+                    </section>
+                  </>
+                )}
+
+                {effectiveType !== "transfer" ? (
+                  <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-2">
+                    <label className="flex cursor-pointer items-start gap-1.5 rounded-lg border border-transparent py-0.5">
                       <input
                         type="checkbox"
-                        checked={scheduleUpcoming}
-                        onChange={(e) => setScheduleUpcoming(e.target.checked)}
+                        checked={paidOnBehalf}
+                        onChange={(e) => setPaidOnBehalf(e.target.checked)}
                         className="mt-0.5 size-3.5 shrink-0 rounded border-border"
                       />
+                      <span className="text-[10px] leading-tight text-foreground sm:text-[11px]">
+                        Paid on behalf of someone (add to their dues)
+                      </span>
                     </label>
+                    <div className="rounded-xl border border-border/80 bg-muted/30 p-1.5">
+                      <label className="flex cursor-pointer items-start justify-between gap-1.5">
+                        <div className="min-w-0">
+                          <span className="text-[11px] font-semibold text-foreground">
+                            Schedule upcoming
+                          </span>
+                          <p className="text-[9px] leading-tight text-muted-foreground sm:text-[10px]">
+                            Planned only; no balance change yet.
+                          </p>
+                        </div>
+                        <input
+                          type="checkbox"
+                          checked={scheduleUpcoming}
+                          onChange={(e) => setScheduleUpcoming(e.target.checked)}
+                          className="mt-0.5 size-3.5 shrink-0 rounded border-border"
+                        />
+                      </label>
+                    </div>
                   </div>
-                </div>
+                ) : null}
 
-                {!expenseFlow ? (
+                {expenseFlow ? (
+                  <section>
+                    <Label
+                      htmlFor="at-note"
+                      className="mb-0.5 block text-[11px] font-bold text-primary sm:text-xs"
+                    >
+                      Note
+                    </Label>
+                    <textarea
+                      id="at-note"
+                      rows={1}
+                      placeholder="What was this for?"
+                      value={note}
+                      onChange={(e) => setNote(e.target.value)}
+                      className={cn(
+                        "min-h-9 w-full resize-none rounded-xl border border-border bg-card px-3 py-1.5 text-sm text-foreground shadow-sm outline-none",
+                        "placeholder:text-muted-foreground/80",
+                        "focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/50"
+                      )}
+                    />
+                  </section>
+                ) : effectiveType === "transfer" ? (
+                  <section>
+                    <Label
+                      htmlFor="at-transfer-note"
+                      className="mb-0.5 block text-[11px] font-bold text-primary sm:text-xs"
+                    >
+                      Note (optional)
+                    </Label>
+                    <textarea
+                      id="at-transfer-note"
+                      rows={2}
+                      placeholder="Optional note"
+                      value={note}
+                      onChange={(e) => setNote(e.target.value)}
+                      className={cn(
+                        "min-h-12 w-full resize-none rounded-xl border border-border bg-card px-3 py-1.5 text-sm text-foreground shadow-sm outline-none sm:min-h-14",
+                        "placeholder:text-muted-foreground/80",
+                        "focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/50"
+                      )}
+                    />
+                  </section>
+                ) : (
                   <div className="grid grid-cols-2 gap-1.5 sm:gap-2">
                     <section>
                       <Label
@@ -661,27 +821,6 @@ function AddTransactionModalMounted({ onOpenChange, expenseFlow, onOpenAddAccoun
                       />
                     </section>
                   </div>
-                ) : (
-                  <section>
-                    <Label
-                      htmlFor="at-note"
-                      className="mb-0.5 block text-[11px] font-bold text-primary sm:text-xs"
-                    >
-                      Note
-                    </Label>
-                    <textarea
-                      id="at-note"
-                      rows={1}
-                      placeholder="What was this for?"
-                      value={note}
-                      onChange={(e) => setNote(e.target.value)}
-                      className={cn(
-                        "min-h-9 w-full resize-none rounded-xl border border-border bg-card px-3 py-1.5 text-sm text-foreground shadow-sm outline-none",
-                        "placeholder:text-muted-foreground/80",
-                        "focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/50"
-                      )}
-                    />
-                  </section>
                 )}
 
                 <section>
@@ -695,8 +834,11 @@ function AddTransactionModalMounted({ onOpenChange, expenseFlow, onOpenAddAccoun
                         value={tagPreset}
                         onChange={(e) => setTagPreset(e.target.value)}
                         className={cn(selectFieldClass, !tagPreset && "text-muted-foreground")}
+                        aria-label="Select tag"
                       >
-                        <option value="">Add tag…</option>
+                        <option value="">
+                          {effectiveType === "transfer" ? "Select tag" : "Add tag…"}
+                        </option>
                         {TX_CATEGORIES.map((c) => (
                           <option key={c} value={c}>
                             {c}
@@ -708,7 +850,7 @@ function AddTransactionModalMounted({ onOpenChange, expenseFlow, onOpenAddAccoun
                     <Input
                       value={newTag}
                       onChange={(e) => setNewTag(e.target.value)}
-                      placeholder="New tag"
+                      placeholder={effectiveType === "transfer" ? "Add new tag" : "New tag"}
                       className="h-8 min-w-20 flex-1 rounded-xl border-border bg-card px-2 text-xs shadow-sm sm:h-9"
                       onKeyDown={(e) => {
                         if (e.key === "Enter") {
@@ -720,12 +862,12 @@ function AddTransactionModalMounted({ onOpenChange, expenseFlow, onOpenAddAccoun
                     <Button
                       type="button"
                       variant="secondary"
-                      size="icon"
-                      className="size-8 shrink-0 rounded-xl text-sm sm:size-9"
+                      size="sm"
+                      className="h-8 shrink-0 rounded-xl px-2.5 text-[10px] font-semibold sm:h-9 sm:px-3 sm:text-xs"
                       aria-label="Add tag"
                       onClick={addTagFromInputs}
                     >
-                      +
+                      Add Tag
                     </Button>
                   </div>
                   {tags.length > 0 && (
@@ -757,13 +899,16 @@ export function AddTransactionModal({
   open,
   onOpenChange,
   expenseFlow = false,
+  initialType = "expense",
   onOpenAddAccount,
 }: AddTransactionModalProps) {
   if (!open) return null
+  const typeKey = expenseFlow ? "expense" : initialType
   return (
     <AddTransactionModalMounted
-      key={expenseFlow ? "expense" : "transaction"}
+      key={typeKey}
       expenseFlow={expenseFlow}
+      initialType={expenseFlow ? "expense" : initialType}
       onOpenChange={onOpenChange}
       onOpenAddAccount={onOpenAddAccount}
     />

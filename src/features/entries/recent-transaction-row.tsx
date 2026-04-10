@@ -1,5 +1,7 @@
 import { memo } from "react"
 import { ArrowRightLeft, TrendingDown, TrendingUp } from "lucide-react"
+import { TransferTransactionRow } from "@/features/entries/transfer-transaction-row"
+import type { Account } from "@/lib/api/account-schemas"
 import { formatCurrency, formatDate } from "@/lib/format"
 import { parseSignedAmountString, type RecentTransaction } from "@/lib/api/transaction-schemas"
 import { cn } from "@/lib/utils"
@@ -14,9 +16,16 @@ function formatSignedDisplay(signedAmount: string): string {
 
 export const RecentTransactionRow = memo(function RecentTransactionRow({
   tx,
+  accounts,
 }: {
   tx: RecentTransaction
+  /** When set, transfer rows use the Udhar-style route layout. */
+  accounts?: Account[]
 }) {
+  if (tx.type === "transfer" && accounts && accounts.length > 0) {
+    return <TransferTransactionRow tx={tx} accounts={accounts} />
+  }
+
   const isIncome = tx.type === "income"
   const isExpense = tx.type === "expense"
   const secondary = [tx.subtitle.trim(), formatDate(tx.date)].filter(Boolean).join(" · ")

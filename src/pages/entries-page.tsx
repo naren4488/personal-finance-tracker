@@ -1,39 +1,32 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { useNavigate } from "react-router-dom"
 import { toast } from "sonner"
 import {
   ArrowLeftRight,
+  ArrowRightLeft,
   Banknote,
   ChevronDown,
-  CreditCard,
   FileText,
   IndianRupee,
-  Landmark,
   Users,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Skeleton } from "@/components/ui/skeleton"
 import { AddAccountSheet } from "@/features/accounts/add-account-sheet"
-import { AddCreditCardSheet } from "@/features/accounts/add-credit-card-sheet"
-import { AddLoanSheet } from "@/features/accounts/add-loan-sheet"
 import { AddUdharEntrySheet } from "@/features/accounts/add-udhar-entry-sheet"
-import { CreditCardDetailView } from "@/features/accounts/credit-card-detail-view"
-import { CreditCardList } from "@/features/accounts/credit-card-list"
-import { LoanDetailView } from "@/features/accounts/loan-detail-view"
-import { LoanList } from "@/features/accounts/loan-list"
 import { UdharDetailsModal } from "@/features/accounts/udhar-details-modal"
 import { UdharEntryRow } from "@/features/accounts/udhar-entry-row"
 import { AddTransactionModal } from "@/features/entries/add-transaction-modal"
-import { QuickTransactionForm } from "@/features/entries/quick-transaction-form"
 import { RecentTransactionRow } from "@/features/entries/recent-transaction-row"
-import type { Account } from "@/lib/api/account-schemas"
-import { accountSelectLabel } from "@/lib/api/account-schemas"
+import { TransferTransactionRow } from "@/features/entries/transfer-transaction-row"
+import { accountSelectLabel, type Account } from "@/lib/api/account-schemas"
 import { getErrorMessage } from "@/lib/api/errors"
 import type { TransactionType } from "@/lib/api/schemas"
-import type { LoanPaymentMode } from "@/features/accounts/record-loan-payment-sheet"
 import {
+  getTransferRouteLabels,
   inferUdharPersonName,
+  isRecentTransactionLinkedToLoanOrCard,
   isUdharRecentTransaction,
   parseSignedAmountString,
   type RecentTransaction,
@@ -41,15 +34,10 @@ import {
 } from "@/lib/api/transaction-schemas"
 import { formatCurrency } from "@/lib/format"
 import { cn } from "@/lib/utils"
-import {
-  useGetAccountsQuery,
-  useGetCreditCardsQuery,
-  useGetLoansQuery,
-  useGetRecentTransactionsQuery,
-} from "@/store/api/base-api"
+import { useGetAccountsQuery, useGetRecentTransactionsQuery } from "@/store/api/base-api"
 import { useAppSelector } from "@/store/hooks"
 
-type EntrySegment = "txns" | "expenses" | "udhar" | "loans" | "cards"
+type EntrySegment = "txns" | "expenses" | "udhar" | "transfer"
 type TimePreset = "7d" | "month" | "3m" | "year" | "all"
 
 /** Recent list cap for entries (time range + filters apply on the client). */
@@ -62,9 +50,8 @@ const ENTRY_SEGMENTS: {
 }[] = [
   { id: "txns", label: "Txns", icon: ArrowLeftRight },
   { id: "expenses", label: "Expenses", icon: Banknote },
+  { id: "transfer", label: "Transfer", icon: ArrowRightLeft },
   { id: "udhar", label: "Udhar", icon: Users },
-  { id: "loans", label: "Loans", icon: Landmark },
-  { id: "cards", label: "Cards", icon: CreditCard },
 ]
 
 const TIME_PRESETS: { id: TimePreset; label: string }[] = [
@@ -107,10 +94,13 @@ function transactionInTimeRange(dateStr: string, preset: TimePreset, now: Date):
 
 function filterBySegmentRecent(
   list: RecentTransaction[],
-  segment: EntrySegment
+  segment: EntrySegment,
+  accounts: Account[]
 ): RecentTransaction[] {
-  if (segment === "txns") return list
-  if (segment === "expenses") return list.filter((t) => t.type === "expense")
+  const keep = (t: RecentTransaction) => !isRecentTransactionLinkedToLoanOrCard(t, accounts)
+  if (segment === "txns") return list.filter(keep)
+  if (segment === "expenses") return list.filter((t) => t.type === "expense" && keep(t))
+  if (segment === "transfer") return list.filter((t) => t.type === "transfer" && keep(t))
   return []
 }
 
@@ -140,41 +130,24 @@ function headerTotalLabel(
   }
   return {
     text: formatCurrency(0),
-    className: "font-bold tabular-nums text-destructive",
+    className: "font-bold tabular-nums text-muted-foreground",
   }
 }
 
 export default function EntriesPage() {
   const navigate = useNavigate()
-  const addFormRef = useRef<HTMLDivElement>(null)
 
   const [segment, setSegment] = useState<EntrySegment>("expenses")
   const [timePreset, setTimePreset] = useState<TimePreset>("month")
   const [search, setSearch] = useState("")
-  const [showAddForm, setShowAddForm] = useState(false)
   const [txModalOpen, setTxModalOpen] = useState(false)
+  const [txModalInitialType, setTxModalInitialType] = useState<TransactionType>("expense")
   const [expenseModalOpen, setExpenseModalOpen] = useState(false)
   const [udharSheetOpen, setUdharSheetOpen] = useState(false)
-  const [loanSheetOpen, setLoanSheetOpen] = useState(false)
-  const [cardSheetOpen, setCardSheetOpen] = useState(false)
   const [addAccountSheetOpen, setAddAccountSheetOpen] = useState(false)
   const [txTypeFilter, setTxTypeFilter] = useState<"all" | TransactionType>("all")
   const [txAccountFilter, setTxAccountFilter] = useState<string>("all")
   const [selectedUdharTx, setSelectedUdharTx] = useState<RecentTransaction | null>(null)
-  const [selectedCreditCard, setSelectedCreditCard] = useState<Account | null>(null)
-  const [selectedLoan, setSelectedLoan] = useState<Account | null>(null)
-  const [loanPaymentRequest, setLoanPaymentRequest] = useState<{ mode: LoanPaymentMode } | null>(
-    null
-  )
-  const [cardSheetRequest, setCardSheetRequest] = useState<"spend" | "pay_bill" | null>(null)
-
-  const consumeLoanPaymentRequest = useCallback(() => {
-    setLoanPaymentRequest(null)
-  }, [])
-
-  const consumeCardSheetRequest = useCallback(() => {
-    setCardSheetRequest(null)
-  }, [])
 
   const user = useAppSelector((s) => s.auth.user)
   const {
@@ -190,22 +163,6 @@ export default function EntriesPage() {
     isError: accountsQueryError,
     error: accountsError,
   } = useGetAccountsQuery(undefined, { skip: !user })
-
-  const {
-    data: creditCards = [],
-    isLoading: creditCardsLoading,
-    isError: creditCardsError,
-    error: creditCardsQueryError,
-    refetch: refetchCreditCards,
-  } = useGetCreditCardsQuery(undefined, { skip: !user || segment !== "cards" })
-
-  const {
-    data: loans = [],
-    isLoading: loansLoading,
-    isError: loansError,
-    error: loansQueryError,
-    refetch: refetchLoans,
-  } = useGetLoansQuery(undefined, { skip: !user || segment !== "loans" })
 
   useEffect(() => {
     if (!isError || !error) return
@@ -225,24 +182,6 @@ export default function EntriesPage() {
     }
   }, [accountsQueryError, accountsError, navigate])
 
-  useEffect(() => {
-    if (!creditCardsError || !creditCardsQueryError) return
-    const msg = getErrorMessage(creditCardsQueryError)
-    if (/authorization token is required/i.test(msg)) {
-      toast.error("Session expired, please login again")
-      navigate("/login", { replace: true })
-    }
-  }, [creditCardsError, creditCardsQueryError, navigate])
-
-  useEffect(() => {
-    if (!loansError || !loansQueryError) return
-    const msg = getErrorMessage(loansQueryError)
-    if (/authorization token is required/i.test(msg)) {
-      toast.error("Session expired, please login again")
-      navigate("/login", { replace: true })
-    }
-  }, [loansError, loansQueryError, navigate])
-
   const udharTransactions = useMemo(
     () =>
       recentTransactions
@@ -259,12 +198,18 @@ export default function EntriesPage() {
   const filtered = useMemo(() => {
     const now = new Date()
     const q = search.trim().toLowerCase()
-    let list = filterBySegmentRecent(recentTransactions, segment)
+    let list = filterBySegmentRecent(recentTransactions, segment, accounts)
     list = list.filter((t) => transactionInTimeRange(t.date, timePreset, now))
     if (q) {
-      list = list.filter(
-        (t) => t.title.toLowerCase().includes(q) || t.subtitle.toLowerCase().includes(q)
-      )
+      list = list.filter((t) => {
+        const base = `${t.title} ${t.subtitle}`.toLowerCase()
+        if (t.type === "transfer") {
+          const { fromLabel, toLabel } = getTransferRouteLabels(t, accounts)
+          const route = `${fromLabel} ${toLabel}`.toLowerCase()
+          return base.includes(q) || route.includes(q) || q.includes("transfer")
+        }
+        return base.includes(q)
+      })
     }
 
     if (segment === "txns") {
@@ -273,6 +218,12 @@ export default function EntriesPage() {
       }
       if (txAccountFilter !== "all") {
         list = list.filter((t) => {
+          if (t.type === "transfer") {
+            return (
+              t.accountId === txAccountFilter ||
+              (typeof t.toAccountId === "string" && t.toAccountId === txAccountFilter)
+            )
+          }
           if (t.accountId) return t.accountId === txAccountFilter
           return true
         })
@@ -280,60 +231,30 @@ export default function EntriesPage() {
     }
 
     return list.sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0))
-  }, [recentTransactions, segment, timePreset, search, txTypeFilter, txAccountFilter])
+  }, [recentTransactions, segment, timePreset, search, txTypeFilter, txAccountFilter, accounts])
 
   const entriesHasList = useMemo(() => {
-    if (segment === "txns" || segment === "expenses") {
+    if (segment === "txns" || segment === "expenses" || segment === "transfer") {
       return !isLoading && !isError && filtered.length > 0
     }
     if (segment === "udhar") {
       return !isLoading && !isError && udharTransactions.length > 0
     }
-    if (segment === "loans") {
-      return !loansLoading && !loansError && loans.length > 0
-    }
-    if (segment === "cards") {
-      return !creditCardsLoading && !creditCardsError && creditCards.length > 0
-    }
     return false
-  }, [
-    segment,
-    isLoading,
-    isError,
-    filtered.length,
-    udharTransactions.length,
-    loansLoading,
-    loansError,
-    loans.length,
-    creditCardsLoading,
-    creditCardsError,
-    creditCards.length,
-  ])
-
-  const segmentListLoading =
-    segment === "loans" ? loansLoading : segment === "cards" ? creditCardsLoading : isLoading
-
-  const segmentListError =
-    segment === "loans" ? loansError : segment === "cards" ? creditCardsError : isError
-
-  const segmentError =
-    segment === "cards" ? creditCardsQueryError : segment === "loans" ? loansQueryError : error
+  }, [segment, isLoading, isError, filtered.length, udharTransactions.length])
 
   const totalDisplay = headerTotalLabel(segment, filtered)
 
-  function openAddForm() {
-    setShowAddForm(true)
-    requestAnimationFrame(() => {
-      addFormRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" })
-    })
+  function openTxModalWithType(initial: TransactionType) {
+    setTxModalInitialType(initial)
+    setTxModalOpen(true)
   }
 
   function openEntriesHeaderAdd() {
-    if (segment === "txns") setTxModalOpen(true)
+    if (segment === "txns") openTxModalWithType("expense")
     else if (segment === "expenses") setExpenseModalOpen(true)
+    else if (segment === "transfer") openTxModalWithType("transfer")
     else if (segment === "udhar") setUdharSheetOpen(true)
-    else if (segment === "loans") setLoanSheetOpen(true)
-    else if (segment === "cards") setCardSheetOpen(true)
   }
 
   const headerAddAriaLabel =
@@ -341,58 +262,52 @@ export default function EntriesPage() {
       ? "Add transaction"
       : segment === "expenses"
         ? "Add expense"
-        : segment === "udhar"
-          ? "Add udhar entry"
-          : segment === "loans"
-            ? "Add loan"
-            : segment === "cards"
-              ? "Add credit card"
-              : "Add entry"
+        : segment === "transfer"
+          ? "Add transfer"
+          : segment === "udhar"
+            ? "Add udhar entry"
+            : "Add entry"
 
   const pageTitle =
     segment === "txns"
       ? "Transactions"
       : segment === "expenses"
         ? "All Expenses"
-        : segment === "udhar"
-          ? "Udhar (Lend & Borrow)"
-          : segment === "loans"
-            ? "Bank Loans"
-            : segment === "cards"
-              ? "Credit Cards"
-              : "All Entries"
+        : segment === "transfer"
+          ? "Transfers"
+          : segment === "udhar"
+            ? "Udhar (Lend & Borrow)"
+            : "All Entries"
   const showHeaderTotal = segment === "txns" || segment === "expenses"
-  const showTimeAndSearch = segment !== "udhar" && segment !== "loans" && segment !== "cards"
+  const showTimeAndSearch = segment !== "udhar"
   const searchPlaceholder =
     segment === "expenses"
       ? "Search expenses…"
       : segment === "txns"
         ? "Search transactions…"
-        : "Search entries…"
+        : segment === "transfer"
+          ? "Search transfers…"
+          : "Search entries…"
   const emptyTitle =
     segment === "txns"
       ? "No transactions found"
       : segment === "expenses"
         ? "No expenses found"
-        : segment === "udhar"
-          ? "No udhar entries"
-          : segment === "loans"
-            ? "No loans found"
-            : segment === "cards"
-              ? "No credit cards"
-              : "No entries found"
+        : segment === "transfer"
+          ? ""
+          : segment === "udhar"
+            ? "No udhar entries"
+            : "No entries found"
   const emptySubtitle =
     segment === "txns"
       ? "No transactions match your filters"
       : segment === "expenses"
         ? "No expenses match your filters"
-        : segment === "udhar"
-          ? "Add an udhar entry to track money given or taken"
-          : segment === "loans"
-            ? "Add a loan to track EMIs and payments"
-            : segment === "cards"
-              ? "Add your credit card to track spending and bills"
-              : "No entries match your filters"
+        : segment === "transfer"
+          ? ""
+          : segment === "udhar"
+            ? "Add an udhar entry to track money given or taken"
+            : "No entries match your filters"
 
   return (
     <main className="min-h-0 flex-1 bg-background px-4 py-4 pb-28">
@@ -400,6 +315,7 @@ export default function EntriesPage() {
       <AddTransactionModal
         open={txModalOpen}
         onOpenChange={setTxModalOpen}
+        initialType={txModalInitialType}
         onOpenAddAccount={() => {
           setTxModalOpen(false)
           setAddAccountSheetOpen(true)
@@ -415,34 +331,6 @@ export default function EntriesPage() {
         }}
       />
       <AddUdharEntrySheet open={udharSheetOpen} onOpenChange={setUdharSheetOpen} />
-      <AddLoanSheet open={loanSheetOpen} onOpenChange={setLoanSheetOpen} />
-      <AddCreditCardSheet open={cardSheetOpen} onOpenChange={setCardSheetOpen} />
-      <CreditCardDetailView
-        open={!!selectedCreditCard}
-        onOpenChange={(v) => {
-          if (!v) {
-            setSelectedCreditCard(null)
-            setCardSheetRequest(null)
-          }
-        }}
-        account={selectedCreditCard}
-        onCardUpdated={(a) => setSelectedCreditCard(a)}
-        openSheetRequest={cardSheetRequest}
-        onOpenSheetRequestConsumed={consumeCardSheetRequest}
-      />
-      <LoanDetailView
-        open={!!selectedLoan}
-        onOpenChange={(v) => {
-          if (!v) {
-            setSelectedLoan(null)
-            setLoanPaymentRequest(null)
-          }
-        }}
-        account={selectedLoan}
-        onLoanUpdated={(a) => setSelectedLoan(a)}
-        openPaymentRequest={loanPaymentRequest}
-        onOpenPaymentRequestConsumed={consumeLoanPaymentRequest}
-      />
       <UdharDetailsModal
         open={!!selectedUdharTx}
         onOpenChange={(v) => {
@@ -452,7 +340,7 @@ export default function EntriesPage() {
         entries={selectedUdharPersonEntries}
       />
 
-      <div className="mb-3 grid grid-cols-5 gap-1" role="tablist" aria-label="Entry categories">
+      <div className="mb-3 grid grid-cols-4 gap-1" role="tablist" aria-label="Entry categories">
         {ENTRY_SEGMENTS.map(({ id, label, icon: Icon }) => {
           const active = segment === id
           return (
@@ -482,14 +370,7 @@ export default function EntriesPage() {
       </div>
 
       <div className="mb-3 flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
-        <h1
-          className={cn(
-            "text-lg font-bold tracking-tight",
-            segment === "loans" || segment === "cards" ? "text-primary" : "text-foreground"
-          )}
-        >
-          {pageTitle}
-        </h1>
+        <h1 className="text-lg font-bold tracking-tight text-foreground">{pageTitle}</h1>
         <div className="flex flex-wrap items-center justify-end gap-x-3 gap-y-1 sm:ml-auto">
           {showHeaderTotal && !isLoading && !isError ? (
             <span className={totalDisplay.className}>{totalDisplay.text}</span>
@@ -587,26 +468,22 @@ export default function EntriesPage() {
         </>
       )}
 
-      {segmentListError && (
+      {isError && (
         <div className="mb-4 space-y-3 rounded-2xl border border-destructive/30 bg-destructive/5 px-4 py-4">
-          <p className="text-sm text-destructive">{getErrorMessage(segmentError)}</p>
+          <p className="text-sm text-destructive">{getErrorMessage(error)}</p>
           <Button
             type="button"
             variant="outline"
             size="sm"
             className="rounded-xl"
-            onClick={() => {
-              if (segment === "cards") void refetchCreditCards()
-              else if (segment === "loans") void refetchLoans()
-              else void refetch()
-            }}
+            onClick={() => void refetch()}
           >
             Retry
           </Button>
         </div>
       )}
 
-      {segmentListLoading && !segmentListError && (
+      {isLoading && !isError && (
         <div className="space-y-2">
           <Skeleton className="h-18 w-full rounded-2xl" />
           <Skeleton className="h-18 w-full rounded-2xl" />
@@ -614,38 +491,57 @@ export default function EntriesPage() {
         </div>
       )}
 
-      {!segmentListLoading && !segmentListError && !entriesHasList && (
-        <div className="flex min-h-[min(52vh,22rem)] flex-col items-center justify-center rounded-2xl border border-dashed border-border/90 bg-card px-6 py-12 text-center">
-          <div className="mb-4 flex size-14 items-center justify-center rounded-2xl bg-muted/80">
-            {segment === "expenses" ? (
-              <div className="relative flex size-10 items-center justify-center">
-                <FileText className="size-8 text-primary" strokeWidth={2} aria-hidden />
-                <IndianRupee
-                  className="absolute -right-0.5 -bottom-0.5 size-4 text-primary"
-                  strokeWidth={2.5}
-                  aria-hidden
-                />
-              </div>
-            ) : segment === "udhar" ? (
-              <Users className="size-7 text-primary" strokeWidth={2} aria-hidden />
-            ) : segment === "loans" ? (
-              <Landmark className="size-7 text-primary" strokeWidth={2} aria-hidden />
-            ) : segment === "cards" ? (
-              <CreditCard className="size-7 text-primary" strokeWidth={2} aria-hidden />
-            ) : (
-              <Banknote className="size-7 text-primary" strokeWidth={2} aria-hidden />
-            )}
-          </div>
-          <p className="text-base font-bold text-primary">{emptyTitle}</p>
-          <p className="mt-1 max-w-xs text-sm text-muted-foreground">{emptySubtitle}</p>
+      {!isLoading && !isError && !entriesHasList && (
+        <div
+          className={cn(
+            "flex min-h-[min(52vh,22rem)] flex-col items-center justify-center px-6 py-12 text-center",
+            segment === "transfer"
+              ? ""
+              : "rounded-2xl border border-dashed border-border/90 bg-card"
+          )}
+        >
+          {segment === "transfer" ? null : (
+            <div className="mb-4 flex size-14 items-center justify-center rounded-2xl bg-muted/80">
+              {segment === "expenses" ? (
+                <div className="relative flex size-10 items-center justify-center">
+                  <FileText className="size-8 text-primary" strokeWidth={2} aria-hidden />
+                  <IndianRupee
+                    className="absolute -right-0.5 -bottom-0.5 size-4 text-primary"
+                    strokeWidth={2.5}
+                    aria-hidden
+                  />
+                </div>
+              ) : segment === "udhar" ? (
+                <Users className="size-7 text-primary" strokeWidth={2} aria-hidden />
+              ) : (
+                <Banknote className="size-7 text-primary" strokeWidth={2} aria-hidden />
+              )}
+            </div>
+          )}
+          {segment === "transfer" ? null : (
+            <>
+              <p className="text-base font-bold text-primary">{emptyTitle}</p>
+              <p className="mt-1 max-w-xs text-sm text-muted-foreground">{emptySubtitle}</p>
+            </>
+          )}
           {segment === "txns" ? (
-            <Button
-              type="button"
-              className="mt-6 h-11 rounded-xl px-8 text-base font-semibold"
-              onClick={() => setTxModalOpen(true)}
-            >
-              Add Transaction
-            </Button>
+            <div className="mt-6 flex flex-col items-center gap-3 sm:flex-row">
+              <Button
+                type="button"
+                className="h-11 rounded-xl px-8 text-base font-semibold"
+                onClick={() => openTxModalWithType("expense")}
+              >
+                Add Transaction
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                className="h-11 rounded-xl px-8 text-base font-semibold"
+                onClick={() => openTxModalWithType("transfer")}
+              >
+                Add Transfer
+              </Button>
+            </div>
           ) : segment === "expenses" ? (
             <Button
               type="button"
@@ -653,6 +549,14 @@ export default function EntriesPage() {
               onClick={() => setExpenseModalOpen(true)}
             >
               Add Expense
+            </Button>
+          ) : segment === "transfer" ? (
+            <Button
+              type="button"
+              className="h-11 rounded-xl px-10 text-base font-semibold"
+              onClick={() => openTxModalWithType("transfer")}
+            >
+              Add Transfer
             </Button>
           ) : segment === "udhar" ? (
             <Button
@@ -662,48 +566,24 @@ export default function EntriesPage() {
             >
               Add Udhar Entry
             </Button>
-          ) : segment === "loans" ? (
-            <Button
-              type="button"
-              className="mt-6 h-11 rounded-xl px-8 text-base font-semibold"
-              onClick={() => setLoanSheetOpen(true)}
-            >
-              Add Loan
-            </Button>
-          ) : segment === "cards" ? (
-            <Button
-              type="button"
-              className="mt-6 h-11 rounded-xl px-8 text-base font-semibold"
-              onClick={() => setCardSheetOpen(true)}
-            >
-              Add Card
-            </Button>
-          ) : (
-            <Button
-              type="button"
-              className="mt-6 h-11 rounded-xl px-8 text-base font-semibold"
-              onClick={openAddForm}
-            >
-              Add Entry
-            </Button>
-          )}
+          ) : null}
         </div>
       )}
 
-      {!segmentListLoading &&
-        !segmentListError &&
+      {!isLoading &&
+        !isError &&
         entriesHasList &&
         (segment === "txns" || segment === "expenses") && (
           <ul className="flex list-none flex-col gap-2.5" aria-label="Entries list">
             {filtered.map((tx) => (
               <li key={tx.id}>
-                <RecentTransactionRow tx={tx} />
+                <RecentTransactionRow tx={tx} accounts={accounts} />
               </li>
             ))}
           </ul>
         )}
 
-      {!segmentListLoading && !segmentListError && entriesHasList && segment === "udhar" && (
+      {!isLoading && !isError && entriesHasList && segment === "udhar" && (
         <ul className="flex list-none flex-col gap-2.5" aria-label="Udhar list">
           {udharTransactions.map((tx) => (
             <li key={tx.id}>
@@ -718,47 +598,15 @@ export default function EntriesPage() {
         </ul>
       )}
 
-      {!segmentListLoading && !segmentListError && entriesHasList && segment === "loans" && (
-        <LoanList
-          accounts={loans}
-          variant="entries"
-          onSelectLoan={(a) => setSelectedLoan(a)}
-          onPayEmi={(a) => {
-            setSelectedLoan(a)
-            setLoanPaymentRequest({ mode: "pay_emi" })
-          }}
-        />
+      {!isLoading && !isError && entriesHasList && segment === "transfer" && (
+        <ul className="flex list-none flex-col gap-2.5" aria-label="Transfers list">
+          {filtered.map((tx) => (
+            <li key={tx.id}>
+              <TransferTransactionRow tx={tx} accounts={accounts} />
+            </li>
+          ))}
+        </ul>
       )}
-
-      {!segmentListLoading && !segmentListError && entriesHasList && segment === "cards" && (
-        <CreditCardList
-          accounts={creditCards}
-          variant="entries"
-          onSelectCard={setSelectedCreditCard}
-          onAddSpend={(a) => {
-            setSelectedCreditCard(a)
-            setCardSheetRequest("spend")
-          }}
-          onPayBill={(a) => {
-            setSelectedCreditCard(a)
-            setCardSheetRequest("pay_bill")
-          }}
-        />
-      )}
-
-      {showAddForm &&
-        segment !== "txns" &&
-        segment !== "expenses" &&
-        segment !== "udhar" &&
-        segment !== "loans" &&
-        segment !== "cards" && (
-          <div ref={addFormRef} className="mt-6">
-            <QuickTransactionForm
-              onSuccess={() => setShowAddForm(false)}
-              className="border-border/80"
-            />
-          </div>
-        )}
     </main>
   )
 }

@@ -9,12 +9,15 @@ import { RecentTransactionRow } from "@/features/entries/recent-transaction-row"
 import { getErrorMessage } from "@/lib/api/errors"
 import { parseSignedAmountString } from "@/lib/api/transaction-schemas"
 import { formatCurrency } from "@/lib/format"
-import { useGetRecentTransactionsQuery } from "@/store/api/base-api"
+import { useGetAccountsQuery, useGetRecentTransactionsQuery } from "@/store/api/base-api"
+import { useAppSelector } from "@/store/hooks"
 
 const HOME_RECENT_LIMIT = 5
 
 export default function HomePage() {
   const navigate = useNavigate()
+  const user = useAppSelector((s) => s.auth.user)
+  const { data: accounts = [] } = useGetAccountsQuery(undefined, { skip: !user })
   const {
     data: recent = [],
     isLoading,
@@ -103,7 +106,9 @@ export default function HomePage() {
         )}
         {!isLoading &&
           !isError &&
-          homeRecentRows.map((tx) => <RecentTransactionRow key={tx.id} tx={tx} />)}
+          homeRecentRows.map((tx) => (
+            <RecentTransactionRow key={tx.id} tx={tx} accounts={accounts} />
+          ))}
       </section>
 
       <section className="space-y-2">

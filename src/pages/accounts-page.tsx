@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useState } from "react"
 import { useNavigate } from "react-router-dom"
 import { toast } from "sonner"
 import { CreditCard, Landmark, Users, Wallet } from "lucide-react"
@@ -9,6 +9,7 @@ import { AddAccountSheet } from "@/features/accounts/add-account-sheet"
 import { AddCreditCardSheet } from "@/features/accounts/add-credit-card-sheet"
 import { AddLoanSheet } from "@/features/accounts/add-loan-sheet"
 import { AddUdharEntrySheet } from "@/features/accounts/add-udhar-entry-sheet"
+import { AccountDetailView } from "@/features/accounts/account-detail-view"
 import { AccountRowCard } from "@/features/accounts/account-list-rows"
 import {
   ACCOUNTS_MOCK_BY_SEGMENT,
@@ -22,8 +23,13 @@ import { LoanDetailView } from "@/features/accounts/loan-detail-view"
 import { LoanList } from "@/features/accounts/loan-list"
 import { UdharDetailsModal } from "@/features/accounts/udhar-details-modal"
 import { UdharEntryRow } from "@/features/accounts/udhar-entry-row"
+import type { LoanPaymentMode } from "@/features/accounts/record-loan-payment-sheet"
 import type { Account } from "@/lib/api/account-schemas"
-import { accountBalanceInrFromApi, accountSubtitleForList } from "@/lib/api/account-schemas"
+import {
+  accountBalanceInrFromApi,
+  accountSubtitleForList,
+  filterNormalAccounts,
+} from "@/lib/api/account-schemas"
 import { getErrorMessage } from "@/lib/api/errors"
 import {
   inferUdharPersonName,
@@ -67,6 +73,19 @@ export default function AccountsPage() {
   const [selectedGroupId, setSelectedGroupId] = useState<string | null>(null)
   const [selectedCreditCard, setSelectedCreditCard] = useState<Account | null>(null)
   const [selectedLoan, setSelectedLoan] = useState<Account | null>(null)
+  const [selectedAccount, setSelectedAccount] = useState<Account | null>(null)
+  const [loanPaymentRequest, setLoanPaymentRequest] = useState<{ mode: LoanPaymentMode } | null>(
+    null
+  )
+  const [cardSheetRequest, setCardSheetRequest] = useState<"spend" | "pay_bill" | null>(null)
+
+  const consumeLoanPaymentRequest = useCallback(() => {
+    setLoanPaymentRequest(null)
+  }, [])
+
+  const consumeCardSheetRequest = useCallback(() => {
+    setCardSheetRequest(null)
+  }, [])
 
   const meta = ACCOUNTS_SEGMENT_META[segment]
   const user = useAppSelector((s) => s.auth.user)
@@ -121,6 +140,8 @@ export default function AccountsPage() {
     }
   }, [loansError, loansQueryError, navigate])
 
+  const normalAccounts = useMemo(() => filterNormalAccounts(apiAccounts ?? []), [apiAccounts])
+
   const peopleGroups = useMemo((): PersonUdharGroup[] => {
     const aggregate = new Map<string, PersonUdharGroup>()
 
@@ -166,15 +187,14 @@ export default function AccountsPage() {
   )
 
   const accountListFromApi: AccountListItem[] = useMemo(() => {
-    const list = apiAccounts ?? []
-    return list.map((a) => ({
+    return normalAccounts.map((a) => ({
       id: a.id,
       name: a.name,
       entryCount: 0,
       amountInr: accountBalanceInrFromApi(a),
       subtitle: accountSubtitleForList(a),
     }))
-  }, [apiAccounts])
+  }, [normalAccounts])
 
   const items =
     segment === "people"
@@ -235,18 +255,36 @@ export default function AccountsPage() {
       <CreditCardDetailView
         open={!!selectedCreditCard}
         onOpenChange={(v) => {
-          if (!v) setSelectedCreditCard(null)
+          if (!v) {
+            setSelectedCreditCard(null)
+            setCardSheetRequest(null)
+          }
         }}
         account={selectedCreditCard}
         onCardUpdated={(a) => setSelectedCreditCard(a)}
+        openSheetRequest={cardSheetRequest}
+        onOpenSheetRequestConsumed={consumeCardSheetRequest}
       />
       <LoanDetailView
         open={!!selectedLoan}
         onOpenChange={(v) => {
-          if (!v) setSelectedLoan(null)
+          if (!v) {
+            setSelectedLoan(null)
+            setLoanPaymentRequest(null)
+          }
         }}
         account={selectedLoan}
         onLoanUpdated={(a) => setSelectedLoan(a)}
+        openPaymentRequest={loanPaymentRequest}
+        onOpenPaymentRequestConsumed={consumeLoanPaymentRequest}
+      />
+      <AccountDetailView
+        open={!!selectedAccount}
+        onOpenChange={(v) => {
+          if (!v) setSelectedAccount(null)
+        }}
+        account={selectedAccount}
+        onAccountUpdated={(a) => setSelectedAccount(a)}
       />
       <UdharDetailsModal
         open={!!selectedPeopleGroup}
@@ -279,7 +317,10 @@ export default function AccountsPage() {
                   ? "bg-primary text-primary-foreground shadow-sm"
                   : "bg-muted/80 text-muted-foreground hover:bg-muted hover:text-foreground"
               )}
-              onClick={() => setSegment(id)}
+              onClick={() => {
+                if (id !== "accounts") setSelectedAccount(null)
+                setSegment(id)
+              }}
             >
               <Icon
                 className="size-3.5 shrink-0 sm:size-4"
@@ -448,14 +489,26 @@ export default function AccountsPage() {
             {segment === "cards" ? (
               <CreditCardList
                 accounts={creditCards}
-                variant="accounts"
+                variant="entries"
                 onSelectCard={setSelectedCreditCard}
+                onAddSpend={(a) => {
+                  setSelectedCreditCard(a)
+                  setCardSheetRequest("spend")
+                }}
+                onPayBill={(a) => {
+                  setSelectedCreditCard(a)
+                  setCardSheetRequest("pay_bill")
+                }}
               />
             ) : segment === "loans" ? (
               <LoanList
                 accounts={loans}
-                variant="accounts"
+                variant="entries"
                 onSelectLoan={(a) => setSelectedLoan(a)}
+                onPayEmi={(a) => {
+                  setSelectedLoan(a)
+                  setLoanPaymentRequest({ mode: "pay_emi" })
+                }}
               />
             ) : (
               <ul className="flex list-none flex-col gap-2.5" aria-label={`${meta.listTitle} list`}>
@@ -474,7 +527,13 @@ export default function AccountsPage() {
                     ))
                   : items.map((item) => (
                       <li key={item.id}>
-                        <AccountRowCard item={item} />
+                        <AccountRowCard
+                          item={item}
+                          onPress={() => {
+                            const acc = normalAccounts.find((a) => a.id === item.id) ?? null
+                            if (acc) setSelectedAccount(acc)
+                          }}
+                        />
                       </li>
                     ))}
               </ul>

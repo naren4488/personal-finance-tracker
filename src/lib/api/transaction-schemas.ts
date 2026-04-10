@@ -1,4 +1,6 @@
 import { z } from "zod"
+import type { Account } from "@/lib/api/account-schemas"
+import { accountSelectLabel } from "@/lib/api/account-schemas"
 import type { CreateTransactionPayload, Transaction } from "@/lib/api/schemas"
 import { transactionTypeSchema } from "@/lib/api/schemas"
 
@@ -229,6 +231,7 @@ export const recentTransactionItemSchema = z
     paymentMethod: z.string().optional(),
     sourceName: z.string().optional(),
     accountId: z.string().optional(),
+    toAccountId: z.string().optional(),
   })
   .passthrough()
 
@@ -356,6 +359,11 @@ function normalizeRawToRecentTransaction(rec: Record<string, unknown>): RecentTr
           ? rec.fromAccountId
           : undefined
 
+  const toAccountId =
+    typeof rec.toAccountId === "string" && rec.toAccountId.trim()
+      ? rec.toAccountId.trim()
+      : undefined
+
   return {
     id,
     title,
@@ -368,6 +376,7 @@ function normalizeRawToRecentTransaction(rec: Record<string, unknown>): RecentTr
     paymentMethod,
     sourceName,
     accountId,
+    toAccountId,
   } as RecentTransaction
 }
 
@@ -463,4 +472,43 @@ export function inferUdharPersonName(tx: RecentTransaction): string {
   if (tx.subtitle.trim()) return tx.subtitle.trim()
   if (tx.title.trim()) return tx.title.trim()
   return "Unknown"
+}
+
+function accountKindIsLoanOrCard(account: Account | undefined): boolean {
+  if (!account) return false
+  const k = String(account.kind ?? account.type ?? "")
+    .trim()
+    .toLowerCase()
+  return k === "loan" || k === "credit_card" || k === "creditcard"
+}
+
+/** Hide income/expense/transfer rows that are tied to loan or credit card accounts (Accounts module owns those). */
+export function isRecentTransactionLinkedToLoanOrCard(
+  tx: RecentTransaction,
+  accounts: Account[]
+): boolean {
+  const byId = new Map(accounts.map((a) => [String(a.id), a]))
+  const ids = [tx.accountId, tx.toAccountId].filter(
+    (x): x is string => typeof x === "string" && x.trim().length > 0
+  )
+  for (const id of ids) {
+    if (accountKindIsLoanOrCard(byId.get(id))) return true
+  }
+  return false
+}
+
+export function getTransferRouteLabels(
+  tx: RecentTransaction,
+  accounts: Account[]
+): { fromLabel: string; toLabel: string } {
+  const byId = new Map(accounts.map((a) => [String(a.id), a]))
+  const toId =
+    typeof tx.toAccountId === "string" && tx.toAccountId.trim() ? tx.toAccountId.trim() : undefined
+  const fromId = tx.accountId?.trim()
+  const fromA = fromId ? byId.get(fromId) : undefined
+  const toA = toId ? byId.get(toId) : undefined
+  return {
+    fromLabel: fromA ? accountSelectLabel(fromA) : fromId ? "Unknown account" : "—",
+    toLabel: toA ? accountSelectLabel(toA) : toId ? "Unknown account" : "—",
+  }
 }

@@ -25,7 +25,7 @@ function formatSignedInr(amountInr: number): { text: string; positive: boolean; 
   }
 }
 
-export function AccountRowCard({ item }: { item: AccountListItem }) {
+export function AccountRowCard({ item, onPress }: { item: AccountListItem; onPress?: () => void }) {
   const { text, positive, zero } = formatSignedInr(item.amountInr)
   const subParts: string[] = [`${item.entryCount} ${item.entryCount === 1 ? "entry" : "entries"}`]
   if (item.subtitle) subParts.push(item.subtitle)
@@ -34,6 +34,7 @@ export function AccountRowCard({ item }: { item: AccountListItem }) {
   return (
     <button
       type="button"
+      onClick={onPress}
       className={cn(
         "flex w-full items-center gap-3 rounded-2xl border border-border/80 bg-card px-3 py-3 text-left shadow-sm",
         "transition-colors hover:bg-muted/40 active:bg-muted/60",

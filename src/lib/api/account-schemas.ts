@@ -59,6 +59,15 @@ export function accountBalanceInrFromApi(
   return Number.isFinite(n) ? n : 0
 }
 
+/** Opening balance only (not falling back to `balance`). */
+export function openingBalanceInrFromApi(account: Pick<Account, "openingBalance">): number {
+  const raw = account.openingBalance
+  if (raw === undefined || raw === null) return 0
+  if (typeof raw === "number") return Number.isFinite(raw) ? raw : 0
+  const n = Number(String(raw).replace(/,/g, "").trim())
+  return Number.isFinite(n) ? n : 0
+}
+
 /** Secondary line for lists: bank + kind/type. */
 export function accountSubtitleForList(account: Account): string | undefined {
   const bank = account.bankName?.trim() || account.provider?.trim()
@@ -76,6 +85,16 @@ export function accountSelectLabel(account: Account): string {
 /** Treat missing `isActive` as active. */
 export function filterActiveAccounts(accounts: Account[]): Account[] {
   return accounts.filter((a) => a.isActive !== false)
+}
+
+/** Accounts list segment: bank/cash/wallet/etc. — exclude loans and credit cards. */
+export function filterNormalAccounts(accounts: Account[]): Account[] {
+  return accounts.filter((a) => {
+    const k = String(a.kind ?? "")
+      .trim()
+      .toLowerCase()
+    return k !== "credit_card" && k !== "loan"
+  })
 }
 
 export type AccountEmiLoanPayload = {

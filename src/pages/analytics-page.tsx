@@ -1,19 +1,34 @@
-import { 
-  TrendingUp, TrendingDown, Search, Home, LayoutGrid, Wallet, BarChart2,
-  CreditCard
-} from "lucide-react";
 import {
-  PieChart, Pie, Cell, ResponsiveContainer,
-  LineChart, Line, XAxis, YAxis, Tooltip,
-  BarChart, Bar, Legend,
-} from "recharts";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { useState } from "react";
+  TrendingUp,
+  TrendingDown,
+  Search,
+  Home,
+  LayoutGrid,
+  Wallet,
+  BarChart2,
+  CreditCard,
+} from "lucide-react"
+import {
+  PieChart,
+  Pie,
+  Cell,
+  ResponsiveContainer,
+  LineChart,
+  Line,
+  XAxis,
+  YAxis,
+  Tooltip,
+  BarChart,
+  Bar,
+  Legend,
+} from "recharts"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Input } from "@/components/ui/input"
+import { useState } from "react"
 
 export default function AnalyticsFullPage() {
   // Centralized State: You can replace this initial state with data fetched from an API
-  const [dashboardData, setDashboardData] = useState({
+  const [dashboardData] = useState({
     summary: {
       income: 410000,
       expenses: 125178,
@@ -21,7 +36,7 @@ export default function AnalyticsFullPage() {
       savingsRate: 69.5,
       avgDailySpend: 4173,
       totalFees: 0,
-      totalTransactions: 30
+      totalTransactions: 30,
     },
     categoryBreakdown: [
       { name: "EMI", value: 60000, color: "#1e3a8a" },
@@ -46,9 +61,7 @@ export default function AnalyticsFullPage() {
       { date: "7 Apr", amount: 15000 },
       { date: "9 Apr", amount: 12000 },
     ],
-    monthlyTrends: [
-      { month: "Apr", income: 410000, expense: 125178 },
-    ],
+    monthlyTrends: [{ month: "Apr", income: 410000, expense: 125178 }],
     dayOfWeek: [
       { day: "Sun", amount: 0 },
       { day: "Mon", amount: 0 },
@@ -82,22 +95,21 @@ export default function AnalyticsFullPage() {
     udhar: {
       receive: 414335,
       pay: 539641,
-      net: -125306
+      net: -125306,
     },
     loan: {
       active: 1,
       emi: 4455,
-      principal: 100000
-    }
-  });
+      principal: 100000,
+    },
+  })
 
-  const [activeTab, setActiveTab] = useState("Month");
-  const [searchTerm, setSearchTerm] = useState("");
+  const [activeTab, setActiveTab] = useState("Month")
+  const [searchTerm, setSearchTerm] = useState("")
 
   return (
     <div className="flex flex-col min-h-screen bg-slate-50 font-sans pb-20">
       <main className="flex-1 max-w-3xl mx-auto w-full p-4 space-y-4">
-        
         {/* Time Filters */}
         <div className="flex justify-start gap-2 mb-2">
           {["7 Days", "Month", "3 Months", "Year"].map((tab) => (
@@ -105,8 +117,8 @@ export default function AnalyticsFullPage() {
               key={tab}
               onClick={() => setActiveTab(tab)}
               className={`px-4 py-1.5 rounded-full text-xs font-medium transition-colors ${
-                activeTab === tab 
-                  ? "bg-[#1e1b4b] text-white shadow-sm" 
+                activeTab === tab
+                  ? "bg-[#1e1b4b] text-white shadow-sm"
                   : "bg-white text-slate-500 border hover:bg-slate-50"
               }`}
             >
@@ -118,8 +130,8 @@ export default function AnalyticsFullPage() {
         {/* Search Bar */}
         <div className="relative">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 w-4 h-4" />
-          <Input 
-            placeholder="Search transactions..." 
+          <Input
+            placeholder="Search transactions..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
             className="pl-9 bg-white border-slate-200 shadow-sm rounded-xl"
@@ -133,21 +145,27 @@ export default function AnalyticsFullPage() {
               <TrendingUp className="text-emerald-500 w-4 h-4" />
             </div>
             <p className="text-[10px] text-slate-500 font-medium mb-1">Income</p>
-            <p className="text-sm font-bold text-emerald-600">₹{dashboardData.summary.income.toLocaleString()}</p>
+            <p className="text-sm font-bold text-emerald-600">
+              ₹{dashboardData.summary.income.toLocaleString()}
+            </p>
           </Card>
           <Card className="text-center py-4 shadow-sm border-slate-100 rounded-2xl">
             <div className="flex justify-center mb-1">
               <TrendingDown className="text-red-500 w-4 h-4" />
             </div>
             <p className="text-[10px] text-slate-500 font-medium mb-1">Expenses</p>
-            <p className="text-sm font-bold text-red-600">₹{dashboardData.summary.expenses.toLocaleString()}</p>
+            <p className="text-sm font-bold text-red-600">
+              ₹{dashboardData.summary.expenses.toLocaleString()}
+            </p>
           </Card>
           <Card className="text-center py-4 shadow-sm border-slate-100 rounded-2xl">
             <div className="flex justify-center mb-1">
               <Wallet className="text-emerald-500 w-4 h-4" />
             </div>
             <p className="text-[10px] text-slate-500 font-medium mb-1">Net Savings</p>
-            <p className="text-sm font-bold text-emerald-600">₹{dashboardData.summary.savings.toLocaleString()}</p>
+            <p className="text-sm font-bold text-emerald-600">
+              ₹{dashboardData.summary.savings.toLocaleString()}
+            </p>
           </Card>
         </div>
 
@@ -155,11 +173,15 @@ export default function AnalyticsFullPage() {
         <div className="grid grid-cols-2 gap-3">
           <Card className="p-4 shadow-sm border-slate-100 rounded-2xl">
             <p className="text-[10px] text-slate-500 mb-1">Savings Rate</p>
-            <p className="text-lg font-bold text-emerald-600">{dashboardData.summary.savingsRate}%</p>
+            <p className="text-lg font-bold text-emerald-600">
+              {dashboardData.summary.savingsRate}%
+            </p>
           </Card>
           <Card className="p-4 shadow-sm border-slate-100 rounded-2xl">
             <p className="text-[10px] text-slate-500 mb-1">Avg Daily Spend</p>
-            <p className="text-lg font-bold text-red-600">₹{dashboardData.summary.avgDailySpend.toLocaleString()}</p>
+            <p className="text-lg font-bold text-red-600">
+              ₹{dashboardData.summary.avgDailySpend.toLocaleString()}
+            </p>
           </Card>
         </div>
 
@@ -172,8 +194,17 @@ export default function AnalyticsFullPage() {
             <div className="h-28 w-1/4">
               <ResponsiveContainer width="100%" height="100%">
                 <PieChart>
-                  <Pie data={dashboardData.categoryBreakdown} innerRadius={35} outerRadius={55} paddingAngle={2} dataKey="value" stroke="none">
-                    {dashboardData.categoryBreakdown.map((entry, index) => <Cell key={`cell-${index}`} fill={entry.color} />)}
+                  <Pie
+                    data={dashboardData.categoryBreakdown}
+                    innerRadius={35}
+                    outerRadius={55}
+                    paddingAngle={2}
+                    dataKey="value"
+                    stroke="none"
+                  >
+                    {dashboardData.categoryBreakdown.map((entry, index) => (
+                      <Cell key={`cell-${index}`} fill={entry.color} />
+                    ))}
                   </Pie>
                 </PieChart>
               </ResponsiveContainer>
@@ -182,7 +213,10 @@ export default function AnalyticsFullPage() {
               {dashboardData.categoryBreakdown.map((item) => (
                 <div key={item.name} className="flex justify-between text-xs items-center">
                   <div className="flex items-center gap-2">
-                    <div className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: item.color }} />
+                    <div
+                      className="w-1.5 h-1.5 rounded-full"
+                      style={{ backgroundColor: item.color }}
+                    />
                     <span className="text-slate-600">{item.name}</span>
                   </div>
                   <span className="font-semibold">₹{item.value.toLocaleString()}</span>
@@ -202,10 +236,15 @@ export default function AnalyticsFullPage() {
               <div key={method.name} className="space-y-1.5">
                 <div className="flex justify-between text-xs">
                   <span className="text-slate-500">{method.name}</span>
-                  <span className="font-bold">₹{method.amount.toLocaleString()} ({method.percentage}%)</span>
+                  <span className="font-bold">
+                    ₹{method.amount.toLocaleString()} ({method.percentage}%)
+                  </span>
                 </div>
                 <div className="w-full bg-slate-100 rounded-full h-1.5 overflow-hidden">
-                  <div className={`h-full rounded-full ${method.color}`} style={{ width: `${method.percentage}%` }}></div>
+                  <div
+                    className={`h-full rounded-full ${method.color}`}
+                    style={{ width: `${method.percentage}%` }}
+                  ></div>
                 </div>
               </div>
             ))}
@@ -219,7 +258,10 @@ export default function AnalyticsFullPage() {
           </CardHeader>
           <CardContent className="space-y-0 pt-0">
             {dashboardData.topExpenses.map((expense, index) => (
-              <div key={index} className="flex justify-between items-center py-3 border-b border-slate-50 last:border-0">
+              <div
+                key={index}
+                className="flex justify-between items-center py-3 border-b border-slate-50 last:border-0"
+              >
                 <div className="flex items-center gap-3">
                   <div className="w-5 h-5 rounded-full bg-red-50 text-red-500 flex items-center justify-center text-[10px] font-bold">
                     {expense.id}
@@ -229,7 +271,9 @@ export default function AnalyticsFullPage() {
                     <p className="text-[10px] text-slate-400">{expense.date}</p>
                   </div>
                 </div>
-                <span className="text-xs font-bold text-red-500">₹{expense.amount.toLocaleString()}</span>
+                <span className="text-xs font-bold text-red-500">
+                  ₹{expense.amount.toLocaleString()}
+                </span>
               </div>
             ))}
           </CardContent>
@@ -243,10 +287,30 @@ export default function AnalyticsFullPage() {
           <CardContent className="h-[200px] pt-4">
             <ResponsiveContainer width="100%" height="100%">
               <LineChart data={dashboardData.dailySpend}>
-                <XAxis dataKey="date" fontSize={10} tickLine={false} axisLine={{ stroke: '#94a3b8' }} tick={{ fill: '#94a3b8' }} dy={10} />
-                <YAxis fontSize={10} tickLine={false} axisLine={{ stroke: '#94a3b8' }} tick={{ fill: '#94a3b8' }} tickFormatter={(val) => `₹${val/1000}k`} dx={-10} />
+                <XAxis
+                  dataKey="date"
+                  fontSize={10}
+                  tickLine={false}
+                  axisLine={{ stroke: "#94a3b8" }}
+                  tick={{ fill: "#94a3b8" }}
+                  dy={10}
+                />
+                <YAxis
+                  fontSize={10}
+                  tickLine={false}
+                  axisLine={{ stroke: "#94a3b8" }}
+                  tick={{ fill: "#94a3b8" }}
+                  tickFormatter={(val) => `₹${val / 1000}k`}
+                  dx={-10}
+                />
                 <Tooltip />
-                <Line type="monotone" dataKey="amount" stroke="#ef4444" strokeWidth={2} dot={false} />
+                <Line
+                  type="monotone"
+                  dataKey="amount"
+                  stroke="#ef4444"
+                  strokeWidth={2}
+                  dot={false}
+                />
               </LineChart>
             </ResponsiveContainer>
           </CardContent>
@@ -260,10 +324,24 @@ export default function AnalyticsFullPage() {
           <CardContent className="h-[200px] pt-4">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={dashboardData.monthlyTrends} barSize={60}>
-                <XAxis dataKey="month" fontSize={10} tickLine={false} axisLine={{ stroke: '#94a3b8' }} tick={{ fill: '#94a3b8' }} dy={10} />
-                <YAxis fontSize={10} tickLine={false} axisLine={{stroke: '#94a3b8'}} tick={{ fill: '#94a3b8' }} tickFormatter={(val) => `₹${val/1000}k`} dx={-10} />
+                <XAxis
+                  dataKey="month"
+                  fontSize={10}
+                  tickLine={false}
+                  axisLine={{ stroke: "#94a3b8" }}
+                  tick={{ fill: "#94a3b8" }}
+                  dy={10}
+                />
+                <YAxis
+                  fontSize={10}
+                  tickLine={false}
+                  axisLine={{ stroke: "#94a3b8" }}
+                  tick={{ fill: "#94a3b8" }}
+                  tickFormatter={(val) => `₹${val / 1000}k`}
+                  dx={-10}
+                />
                 <Tooltip />
-                <Legend iconType="square" wrapperStyle={{ fontSize: '10px' }} />
+                <Legend iconType="square" wrapperStyle={{ fontSize: "10px" }} />
                 <Bar dataKey="income" name="Income" fill="#22c55e" radius={[2, 2, 0, 0]} />
                 <Bar dataKey="expense" name="Expense" fill="#ef4444" radius={[2, 2, 0, 0]} />
               </BarChart>
@@ -279,8 +357,22 @@ export default function AnalyticsFullPage() {
           <CardContent className="h-[200px] pt-4">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={dashboardData.dayOfWeek} barSize={25}>
-                <XAxis dataKey="day" fontSize={10} tickLine={false} axisLine={{ stroke: '#94a3b8' }} tick={{ fill: '#94a3b8' }} dy={10} />
-                <YAxis fontSize={10} tickLine={false} axisLine={{ stroke: '#94a3b8' }}tick={{ fill: '#94a3b8' }} tickFormatter={(val) => `₹${val/1000}k`} dx={-10} />
+                <XAxis
+                  dataKey="day"
+                  fontSize={10}
+                  tickLine={false}
+                  axisLine={{ stroke: "#94a3b8" }}
+                  tick={{ fill: "#94a3b8" }}
+                  dy={10}
+                />
+                <YAxis
+                  fontSize={10}
+                  tickLine={false}
+                  axisLine={{ stroke: "#94a3b8" }}
+                  tick={{ fill: "#94a3b8" }}
+                  tickFormatter={(val) => `₹${val / 1000}k`}
+                  dx={-10}
+                />
                 <Tooltip />
                 <Bar dataKey="amount" fill="#f59e0b" radius={[2, 2, 0, 0]} />
               </BarChart>
@@ -292,11 +384,15 @@ export default function AnalyticsFullPage() {
         <div className="grid grid-cols-2 gap-3">
           <Card className="p-4 shadow-sm border-slate-100 rounded-2xl">
             <p className="text-[10px] text-slate-500 mb-1">Total Fees Paid</p>
-            <p className="text-lg font-bold text-red-500">₹{dashboardData.summary.totalFees.toLocaleString()}</p>
+            <p className="text-lg font-bold text-red-500">
+              ₹{dashboardData.summary.totalFees.toLocaleString()}
+            </p>
           </Card>
           <Card className="p-4 shadow-sm border-slate-100 rounded-2xl">
             <p className="text-[10px] text-slate-500 mb-1">Total Transactions</p>
-            <p className="text-lg font-bold text-slate-800">{dashboardData.summary.totalTransactions}</p>
+            <p className="text-lg font-bold text-slate-800">
+              {dashboardData.summary.totalTransactions}
+            </p>
           </Card>
         </div>
 
@@ -307,7 +403,10 @@ export default function AnalyticsFullPage() {
           </CardHeader>
           <CardContent className="space-y-0 pt-0">
             {dashboardData.transactionCounts.map((type, index) => (
-              <div key={index} className="flex justify-between items-center py-3 border-b border-slate-50 last:border-0">
+              <div
+                key={index}
+                className="flex justify-between items-center py-3 border-b border-slate-50 last:border-0"
+              >
                 <div className="flex items-center gap-2">
                   <div className={`w-1.5 h-1.5 rounded-full ${type.color}`} />
                   <span className="text-xs font-bold text-slate-700">{type.name}</span>
@@ -331,11 +430,15 @@ export default function AnalyticsFullPage() {
                 <div className="flex justify-between text-xs">
                   <span className="font-bold text-slate-800">{card.name}</span>
                   <span className="text-slate-500">
-                    ₹{card.used.toLocaleString()} / ₹{card.total.toLocaleString()} ({card.percentage}%)
+                    ₹{card.used.toLocaleString()} / ₹{card.total.toLocaleString()} (
+                    {card.percentage}%)
                   </span>
                 </div>
                 <div className="w-full bg-slate-100 rounded-full h-1.5 overflow-hidden">
-                  <div className="h-full rounded-full bg-[#1e1b4b]" style={{ width: `${card.percentage}%` }}></div>
+                  <div
+                    className="h-full rounded-full bg-[#1e1b4b]"
+                    style={{ width: `${card.percentage}%` }}
+                  ></div>
                 </div>
               </div>
             ))}
@@ -346,23 +449,30 @@ export default function AnalyticsFullPage() {
         <Card className="shadow-sm border-slate-100 rounded-2xl">
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-bold flex items-center gap-2">
-               <span className="text-slate-600">👥</span> Udhar Position
+              <span className="text-slate-600">👥</span> Udhar Position
             </CardTitle>
           </CardHeader>
           <CardContent className="pt-2">
             <div className="grid grid-cols-2 gap-3 mb-4">
               <div className="bg-emerald-50/50 p-4 rounded-xl border border-emerald-100/50">
                 <p className="text-[10px] text-emerald-700 mb-1">To Receive</p>
-                <p className="text-base font-bold text-emerald-600">₹{dashboardData.udhar.receive.toLocaleString()}</p>
+                <p className="text-base font-bold text-emerald-600">
+                  ₹{dashboardData.udhar.receive.toLocaleString()}
+                </p>
               </div>
               <div className="bg-red-50/50 p-4 rounded-xl border border-red-100/50">
                 <p className="text-[10px] text-red-700 mb-1">To Pay</p>
-                <p className="text-base font-bold text-red-500">₹{dashboardData.udhar.pay.toLocaleString()}</p>
+                <p className="text-base font-bold text-red-500">
+                  ₹{dashboardData.udhar.pay.toLocaleString()}
+                </p>
               </div>
             </div>
             <div className="text-center">
               <span className="text-xs text-slate-500">Net: </span>
-              <span className="text-xs font-bold text-red-500">{dashboardData.udhar.net < 0 ? '-' : ''}₹{Math.abs(dashboardData.udhar.net).toLocaleString()}</span>
+              <span className="text-xs font-bold text-red-500">
+                {dashboardData.udhar.net < 0 ? "-" : ""}₹
+                {Math.abs(dashboardData.udhar.net).toLocaleString()}
+              </span>
             </div>
           </CardContent>
         </Card>
@@ -371,7 +481,7 @@ export default function AnalyticsFullPage() {
         <Card className="shadow-sm border-slate-100 rounded-2xl">
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-bold flex items-center gap-2">
-               <span className="text-slate-600">🏛️</span> Loan Overview
+              <span className="text-slate-600">🏛️</span> Loan Overview
             </CardTitle>
           </CardHeader>
           <CardContent className="pt-2 flex justify-between px-6">
@@ -381,15 +491,18 @@ export default function AnalyticsFullPage() {
             </div>
             <div className="text-center  bg-gray-100 w-[30%] py-3 rounded-sm">
               <p className="text-[10px] text-slate-500 mb-1">Monthly EMI</p>
-              <p className="text-sm font-bold text-red-500">₹{dashboardData.loan.emi.toLocaleString()}</p>
+              <p className="text-sm font-bold text-red-500">
+                ₹{dashboardData.loan.emi.toLocaleString()}
+              </p>
             </div>
             <div className="text-center  bg-gray-100 w-[30%] py-3 rounded-sm">
               <p className="text-[10px] text-slate-500 mb-1">Total Principal</p>
-              <p className="text-sm font-bold text-slate-800">₹{dashboardData.loan.principal.toLocaleString()}</p>
+              <p className="text-sm font-bold text-slate-800">
+                ₹{dashboardData.loan.principal.toLocaleString()}
+              </p>
             </div>
           </CardContent>
         </Card>
-
       </main>
 
       {/* Bottom Navigation Bar */}
@@ -413,5 +526,5 @@ export default function AnalyticsFullPage() {
         </button>
       </nav>
     </div>
-  );
+  )
 }
