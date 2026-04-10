@@ -1,6 +1,5 @@
 import { useId } from "react"
 import { CalendarDays, ChevronDown } from "lucide-react"
-import { ToggleTile } from "@/components/toggle-tile"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
@@ -11,7 +10,7 @@ import { cn } from "@/lib/utils"
 function SelectChevron() {
   return (
     <ChevronDown
-      className="pointer-events-none absolute right-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground"
+      className="pointer-events-none absolute right-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground"
       aria-hidden
     />
   )
@@ -22,38 +21,27 @@ export function LoanEmiFormFields({
   onChange,
   compact = false,
   showOverdue = true,
-  loanSheetDense = false,
+  loanSheetDense = false, // Kept for API compatibility, but visually overridden to match the design
 }: {
   value: LoanEmiFormModel
   onChange: (patch: Partial<LoanEmiFormModel>) => void
   compact?: boolean
   showOverdue?: boolean
-  /** Tighter vertical rhythm for Add Loan sheet (single-screen layout). */
   loanSheetDense?: boolean
 }) {
   const overdueAmountId = useId()
 
-  const lb = compact
-    ? "mb-0.5 block text-[10px] font-bold text-primary sm:text-xs"
-    : "mb-0.5 block text-xs font-bold text-primary"
-
-  const fieldBase = loanSheetDense
-    ? "h-7 rounded-xl border border-border bg-card px-2 text-[11px] text-foreground shadow-sm outline-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/50 sm:px-2.5 sm:text-xs"
-    : compact
-      ? "h-7 rounded-xl border border-border bg-card px-2 text-xs text-foreground shadow-sm outline-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/50 sm:h-8 sm:px-2.5 sm:text-sm"
-      : "h-9 rounded-xl border border-border bg-card px-3 text-sm text-foreground shadow-sm outline-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/50"
-
-  const gap = loanSheetDense ? "gap-1" : compact ? "gap-1.5" : "gap-2"
-  const blockGap = loanSheetDense ? "space-y-0.5" : compact ? "space-y-1" : "space-y-2"
-  const cycleTileClass = loanSheetDense
-    ? "min-h-7 px-1 py-1 text-[9px] leading-tight sm:min-h-7 sm:px-1.5 sm:py-1.5 sm:text-[10px]"
-    : undefined
+  // Updated base styles to match the precise UI from the image
+  const labelClass = "mb-1.5 block text-xs font-semibold text-foreground/80"
+  const fieldBase =
+    "flex h-10 w-full rounded-xl border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-0 disabled:cursor-not-allowed disabled:opacity-50"
 
   return (
-    <div className={cn(blockGap, "animate-in fade-in slide-in-from-top-1 duration-200")}>
-      <div className={cn("grid grid-cols-2", gap)}>
+    <div className="space-y-4 animate-in fade-in slide-in-from-top-1 duration-200">
+      {/* Bank / Lender & Loan Account No. */}
+      <div className="grid grid-cols-2 gap-4">
         <section>
-          <Label htmlFor="emi-bank" className={lb}>
+          <Label htmlFor="emi-bank" className={labelClass}>
             Bank / Lender
           </Label>
           <Input
@@ -61,11 +49,11 @@ export function LoanEmiFormFields({
             value={value.bankLender}
             onChange={(e) => onChange({ bankLender: e.target.value })}
             placeholder="e.g. SBI"
-            className={cn(fieldBase)}
+            className={fieldBase}
           />
         </section>
         <section>
-          <Label htmlFor="emi-acct" className={lb}>
+          <Label htmlFor="emi-acct" className={labelClass}>
             Loan Account No.
           </Label>
           <Input
@@ -73,14 +61,15 @@ export function LoanEmiFormFields({
             value={value.loanAccountNo}
             onChange={(e) => onChange({ loanAccountNo: e.target.value })}
             placeholder="Account number"
-            className={cn(fieldBase)}
+            className={fieldBase}
             autoComplete="off"
           />
         </section>
       </div>
 
+      {/* Principal Amount */}
       <section>
-        <Label htmlFor="emi-principal" className={lb}>
+        <Label htmlFor="emi-principal" className={labelClass}>
           Principal Amount (₹)
         </Label>
         <Input
@@ -89,46 +78,44 @@ export function LoanEmiFormFields({
           placeholder="0"
           value={value.principal}
           onChange={(e) => onChange({ principal: e.target.value.replace(/[^\d]/g, "") })}
-          className={cn(
-            loanSheetDense
-              ? "h-8 rounded-xl border border-border bg-muted/60 px-2 text-center text-base font-semibold tabular-nums text-primary/80 placeholder:text-primary/40 sm:h-8 sm:text-lg"
-              : compact
-                ? "h-9 rounded-xl border border-border bg-muted/60 text-center text-lg font-semibold tabular-nums text-primary/80 placeholder:text-primary/40 sm:h-10 sm:text-xl"
-                : "h-12 rounded-xl border border-border bg-muted/60 text-center text-2xl font-semibold tabular-nums text-primary/80 placeholder:text-primary/40"
-          )}
+          className={fieldBase}
         />
       </section>
 
-      <div className={cn("grid grid-cols-2", gap)}>
+      {/* Interest Rate & Tenure */}
+      <div className="grid grid-cols-2 gap-4">
         <section>
-          <Label htmlFor="emi-rate" className={lb}>
+          <Label htmlFor="emi-rate" className={labelClass}>
             Interest Rate (% p.a.)
           </Label>
           <Input
             id="emi-rate"
             inputMode="decimal"
+            placeholder="8.5"
             value={value.interestRate}
             onChange={(e) => onChange({ interestRate: e.target.value.replace(/[^\d.]/g, "") })}
-            className={cn(fieldBase)}
+            className={fieldBase}
           />
         </section>
         <section>
-          <Label htmlFor="emi-tenure" className={lb}>
+          <Label htmlFor="emi-tenure" className={labelClass}>
             Tenure (months)
           </Label>
           <Input
             id="emi-tenure"
             inputMode="numeric"
+            placeholder="60"
             value={value.tenureMonths}
             onChange={(e) => onChange({ tenureMonths: e.target.value.replace(/\D/g, "") })}
-            className={cn(fieldBase)}
+            className={fieldBase}
           />
         </section>
       </div>
 
-      <div className={cn("grid grid-cols-2", gap)}>
+      {/* Start Date & EMI Due Day */}
+      <div className="grid grid-cols-2 gap-4">
         <section>
-          <Label htmlFor="emi-start" className={lb}>
+          <Label htmlFor="emi-start" className={labelClass}>
             Start Date
           </Label>
           <div className="relative">
@@ -137,16 +124,12 @@ export function LoanEmiFormFields({
               type="date"
               value={value.startDate}
               onChange={(e) => onChange({ startDate: e.target.value })}
-              className={cn(fieldBase, "pr-8 scheme-light dark:scheme-dark sm:pr-9")}
-            />
-            <CalendarDays
-              className="pointer-events-none absolute right-1.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground sm:right-2 sm:size-4"
-              aria-hidden
+              className={cn(fieldBase, "pr-9")}
             />
           </div>
         </section>
         <section>
-          <Label htmlFor="emi-due-day" className={lb}>
+          <Label htmlFor="emi-due-day" className={labelClass}>
             EMI Due Day
           </Label>
           <div className="relative">
@@ -154,8 +137,9 @@ export function LoanEmiFormFields({
               id="emi-due-day"
               value={value.emiDueDay}
               onChange={(e) => onChange({ emiDueDay: e.target.value })}
-              className={cn(fieldBase, "w-full appearance-none pr-8 sm:pr-9")}
+              className={cn(fieldBase, "appearance-none pr-9 focus:border-primary")}
             >
+              <option value="" disabled>Select day</option>
               {BILLING_DAY_OPTIONS.map(({ value: v, label }) => (
                 <option key={v} value={v}>
                   {label}
@@ -167,59 +151,48 @@ export function LoanEmiFormFields({
         </section>
       </div>
 
+      {/* Due Date Cycle Toggle */}
       <section>
-        <Label className={lb}>Due Date Cycle</Label>
-        <div
-          className={cn(
-            "grid grid-cols-2",
-            loanSheetDense ? "gap-0.5" : compact ? "gap-1" : "gap-1.5"
-          )}
-        >
-          <ToggleTile
-            selected={value.dueCycle === "fixed"}
+        <Label className={labelClass}>Due Date Cycle</Label>
+        <div className="flex w-full overflow-hidden rounded-xl border border-input bg-muted/30">
+          <button
+            type="button"
             onClick={() => onChange({ dueCycle: "fixed" })}
-            className={cycleTileClass}
+            className={cn(
+              "flex-1 py-2.5 text-[13px] font-medium transition-colors",
+              (!value.dueCycle || value.dueCycle === "fixed")
+                ? "m-[-1px] rounded-xl border border-primary bg-background text-primary shadow-sm"
+                : "text-muted-foreground hover:text-foreground"
+            )}
           >
-            <span>Fixed Monthly Date</span>
-          </ToggleTile>
-          <ToggleTile
-            selected={value.dueCycle === "rolling"}
+            Fixed Monthly Date
+          </button>
+          <button
+            type="button"
             onClick={() => onChange({ dueCycle: "rolling" })}
-            className={cycleTileClass}
+            className={cn(
+              "flex-1 py-2.5 text-[13px] font-medium transition-colors",
+              value.dueCycle === "rolling"
+                ? "m-[-1px] rounded-xl border border-primary bg-background text-primary shadow-sm"
+                : "text-muted-foreground hover:text-foreground"
+            )}
           >
-            <span>Rolling 30-Day Cycle</span>
-          </ToggleTile>
+            Rolling 30-Day Cycle
+          </button>
         </div>
-        <p
-          className={cn(
-            "mt-0.5 text-[9px] leading-tight sm:text-[10px]",
-            value.dueCycle === "fixed" ? "text-primary/90" : "text-muted-foreground"
-          )}
-        >
-          {value.dueCycle === "fixed"
-            ? "Due date stays on same calendar day each month"
-            : "Each EMI is due 30 days after the previous due date"}
-        </p>
       </section>
 
-      <div
-        className={cn(
-          "rounded-xl border border-border/80 bg-muted/30",
-          loanSheetDense ? "p-1.5" : compact ? "p-1.5" : "p-2"
-        )}
-      >
-        <div className="flex items-start justify-between gap-2">
+      {/* Override EMI Amount */}
+      <div className="rounded-xl border border-border bg-muted/30 p-4">
+        <div className="flex items-start justify-between gap-4">
           <div className="min-w-0 flex-1">
             <Label
               htmlFor="emi-override-switch"
-              className={cn(
-                compact ? "text-[10px] font-bold sm:text-xs" : "text-xs font-bold",
-                "mb-0 block cursor-pointer text-primary"
-              )}
+              className="block cursor-pointer text-sm font-semibold text-foreground"
             >
               Override EMI amount
             </Label>
-            <p className="mt-0.5 text-[9px] leading-snug text-muted-foreground sm:text-[10px]">
+            <p className="mt-1 text-xs text-muted-foreground">
               Bank EMI may differ due to processing fees, rounding, etc.
             </p>
           </div>
@@ -231,9 +204,9 @@ export function LoanEmiFormFields({
             className="mt-0.5 shrink-0"
           />
         </div>
-        {value.overrideEmi ? (
-          <div className="mt-1.5 animate-in fade-in slide-in-from-top-1 duration-200">
-            <Label htmlFor="emi-override-amt" className={lb}>
+        {value.overrideEmi && (
+          <div className="mt-4 animate-in fade-in slide-in-from-top-2 duration-200">
+            <Label htmlFor="emi-override-amt" className={labelClass}>
               Custom EMI amount (₹)
             </Label>
             <Input
@@ -244,26 +217,19 @@ export function LoanEmiFormFields({
               onChange={(e) =>
                 onChange({ overrideEmiAmount: e.target.value.replace(/[^\d]/g, "") })
               }
-              className={cn(fieldBase, "mt-0.5 bg-muted/60 font-semibold tabular-nums")}
+              className={fieldBase}
             />
           </div>
-        ) : null}
+        )}
       </div>
 
-      {showOverdue ? (
-        <div
-          className={cn(
-            "rounded-xl border border-border/80 bg-muted/30",
-            loanSheetDense ? "p-1.5" : compact ? "p-1.5" : "p-2"
-          )}
-        >
-          <div className="flex items-center justify-between gap-2">
+      {/* Overdue Section */}
+      {showOverdue && (
+        <div className="rounded-xl border border-border bg-muted/30 p-4">
+          <div className="flex items-center justify-between gap-4">
             <Label
               htmlFor="emi-overdue-switch"
-              className={cn(
-                compact ? "text-[10px] font-bold sm:text-xs" : "text-xs font-bold",
-                "cursor-pointer text-primary"
-              )}
+              className="cursor-pointer text-sm font-semibold text-foreground"
             >
               Overdue
             </Label>
@@ -274,16 +240,16 @@ export function LoanEmiFormFields({
               aria-label="Loan is overdue"
             />
           </div>
-          {value.overdue ? (
+          {value.overdue && (
             <div
-              className="mt-1.5 space-y-1 animate-in fade-in slide-in-from-top-1 duration-200"
+              className="mt-4 space-y-3 animate-in fade-in slide-in-from-top-2 duration-200"
               aria-live="polite"
             >
-              <p className="text-[9px] leading-tight text-muted-foreground sm:text-[10px]">
+              <p className="text-xs text-muted-foreground">
                 Include missed EMIs, penalties, and other overdue charges if applicable.
               </p>
               <div>
-                <Label htmlFor={overdueAmountId} className={lb}>
+                <Label htmlFor={overdueAmountId} className={labelClass}>
                   Overdue Amount (₹)
                 </Label>
                 <Input
@@ -294,13 +260,13 @@ export function LoanEmiFormFields({
                   onChange={(e) =>
                     onChange({ overdueAmount: e.target.value.replace(/[^\d]/g, "") })
                   }
-                  className={cn(fieldBase, "mt-0.5")}
+                  className={fieldBase}
                 />
               </div>
             </div>
-          ) : null}
+          )}
         </div>
-      ) : null}
+      )}
     </div>
   )
 }

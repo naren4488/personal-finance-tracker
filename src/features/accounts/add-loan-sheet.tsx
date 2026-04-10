@@ -31,7 +31,7 @@ const LOAN_TYPES = [
 function SelectChevron() {
   return (
     <ChevronDown
-      className="pointer-events-none absolute right-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground"
+      className="pointer-events-none absolute right-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground"
       aria-hidden
     />
   )
@@ -165,7 +165,9 @@ function AddLoanSheetMounted({ onOpenChange }: MountedProps) {
   }
 
   const fieldBase =
-    "h-9 rounded-xl border border-border bg-card px-3 text-sm text-foreground shadow-sm outline-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/50"
+    "flex h-10 w-full rounded-xl border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-0 disabled:cursor-not-allowed disabled:opacity-50"
+  
+  const labelClass = "mb-1.5 block text-xs font-semibold text-foreground/80"
 
   return (
     <div className="fixed inset-0 z-50 flex min-h-0 max-h-dvh items-center justify-center overflow-hidden p-2 pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:p-4">
@@ -180,23 +182,23 @@ function AddLoanSheetMounted({ onOpenChange }: MountedProps) {
         aria-modal="true"
         aria-labelledby={titleId}
         className={cn(
-          "relative flex min-h-0 max-h-[min(calc(100dvh-1.25rem-env(safe-area-inset-bottom)),92dvh)] w-full max-w-xl flex-col overflow-hidden rounded-2xl border border-border bg-card shadow-2xl sm:max-h-[min(92dvh,calc(100dvh-2rem))]",
+          "relative flex mb-8 min-h-0 max-h-[min(calc(100dvh-1.25rem-env(safe-area-inset-bottom)),92dvh)] w-full max-w-lg flex-col overflow-hidden rounded-2xl border border-border bg-card shadow-2xl sm:max-h-[min(92dvh,calc(100dvh-2rem))]",
           "animate-in fade-in zoom-in-95 duration-200"
         )}
       >
-        <header className="flex shrink-0 items-start justify-between gap-2 border-b border-border px-3 py-2.5 sm:px-4">
+        <header className="flex shrink-0 items-center justify-between gap-2 border-b border-border px-5 py-4">
           <h2 id={titleId} className="text-base font-bold text-primary sm:text-lg">
             Add Loan
           </h2>
           <Button
             type="button"
             variant="ghost"
-            size="icon-sm"
-            className="shrink-0 rounded-full text-muted-foreground hover:text-foreground"
+            size="icon"
+            className="h-8 w-8 shrink-0 rounded-full text-muted-foreground hover:bg-muted hover:text-foreground"
             aria-label="Close"
             onClick={dismiss}
           >
-            <X className="size-5" strokeWidth={2} />
+            <X className="size-4" strokeWidth={2.5} />
           </Button>
         </header>
 
@@ -204,14 +206,11 @@ function AddLoanSheetMounted({ onOpenChange }: MountedProps) {
           <div
             className={cn(
               FORM_OVERLAY_SCROLL_BODY,
-              "space-y-1 px-3 py-1 sm:space-y-1.5 sm:px-4 sm:py-1.5"
+              "space-y-4 px-5 py-5" // Increased spacing and padding
             )}
           >
             <section>
-              <Label
-                htmlFor={loanTypeId}
-                className="mb-0.5 block text-[11px] font-bold text-primary sm:text-xs"
-              >
+              <Label htmlFor={loanTypeId} className={labelClass}>
                 Loan Type
               </Label>
               <div className="relative">
@@ -219,10 +218,7 @@ function AddLoanSheetMounted({ onOpenChange }: MountedProps) {
                   id={loanTypeId}
                   value={loanType}
                   onChange={(e) => setLoanType(e.target.value)}
-                  className={cn(
-                    "h-8 w-full appearance-none rounded-xl border-2 border-primary bg-card px-3 pr-9 text-sm font-medium text-foreground shadow-sm outline-none sm:h-9",
-                    "focus-visible:ring-2 focus-visible:ring-ring/50"
-                  )}
+                  className={cn(fieldBase, "appearance-none pr-9 border-primary")} // Removed explicit heights to rely on fieldBase
                 >
                   {LOAN_TYPES.map((t) => (
                     <option key={t} value={t}>
@@ -235,10 +231,7 @@ function AddLoanSheetMounted({ onOpenChange }: MountedProps) {
             </section>
 
             <section>
-              <Label
-                htmlFor="loan-name"
-                className="mb-0.5 block text-[11px] font-bold text-primary sm:text-xs"
-              >
+              <Label htmlFor="loan-name" className={labelClass}>
                 Loan Name
               </Label>
               <Input
@@ -246,18 +239,19 @@ function AddLoanSheetMounted({ onOpenChange }: MountedProps) {
                 value={loanName}
                 onChange={(e) => setLoanName(e.target.value)}
                 placeholder="e.g. Home Loan - SBI"
-                className={cn(fieldBase, "h-8 sm:h-9")}
+                className={fieldBase} // Removed height override
               />
             </section>
 
-            <LoanEmiFormFields value={emi} onChange={patchEmi} compact showOverdue loanSheetDense />
+            {/* Removed 'compact' and 'loanSheetDense' so children render at normal sizes */}
+            <LoanEmiFormFields value={emi} onChange={patchEmi} showOverdue />
           </div>
 
-          <div className={FORM_OVERLAY_FOOTER}>
+          <div className={cn(FORM_OVERLAY_FOOTER, "px-5  ")}>
             <Button
               type="submit"
               disabled={isSubmitting}
-              className="h-9 w-full rounded-xl bg-[hsl(230_22%_62%)] text-sm font-bold text-white hover:bg-[hsl(230_22%_56%)] sm:h-10 sm:text-base"
+              className="h-10 w-full rounded-xl bg-[hsl(230_22%_62%)] text-sm font-bold text-white hover:bg-[hsl(230_22%_56%)] disabled:opacity-60 sm:h-11 sm:text-base"
             >
               {isSubmitting ? "Saving..." : "Add Loan"}
             </Button>
