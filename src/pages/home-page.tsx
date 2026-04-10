@@ -75,7 +75,7 @@ export default function HomePage() {
         </CardContent>
       </Card>
 
-      <section className="space-y-2">
+      <section className="space-y-2 bg-white p-6 rounded-md border shadow">
         <h2 className="text-sm font-semibold">Recent</h2>
         {isError && (
           <Card className="rounded-2xl border-destructive/30 bg-destructive/5">
