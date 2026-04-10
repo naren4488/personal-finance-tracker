@@ -39,6 +39,14 @@ export function getErrorMessage(error: unknown): string {
     ) {
       return (error.data as { message: string }).message
     }
+    if (typeof error.status === "number") {
+      if (error.status === 500) {
+        return "Server error (500). Check the API — see terminal/logs on the backend."
+      }
+      if (error.status === 502 || error.status === 503) {
+        return "Service temporarily unavailable. Try again in a moment."
+      }
+    }
     return `Request failed (${String(error.status)})`
   }
   if (error instanceof Error) {

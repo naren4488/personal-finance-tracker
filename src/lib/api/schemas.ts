@@ -50,6 +50,12 @@ export type CreateTransactionPayload = {
   transferDestination?: TransferDestinationType
   creditCardAccountId?: string
   loanAccountId?: string
+  /**
+   * Transfer → `loan_payment`: required on payload (UI split).
+   * `credit_card_bill`: optional; if omitted, POST uses full amount as principal and `0` interest.
+   */
+  principalComponent?: number
+  interestComponent?: number
   paymentMethod: "account" | "card"
   sourceName: string
   feeAmount: string

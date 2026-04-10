@@ -8,6 +8,7 @@ import {
   ChevronDown,
   FileText,
   IndianRupee,
+  Search,
   Users,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
@@ -41,7 +42,7 @@ type EntrySegment = "txns" | "expenses" | "udhar" | "transfer"
 type TimePreset = "7d" | "month" | "3m" | "year" | "all"
 
 /** Recent list cap for entries (time range + filters apply on the client). */
-const RECENT_TX_LIMIT = 100
+const RECENT_TX_LIMIT = 400
 
 const ENTRY_SEGMENTS: {
   id: EntrySegment
@@ -137,7 +138,7 @@ function headerTotalLabel(
 export default function EntriesPage() {
   const navigate = useNavigate()
 
-  const [segment, setSegment] = useState<EntrySegment>("expenses")
+  const [segment, setSegment] = useState<EntrySegment>("txns")
   const [timePreset, setTimePreset] = useState<TimePreset>("month")
   const [search, setSearch] = useState("")
   const [txModalOpen, setTxModalOpen] = useState(false)
@@ -228,6 +229,19 @@ export default function EntriesPage() {
           return true
         })
       }
+    }
+
+    if (segment === "expenses" && txAccountFilter !== "all") {
+      list = list.filter((t) => t.accountId === txAccountFilter)
+    }
+
+    if (segment === "transfer" && txAccountFilter !== "all") {
+      list = list.filter((t) => {
+        return (
+          t.accountId === txAccountFilter ||
+          (typeof t.toAccountId === "string" && t.toAccountId === txAccountFilter)
+        )
+      })
     }
 
     return list.sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0))
@@ -391,41 +405,6 @@ export default function EntriesPage() {
         </div>
       </div>
 
-      {segment === "txns" && (
-        <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-stretch">
-          <div className="relative min-w-0 flex-1 sm:max-w-[11rem]">
-            <select
-              value={txTypeFilter}
-              onChange={(e) => setTxTypeFilter(e.target.value as "all" | TransactionType)}
-              className="h-10 w-full appearance-none rounded-full border border-border/80 bg-muted/70 px-3.5 pr-9 text-xs font-semibold text-foreground outline-none"
-              aria-label="Filter by type"
-            >
-              <option value="all">All types</option>
-              <option value="expense">Expense</option>
-              <option value="income">Income</option>
-              <option value="transfer">Transfer</option>
-            </select>
-            <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-          </div>
-          <div className="relative min-w-0 flex-1 sm:max-w-[11rem]">
-            <select
-              value={txAccountFilter}
-              onChange={(e) => setTxAccountFilter(e.target.value)}
-              className="h-10 w-full appearance-none rounded-full border border-border/80 bg-muted/70 px-3.5 pr-9 text-xs font-semibold text-foreground outline-none"
-              aria-label="Filter by account"
-            >
-              <option value="all">All accounts</option>
-              {accounts.map((a) => (
-                <option key={a.id} value={a.id}>
-                  {accountSelectLabel(a)}
-                </option>
-              ))}
-            </select>
-            <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-          </div>
-        </div>
-      )}
-
       {showTimeAndSearch && (
         <>
           <div
@@ -453,18 +432,67 @@ export default function EntriesPage() {
             })}
           </div>
 
+          {(segment === "txns" || segment === "expenses" || segment === "transfer") && (
+            <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-stretch">
+              {segment === "txns" && (
+                <div className="relative min-w-0 flex-1 sm:max-w-[11rem]">
+                  <select
+                    value={txTypeFilter}
+                    onChange={(e) => setTxTypeFilter(e.target.value as "all" | TransactionType)}
+                    className="h-10 w-full appearance-none rounded-full border border-border/80 bg-muted/70 px-3.5 pr-9 text-xs font-semibold text-foreground outline-none"
+                    aria-label="Filter by type"
+                  >
+                    <option value="all">All types</option>
+                    <option value="expense">Expense</option>
+                    <option value="income">Income</option>
+                    <option value="transfer">Transfer</option>
+                  </select>
+                  <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+                </div>
+              )}
+              <div
+                className={cn(
+                  "relative min-w-0 flex-1 sm:max-w-[11rem]",
+                  segment !== "txns" && "sm:max-w-full"
+                )}
+              >
+                <select
+                  value={txAccountFilter}
+                  onChange={(e) => setTxAccountFilter(e.target.value)}
+                  className="h-10 w-full appearance-none rounded-full border border-border/80 bg-muted/70 px-3.5 pr-9 text-xs font-semibold text-foreground outline-none"
+                  aria-label="Filter by account"
+                >
+                  <option value="all">All accounts</option>
+                  {accounts.map((a) => (
+                    <option key={a.id} value={a.id}>
+                      {accountSelectLabel(a)}
+                    </option>
+                  ))}
+                </select>
+                <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+              </div>
+            </div>
+          )}
+
           <label className="sr-only" htmlFor="entries-search">
             {searchPlaceholder.replace("…", "")}
           </label>
-          <Input
-            id="entries-search"
-            type="search"
-            placeholder={searchPlaceholder}
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="mb-4 h-11 rounded-xl border-border/80 bg-muted/40"
-            autoComplete="off"
-          />
+          <div className="relative mb-4">
+            <Search
+              className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground"
+              strokeWidth={2}
+              aria-hidden
+            />
+            <Input
+              id="entries-search"
+              type="search"
+              placeholder={searchPlaceholder}
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="h-11 rounded-xl border-border/80 bg-muted/40 pl-10"
+              autoComplete="off"
+            />
+          </div>
         </>
       )}
 
@@ -574,7 +602,7 @@ export default function EntriesPage() {
         !isError &&
         entriesHasList &&
         (segment === "txns" || segment === "expenses") && (
-          <ul className="flex list-none flex-col gap-2.5" aria-label="Entries list">
+          <ul className="flex list-none flex-col gap-3" aria-label="Entries list">
             {filtered.map((tx) => (
               <li key={tx.id}>
                 <RecentTransactionRow tx={tx} accounts={accounts} />
@@ -599,7 +627,7 @@ export default function EntriesPage() {
       )}
 
       {!isLoading && !isError && entriesHasList && segment === "transfer" && (
-        <ul className="flex list-none flex-col gap-2.5" aria-label="Transfers list">
+        <ul className="flex list-none flex-col gap-3" aria-label="Transfers list">
           {filtered.map((tx) => (
             <li key={tx.id}>
               <TransferTransactionRow tx={tx} accounts={accounts} />

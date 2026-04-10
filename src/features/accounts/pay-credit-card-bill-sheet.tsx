@@ -19,6 +19,7 @@ import { endUserSession } from "@/lib/auth/end-session"
 import { FORM_OVERLAY_FOOTER, FORM_OVERLAY_SCROLL_BODY } from "@/lib/form-overlay-scroll"
 import { formatCurrency } from "@/lib/format"
 import { isLoanAccount } from "@/lib/api/loan-account-map"
+import { assertSourceAccountCoversAmount } from "@/lib/validation/source-account-balance"
 import { cn } from "@/lib/utils"
 import { useAddTransactionMutation, useGetAccountsQuery } from "@/store/api/base-api"
 import { useAppDispatch, useAppSelector } from "@/store/hooks"
@@ -180,6 +181,10 @@ function PayCreditCardBillSheetInner({
     }
 
     const fromAcc = payingAccounts.find((a) => a.id === fromAccountId)
+    if (!assertSourceAccountCoversAmount(fromAcc, amt)) {
+      return
+    }
+
     const cardName = account.name.trim() || "Card"
     const noteForApi = note.trim() || "Card bill payment"
     const tagsOut = tags.some((t) => t.toLowerCase() === "bill") ? tags : [...tags, "bill"]

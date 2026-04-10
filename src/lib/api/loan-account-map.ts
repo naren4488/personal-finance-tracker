@@ -229,6 +229,35 @@ export function loanNextEmiPrincipalInr(a: Account): number | null {
   return emi
 }
 
+const round2Inr = (n: number) => Math.round(n * 100) / 100
+
+/**
+ * Principal/interest split for POST /transactions with `destinationType: loan_payment`.
+ * Prepayment: all principal. EMI-style: scale next-installment principal/interest ratio to `totalInr`.
+ */
+export function loanPaymentComponentsForTotalInr(
+  loan: Account,
+  totalInr: number,
+  mode: "schedule_based" | "all_principal"
+): { principalInr: number; interestInr: number } {
+  if (!Number.isFinite(totalInr) || totalInr <= 0) {
+    return { principalInr: 0, interestInr: 0 }
+  }
+  const t = round2Inr(totalInr)
+  if (mode === "all_principal") {
+    return { principalInr: t, interestInr: 0 }
+  }
+  const p0 = loanNextEmiPrincipalInr(loan) ?? 0
+  const i0 = loanNextEmiInterestInr(loan) ?? 0
+  const base = round2Inr(p0 + i0)
+  if (base > 0) {
+    const principalInr = round2Inr((t * p0) / base)
+    const interestInr = round2Inr(t - principalInr)
+    return { principalInr, interestInr }
+  }
+  return { principalInr: t, interestInr: 0 }
+}
+
 function loanIsActive(a: Account): boolean {
   const r = asRec(a)
   if (r.isActive === false) return false

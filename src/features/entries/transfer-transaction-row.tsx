@@ -1,6 +1,4 @@
 import { memo } from "react"
-import { ArrowRightLeft } from "lucide-react"
-import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import {
   getTransferRouteLabels,
   parseSignedAmountString,
@@ -18,27 +16,32 @@ export const TransferTransactionRow = memo(function TransferTransactionRow({
   accounts: Account[]
 }) {
   const { fromLabel, toLabel } = getTransferRouteLabels(tx, accounts)
-  const subtitle = `${fromLabel} → ${toLabel}`
-  const secondary = [subtitle, formatDate(tx.date)].filter(Boolean).join(" · ")
+  const route = `${fromLabel} → ${toLabel}`
+  const secondary = [formatDate(tx.date), route].filter(Boolean).join(" · ")
   const n = parseSignedAmountString(tx.signedAmount)
   const abs = formatCurrency(Math.abs(n))
+  const amountText = n < 0 ? `−${abs}` : n > 0 ? `+${abs}` : abs
 
   return (
-    <div className="flex w-full items-center gap-3 rounded-2xl border border-border/80 bg-card px-3 py-3 text-left shadow-sm">
-      <Avatar className="size-11 shrink-0 border-0 bg-sky-100 dark:bg-sky-950/40">
-        <AvatarFallback className="bg-transparent p-0">
-          <span className="flex size-full items-center justify-center rounded-full">
-            <ArrowRightLeft className="size-5 text-primary" strokeWidth={2} aria-hidden />
-          </span>
-        </AvatarFallback>
-      </Avatar>
+    <div className="flex w-full items-start justify-between gap-3 rounded-2xl border border-border/80 bg-card px-4 py-3.5 text-left shadow-sm">
       <div className="min-w-0 flex-1">
-        <p className="truncate font-semibold text-foreground">Transfer</p>
-        <p className="truncate text-sm text-muted-foreground">{secondary}</p>
+        <p className="truncate text-[15px] font-bold leading-tight text-[#111827] dark:text-foreground">
+          Transfer
+        </p>
+        <p className="mt-1 truncate text-xs leading-snug text-[#6B7280] dark:text-muted-foreground">
+          {secondary}
+        </p>
       </div>
-      <div className="text-right">
-        <p className={cn("text-base font-bold tabular-nums text-foreground")}>{abs}</p>
-      </div>
+      <p
+        className={cn(
+          "shrink-0 text-right text-base font-bold tabular-nums tracking-tight",
+          n < 0 && "text-destructive",
+          n > 0 && "text-income",
+          n === 0 && "text-muted-foreground"
+        )}
+      >
+        {amountText}
+      </p>
     </div>
   )
 })

@@ -12,6 +12,7 @@ import type { CreateTransactionPayload } from "@/lib/api/schemas"
 import { endUserSession } from "@/lib/auth/end-session"
 import { FORM_OVERLAY_FOOTER, FORM_OVERLAY_SCROLL_BODY } from "@/lib/form-overlay-scroll"
 import { formatCurrency } from "@/lib/format"
+import { assertSourceAccountCoversAmount } from "@/lib/validation/source-account-balance"
 import { cn } from "@/lib/utils"
 import { useAddTransactionMutation } from "@/store/api/base-api"
 import { useAppDispatch } from "@/store/hooks"
@@ -129,6 +130,10 @@ function AddCardSpendSheetInner({
     }
     if (!category.trim()) {
       toast.error("Select category")
+      return
+    }
+
+    if (!assertSourceAccountCoversAmount(account, amt)) {
       return
     }
 

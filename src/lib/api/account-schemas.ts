@@ -8,6 +8,10 @@ export const accountSchema = z
     kind: z.string().optional(),
     type: z.string().optional(),
     balance: z.union([z.string(), z.number()]).optional(),
+    /** Live balance from API (GET /accounts) — preferred for “available” display. */
+    currentBalance: z.union([z.string(), z.number()]).optional(),
+    /** Spendable / ledger balance when API sends it separately from `openingBalance`. */
+    availableBalance: z.union([z.string(), z.number()]).optional(),
     openingBalance: z.union([z.string(), z.number()]).optional(),
     bankName: z.string().optional(),
     provider: z.string().optional(),
@@ -46,6 +50,37 @@ export function parseGetAccountsSuccess(
     return { ok: true, accounts: direct.data }
   }
   return { ok: false, error: "Invalid accounts response." }
+}
+
+function parseMoneyScalar(raw: unknown): number | null {
+  if (raw === undefined || raw === null) return null
+  if (typeof raw === "number") return Number.isFinite(raw) ? raw : null
+  const n = Number(String(raw).replace(/,/g, "").trim())
+  return Number.isFinite(n) ? n : null
+}
+
+/**
+ * Numeric INR the user can spend / see as “available” when the API sends it.
+ * Prefers `currentBalance` (typical GET /accounts live balance), then other aliases, then `balance` / `openingBalance`.
+ */
+export function accountAvailableBalanceInrFromApi(account: Account): number {
+  const r = account as Record<string, unknown>
+  const keys = [
+    "currentBalance",
+    "current_balance",
+    "availableBalance",
+    "available_balance",
+    "availableAmount",
+    "currentAvailableBalance",
+    "clearBalance",
+    "spendableBalance",
+    "effectiveBalance",
+  ] as const
+  for (const k of keys) {
+    const n = parseMoneyScalar(r[k])
+    if (n != null) return n
+  }
+  return accountBalanceInrFromApi(account)
 }
 
 /** Numeric INR from `balance` or `openingBalance` (string or number from API). */

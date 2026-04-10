@@ -45,18 +45,22 @@ export const createTransactionTransferCreditCardBillSchema = z.object({
   accountId: z.string().min(1),
   destinationType: z.literal("credit_card_bill"),
   creditCardAccountId: z.string().min(1),
+  principalComponent: z.string().min(1),
+  interestComponent: z.string().min(1),
   date: z.string(),
   note: z.string(),
   tags: z.array(z.string()),
 })
 
-/** POST /transactions — loan EMI / payment from a bank/cash account. */
-export const createTransactionTransferLoanEmiSchema = z.object({
+/** POST /transactions — loan EMI / payment from a bank/cash account (backend enum). */
+export const createTransactionTransferLoanPaymentSchema = z.object({
   type: z.literal("transfer"),
   amount: z.string().min(1),
   accountId: z.string().min(1),
-  destinationType: z.literal("loan_emi"),
+  destinationType: z.literal("loan_payment"),
   loanAccountId: z.string().min(1),
+  principalComponent: z.string().min(1),
+  interestComponent: z.string().min(1),
   date: z.string(),
   note: z.string(),
   tags: z.array(z.string()),
@@ -67,7 +71,7 @@ export const createTransactionApiBodySchema = z.union([
   createTransactionExpenseBodySchema,
   createTransactionTransferToAccountSchema,
   createTransactionTransferCreditCardBillSchema,
-  createTransactionTransferLoanEmiSchema,
+  createTransactionTransferLoanPaymentSchema,
 ])
 
 export type CreateTransactionApiBody = z.infer<typeof createTransactionApiBodySchema>
@@ -188,6 +192,17 @@ function amountToApiString(amount: number): string {
   return String(Math.round(amount * 100) / 100)
 }
 
+function decimal2ApiString(amount: number): string {
+  if (!Number.isFinite(amount) || amount < 0) return "0.00"
+  return (Math.round(amount * 100) / 100).toFixed(2)
+}
+
+/** Transfer `amount` field — match backend decimal style (e.g. "2560.34"). */
+function transferAmountToApiString(amount: number): string {
+  if (!Number.isFinite(amount) || amount <= 0) return "0.00"
+  return (Math.round(amount * 100) / 100).toFixed(2)
+}
+
 /**
  * Maps client payload → exact POST /transactions JSON per `type`.
  * Only fields the backend expects are included (no paymentMethod, etc.).
@@ -237,17 +252,32 @@ export function buildTransactionPostBody(body: CreateTransactionPayload): Create
   }
 
   const dest = body.transferDestination
+  const transferAmount = transferAmountToApiString(body.amount)
 
   if (dest === "credit_card_bill") {
     if (!body.creditCardAccountId?.trim()) {
       throw new Error("credit_card_bill transfer requires creditCardAccountId")
     }
+    const totalInr = Math.round(body.amount * 100) / 100
+    let pInr = body.principalComponent
+    let iInr = body.interestComponent
+    if (pInr === undefined || iInr === undefined) {
+      pInr = totalInr
+      iInr = 0
+    }
+    pInr = Math.round(pInr * 100) / 100
+    iInr = Math.round(iInr * 100) / 100
+    if (Math.abs(pInr + iInr - totalInr) > 0.02) {
+      iInr = Math.round((totalInr - pInr) * 100) / 100
+    }
     return {
       type: "transfer",
-      amount,
+      amount: transferAmount,
       accountId: body.accountId,
       destinationType: "credit_card_bill",
       creditCardAccountId: body.creditCardAccountId.trim(),
+      principalComponent: decimal2ApiString(pInr),
+      interestComponent: decimal2ApiString(iInr),
       date,
       note,
       tags,
@@ -258,12 +288,25 @@ export function buildTransactionPostBody(body: CreateTransactionPayload): Create
     if (!body.loanAccountId?.trim()) {
       throw new Error("loan_emi transfer requires loanAccountId")
     }
+    const totalInr = Math.round(body.amount * 100) / 100
+    let pInr = body.principalComponent
+    let iInr = body.interestComponent
+    if (pInr === undefined || iInr === undefined) {
+      throw new Error("loan_emi transfer requires principalComponent and interestComponent")
+    }
+    pInr = Math.round(pInr * 100) / 100
+    iInr = Math.round(iInr * 100) / 100
+    if (Math.abs(pInr + iInr - totalInr) > 0.02) {
+      iInr = Math.round((totalInr - pInr) * 100) / 100
+    }
     return {
       type: "transfer",
-      amount,
+      amount: transferAmount,
       accountId: body.accountId,
-      destinationType: "loan_emi",
+      destinationType: "loan_payment",
       loanAccountId: body.loanAccountId.trim(),
+      principalComponent: decimal2ApiString(pInr),
+      interestComponent: decimal2ApiString(iInr),
       date,
       note,
       tags,
@@ -275,7 +318,7 @@ export function buildTransactionPostBody(body: CreateTransactionPayload): Create
   }
   return {
     type: "transfer",
-    amount,
+    amount: transferAmount,
     accountId: body.accountId,
     destinationType: "account",
     toAccountId: body.toAccountId.trim(),

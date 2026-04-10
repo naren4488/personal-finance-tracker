@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import type { Account } from "@/lib/api/account-schemas"
 import {
+  accountAvailableBalanceInrFromApi,
   accountBalanceInrFromApi,
   accountSubtitleForList,
   formatOpeningBalanceForApi,
@@ -73,17 +74,20 @@ export function AccountDetailView({
   onOpenChange,
   account,
   onAccountUpdated,
+  initialEditing = false,
 }: {
   open: boolean
   onOpenChange: (open: boolean) => void
   account: Account | null
   onAccountUpdated?: (account: Account) => void
+  /** Set when opening from list card "Edit" (use a distinct `key` on the parent so state remounts). */
+  initialEditing?: boolean
 }) {
   const navigate = useNavigate()
   const user = useAppSelector((s) => s.auth.user)
   const [updateAccount, { isLoading: isSaving }] = useUpdateAccountMutation()
-  const [isEditing, setIsEditing] = useState(false)
-  const [draftName, setDraftName] = useState("")
+  const [isEditing, setIsEditing] = useState(initialEditing)
+  const [draftName, setDraftName] = useState(() => account?.name?.trim() ?? "")
 
   const { data: accountsForRows = [] } = useGetAccountsQuery(undefined, {
     skip: !user || !open,
@@ -199,7 +203,8 @@ export function AccountDetailView({
 
   const workingName = isEditing ? draftName : account.name
   const subtitle = accountSubtitleForList(account)
-  const currentBalance = accountBalanceInrFromApi(account)
+  const availableBalance = accountAvailableBalanceInrFromApi(account)
+  const bookBalance = accountBalanceInrFromApi(account)
   const initialBalance = openingBalanceInrFromApi(account)
 
   const statTile =
@@ -309,11 +314,16 @@ export function AccountDetailView({
 
               <div className="mt-5 sm:mt-6">
                 <p className="text-[11px] font-medium uppercase tracking-wide text-primary-foreground/70">
-                  Current Balance
+                  Available balance
                 </p>
                 <p className="mt-1 text-3xl font-bold tabular-nums sm:text-4xl">
-                  {formatCurrency(currentBalance)}
+                  {formatCurrency(availableBalance)}
                 </p>
+                {Math.round(bookBalance * 100) !== Math.round(availableBalance * 100) ? (
+                  <p className="mt-1 text-xs font-medium text-primary-foreground/75">
+                    Book balance: {formatCurrency(bookBalance)}
+                  </p>
+                ) : null}
                 <p className="mt-2 text-sm font-medium text-primary-foreground/85">
                   Initial: {formatCurrency(initialBalance)}
                 </p>

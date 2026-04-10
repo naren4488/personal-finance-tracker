@@ -27,6 +27,7 @@ import { INCOME_SOURCE_OPTIONS } from "@/lib/api/transaction-schemas"
 import { FORM_OVERLAY_FOOTER, FORM_OVERLAY_SCROLL_BODY } from "@/lib/form-overlay-scroll"
 import type { TransactionType, TransferDestinationType } from "@/lib/api/schemas"
 import { formatCurrency } from "@/lib/format"
+import { assertSourceAccountCoversAmount } from "@/lib/validation/source-account-balance"
 import { cn } from "@/lib/utils"
 import { useAddTransactionMutation, useGetAccountsQuery } from "@/store/api/base-api"
 import { useAppSelector } from "@/store/hooks"
@@ -520,6 +521,10 @@ function AddTransactionModalMounted({
     }
 
     const acc = accounts.find((a) => a.id === accountId)
+    if (effectiveType !== "income" && !assertSourceAccountCoversAmount(acc, submitAmountNum)) {
+      return
+    }
+
     const displayTitle = [titleBase, ...tags].filter(Boolean).join(" · ")
     const noteForApi = expenseFlow
       ? note.trim()
@@ -543,6 +548,14 @@ function AddTransactionModalMounted({
       loanAccountId:
         effectiveType === "transfer" && transferDestinationType === "loan_emi"
           ? loanAccountId
+          : undefined,
+      principalComponent:
+        effectiveType === "transfer" && transferDestinationType === "loan_emi"
+          ? parseDecimalInput(loanPrincipalStr)
+          : undefined,
+      interestComponent:
+        effectiveType === "transfer" && transferDestinationType === "loan_emi"
+          ? parseDecimalInput(loanInterestStr)
           : undefined,
       transferDestination: effectiveType === "transfer" ? transferDestinationType : undefined,
       paymentMethod,

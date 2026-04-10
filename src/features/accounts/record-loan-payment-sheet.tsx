@@ -14,7 +14,12 @@ import { endUserSession } from "@/lib/auth/end-session"
 import { FORM_OVERLAY_FOOTER, FORM_OVERLAY_SCROLL_BODY } from "@/lib/form-overlay-scroll"
 import { formatCurrency } from "@/lib/format"
 import { interestRatePercentFromAccount } from "@/lib/api/credit-card-map"
-import { isLoanAccount, resolveLoanEmiAmount } from "@/lib/api/loan-account-map"
+import {
+  isLoanAccount,
+  loanPaymentComponentsForTotalInr,
+  resolveLoanEmiAmount,
+} from "@/lib/api/loan-account-map"
+import { assertSourceAccountCoversAmount } from "@/lib/validation/source-account-balance"
 import { cn } from "@/lib/utils"
 import { useAddTransactionMutation, useGetAccountsQuery } from "@/store/api/base-api"
 import { useAppDispatch, useAppSelector } from "@/store/hooks"
@@ -177,6 +182,10 @@ export function RecordLoanPaymentSheet({
     }
 
     const fromAcc = payingAccounts.find((a) => a.id === fromAccountId)
+    if (!assertSourceAccountCoversAmount(fromAcc, amt)) {
+      return
+    }
+
     const loanName = account.name.trim() || "Loan"
     const typeLabel = paymentType === "lump_sum" ? "Loan prepayment" : "Loan EMI"
     const noteForApi =
@@ -191,12 +200,20 @@ export function RecordLoanPaymentSheet({
           ? tags
           : [...tags, "emi"]
 
+    const split = loanPaymentComponentsForTotalInr(
+      account,
+      amt,
+      paymentType === "lump_sum" ? "all_principal" : "schedule_based"
+    )
+
     const payload: CreateTransactionPayload = {
       type: "transfer",
       amount: amt,
       category: "",
       transferDestination: "loan_emi",
       loanAccountId: account.id,
+      principalComponent: split.principalInr,
+      interestComponent: split.interestInr,
       paymentMethod: "account",
       sourceName: fromAcc?.name ?? "",
       feeAmount: "0",

@@ -1,12 +1,12 @@
 import { memo } from "react"
-import { ArrowRightLeft, TrendingDown, TrendingUp } from "lucide-react"
 import { TransferTransactionRow } from "@/features/entries/transfer-transaction-row"
+import { buildRecentTxSubtitleLine } from "@/features/entries/transaction-list-utils"
 import type { Account } from "@/lib/api/account-schemas"
 import { formatCurrency, formatDate } from "@/lib/format"
 import { parseSignedAmountString, type RecentTransaction } from "@/lib/api/transaction-schemas"
 import { cn } from "@/lib/utils"
 
-function formatSignedDisplay(signedAmount: string): string {
+function formatSignedInrDisplay(signedAmount: string): string {
   const n = parseSignedAmountString(signedAmount)
   const abs = formatCurrency(Math.abs(n))
   if (n < 0) return `−${abs}`
@@ -19,50 +19,40 @@ export const RecentTransactionRow = memo(function RecentTransactionRow({
   accounts,
 }: {
   tx: RecentTransaction
-  /** When set, transfer rows use the Udhar-style route layout. */
   accounts?: Account[]
 }) {
   if (tx.type === "transfer" && accounts && accounts.length > 0) {
     return <TransferTransactionRow tx={tx} accounts={accounts} />
   }
 
+  const n = parseSignedAmountString(tx.signedAmount)
   const isIncome = tx.type === "income"
   const isExpense = tx.type === "expense"
-  const secondary = [tx.subtitle.trim(), formatDate(tx.date)].filter(Boolean).join(" · ")
+  const secondary = accounts?.length
+    ? buildRecentTxSubtitleLine(tx, accounts)
+    : [formatDate(tx.date), tx.subtitle?.trim()].filter(Boolean).join(" · ")
 
   return (
-    <div className="flex items-center justify-between gap-3 rounded-xl border border-border/60 bg-card px-3 py-2.5 shadow-sm">
-      <div className="flex min-w-0 items-center gap-2">
-        <div
-          className={cn(
-            "flex size-9 shrink-0 items-center justify-center rounded-xl",
-            isIncome && "bg-income/15",
-            isExpense && "bg-expense/15",
-            !isIncome && !isExpense && "bg-muted"
-          )}
-        >
-          {isIncome ? (
-            <TrendingUp className="size-4 text-income" strokeWidth={2} aria-hidden />
-          ) : isExpense ? (
-            <TrendingDown className="size-4 text-expense" strokeWidth={2} aria-hidden />
-          ) : (
-            <ArrowRightLeft className="size-4 text-muted-foreground" strokeWidth={2} aria-hidden />
-          )}
-        </div>
-        <div className="min-w-0">
-          <p className="truncate text-sm font-semibold text-foreground">{tx.title}</p>
-          <p className="truncate text-xs text-muted-foreground">{secondary}</p>
-        </div>
+    <div className="flex items-start justify-between gap-3 rounded-2xl border border-border/80 bg-card px-4 py-3.5 shadow-sm">
+      <div className="min-w-0 flex-1">
+        <p className="truncate text-[15px] font-bold leading-tight text-[#111827] dark:text-foreground">
+          {tx.title}
+        </p>
+        <p className="mt-1 truncate text-xs leading-snug text-[#6B7280] dark:text-muted-foreground">
+          {secondary}
+        </p>
       </div>
       <span
         className={cn(
-          "shrink-0 text-sm font-bold tabular-nums",
+          "shrink-0 text-right text-base font-bold tabular-nums tracking-tight",
           isIncome && "text-income",
-          isExpense && "text-expense",
-          !isIncome && !isExpense && "text-muted-foreground"
+          isExpense && "text-destructive",
+          !isIncome &&
+            !isExpense &&
+            (n < 0 ? "text-destructive" : n > 0 ? "text-income" : "text-muted-foreground")
         )}
       >
-        {formatSignedDisplay(tx.signedAmount)}
+        {formatSignedInrDisplay(tx.signedAmount)}
       </span>
     </div>
   )

@@ -9,13 +9,11 @@ import { AddAccountSheet } from "@/features/accounts/add-account-sheet"
 import { AddCreditCardSheet } from "@/features/accounts/add-credit-card-sheet"
 import { AddLoanSheet } from "@/features/accounts/add-loan-sheet"
 import { AddUdharEntrySheet } from "@/features/accounts/add-udhar-entry-sheet"
+import { AccountCard, AccountCardSkeleton } from "@/features/accounts/account-card"
 import { AccountDetailView } from "@/features/accounts/account-detail-view"
-import { AccountRowCard } from "@/features/accounts/account-list-rows"
 import {
-  ACCOUNTS_MOCK_BY_SEGMENT,
   ACCOUNTS_SEGMENT_META,
   type AccountsSegmentId,
-  type AccountListItem,
 } from "@/features/accounts/accounts-mock-data"
 import { CreditCardDetailView } from "@/features/accounts/credit-card-detail-view"
 import { CreditCardList } from "@/features/accounts/credit-card-list"
@@ -29,11 +27,7 @@ import {
 } from "@/features/entries/add-transaction-modal"
 import type { LoanPaymentMode } from "@/features/accounts/record-loan-payment-sheet"
 import type { Account } from "@/lib/api/account-schemas"
-import {
-  accountBalanceInrFromApi,
-  accountSubtitleForList,
-  filterNormalAccounts,
-} from "@/lib/api/account-schemas"
+import { filterNormalAccounts } from "@/lib/api/account-schemas"
 import { getErrorMessage } from "@/lib/api/errors"
 import {
   inferUdharPersonName,
@@ -84,6 +78,8 @@ export default function AccountsPage() {
   const [cardSheetRequest, setCardSheetRequest] = useState<"spend" | "pay_bill" | null>(null)
   const [transferModalOpen, setTransferModalOpen] = useState(false)
   const [transferPreset, setTransferPreset] = useState<TransferPaymentPreset | null>(null)
+  const [accountDetailStartInEdit, setAccountDetailStartInEdit] = useState(false)
+  const [accountDetailOpenNonce, setAccountDetailOpenNonce] = useState(0)
 
   const openPayBillFromCardDetail = useCallback(() => {
     const a = selectedCreditCard
@@ -162,6 +158,30 @@ export default function AccountsPage() {
 
   const normalAccounts = useMemo(() => filterNormalAccounts(apiAccounts ?? []), [apiAccounts])
 
+  /** Prefer latest row from GET /accounts cache (updated after transactions) over the object captured at click time. */
+  const resolveAccountFromCache = useCallback(
+    (current: Account | null): Account | null => {
+      if (!current) return null
+      const id = String(current.id)
+      const fromApi = apiAccounts?.find((a) => String(a.id) === id)
+      return fromApi ?? current
+    },
+    [apiAccounts]
+  )
+
+  const resolvedSelectedAccount = useMemo(
+    () => resolveAccountFromCache(selectedAccount),
+    [resolveAccountFromCache, selectedAccount]
+  )
+  const resolvedSelectedCreditCard = useMemo(
+    () => resolveAccountFromCache(selectedCreditCard),
+    [resolveAccountFromCache, selectedCreditCard]
+  )
+  const resolvedSelectedLoan = useMemo(
+    () => resolveAccountFromCache(selectedLoan),
+    [resolveAccountFromCache, selectedLoan]
+  )
+
   const peopleGroups = useMemo((): PersonUdharGroup[] => {
     const aggregate = new Map<string, PersonUdharGroup>()
 
@@ -193,37 +213,10 @@ export default function AccountsPage() {
     return groups.sort((a, b) => b.entries.length - a.entries.length)
   }, [recentTransactions])
 
-  const peopleRows = useMemo((): AccountListItem[] => {
-    return peopleGroups.map((g) => ({
-      id: g.id,
-      name: g.name,
-      amountInr: g.amountInr,
-      entryCount: g.entries.length,
-    }))
-  }, [peopleGroups])
   const selectedPeopleGroup = useMemo(
     () => (selectedGroupId ? (peopleGroups.find((g) => g.id === selectedGroupId) ?? null) : null),
     [selectedGroupId, peopleGroups]
   )
-
-  const accountListFromApi: AccountListItem[] = useMemo(() => {
-    return normalAccounts.map((a) => ({
-      id: a.id,
-      name: a.name,
-      entryCount: 0,
-      amountInr: accountBalanceInrFromApi(a),
-      subtitle: accountSubtitleForList(a),
-    }))
-  }, [normalAccounts])
-
-  const items =
-    segment === "people"
-      ? peopleRows
-      : segment === "accounts"
-        ? accountListFromApi
-        : segment === "cards" || segment === "loans"
-          ? []
-          : ACCOUNTS_MOCK_BY_SEGMENT[segment]
 
   const showPeopleLoading = segment === "people" && recentLoading
   const showPeopleError = segment === "people" && recentError
@@ -234,7 +227,7 @@ export default function AccountsPage() {
     segment === "accounts" &&
     !showAccountsLoading &&
     !showAccountsError &&
-    accountListFromApi.length === 0
+    normalAccounts.length === 0
 
   function openHeaderAdd() {
     if (segment === "accounts") setAddAccountOpen(true)
@@ -261,8 +254,8 @@ export default function AccountsPage() {
     (segment === "accounts" &&
       !showAccountsLoading &&
       !showAccountsError &&
-      accountListFromApi.length > 0) ||
-    (segment === "people" && !showPeopleLoading && !showPeopleError && peopleRows.length > 0) ||
+      normalAccounts.length > 0) ||
+    (segment === "people" && !showPeopleLoading && !showPeopleError && peopleGroups.length > 0) ||
     (segment === "loans" && !loansLoading && !loansError && loans.length > 0) ||
     (segment === "cards" && !creditCardsLoading && !creditCardsError && creditCards.length > 0)
 
@@ -280,7 +273,7 @@ export default function AccountsPage() {
             setCardSheetRequest(null)
           }
         }}
-        account={selectedCreditCard}
+        account={resolvedSelectedCreditCard}
         onCardUpdated={(a) => setSelectedCreditCard(a)}
         openSheetRequest={cardSheetRequest}
         onOpenSheetRequestConsumed={consumeCardSheetRequest}
@@ -294,7 +287,7 @@ export default function AccountsPage() {
             setLoanPaymentRequest(null)
           }
         }}
-        account={selectedLoan}
+        account={resolvedSelectedLoan}
         onLoanUpdated={(a) => setSelectedLoan(a)}
         openPaymentRequest={loanPaymentRequest}
         onOpenPaymentRequestConsumed={consumeLoanPaymentRequest}
@@ -309,14 +302,21 @@ export default function AccountsPage() {
         initialType="transfer"
         transferPaymentPreset={transferPreset}
       />
-      <AccountDetailView
-        open={!!selectedAccount}
-        onOpenChange={(v) => {
-          if (!v) setSelectedAccount(null)
-        }}
-        account={selectedAccount}
-        onAccountUpdated={(a) => setSelectedAccount(a)}
-      />
+      {selectedAccount ? (
+        <AccountDetailView
+          key={`${selectedAccount.id}-${accountDetailOpenNonce}`}
+          open
+          onOpenChange={(v) => {
+            if (!v) {
+              setSelectedAccount(null)
+              setAccountDetailStartInEdit(false)
+            }
+          }}
+          account={resolvedSelectedAccount}
+          onAccountUpdated={(a) => setSelectedAccount(a)}
+          initialEditing={accountDetailStartInEdit}
+        />
+      ) : null}
       <UdharDetailsModal
         open={!!selectedPeopleGroup}
         onOpenChange={(v) => {
@@ -388,9 +388,10 @@ export default function AccountsPage() {
         </div>
 
         {showAccountsLoading ? (
-          <div className="flex flex-col gap-2">
-            <Skeleton className="h-18 w-full rounded-2xl" />
-            <Skeleton className="h-18 w-full rounded-2xl" />
+          <div className="flex flex-col gap-3">
+            <AccountCardSkeleton />
+            <AccountCardSkeleton />
+            <AccountCardSkeleton />
           </div>
         ) : showAccountsError ? (
           <div className="space-y-3 rounded-2xl border border-destructive/30 bg-destructive/5 px-4 py-4">
@@ -556,13 +557,19 @@ export default function AccountsPage() {
                         />
                       </li>
                     ))
-                  : items.map((item) => (
-                      <li key={item.id}>
-                        <AccountRowCard
-                          item={item}
-                          onPress={() => {
-                            const acc = normalAccounts.find((a) => a.id === item.id) ?? null
-                            if (acc) setSelectedAccount(acc)
+                  : normalAccounts.map((a) => (
+                      <li key={a.id}>
+                        <AccountCard
+                          account={a}
+                          onOpen={() => {
+                            setAccountDetailStartInEdit(false)
+                            setAccountDetailOpenNonce((n) => n + 1)
+                            setSelectedAccount(a)
+                          }}
+                          onEdit={() => {
+                            setAccountDetailStartInEdit(true)
+                            setAccountDetailOpenNonce((n) => n + 1)
+                            setSelectedAccount(a)
                           }}
                         />
                       </li>

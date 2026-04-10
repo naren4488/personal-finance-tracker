@@ -434,29 +434,31 @@ export const baseApi = createApi({
 
     getPeople: build.query<Person[], void>({
       async queryFn(_arg, api, _extraOptions, baseQuery) {
-        console.log("Fetching people...")
+        if (import.meta.env.DEV) {
+          console.debug("[people] GET list")
+        }
         const res = await baseQuery({
           url: PEOPLE_PATHS.list,
           method: "GET",
         })
-        console.log("API response:", res.data)
         if (res.error) {
-          console.error("Error:", res.error)
+          if (import.meta.env.DEV) {
+            console.error("[people] GET failed", res.error)
+          }
           return { error: normalizeFetchError(res.error) }
         }
         const failMsg = parseApiFailureMessage(res.data)
         if (failMsg) {
-          console.error(failMsg)
           return { error: { status: 401, data: failMsg } }
         }
         const parsed = parseGetPeopleSuccess(res.data)
         if (!parsed.ok) {
-          console.error(parsed.error)
           return { error: { status: 422, data: parsed.error } }
         }
         const people = parsed.data.people
-        console.log("People fetched successfully", parsed.data)
-        console.log("People:", people)
+        if (import.meta.env.DEV) {
+          console.debug("[people] OK, count:", people.length)
+        }
         api.dispatch(setPeople(people))
         return { data: people }
       },
@@ -727,6 +729,7 @@ export const baseApi = createApi({
         console.log("[transactions] create — client row:", tx)
         return { data: tx }
       },
+      // Refetch accounts (all GET /accounts subscribers) so balances match backend after debits/credits.
       invalidatesTags: [
         { type: "Transaction", id: "LIST" },
         { type: "Transaction", id: "RECENT" },
