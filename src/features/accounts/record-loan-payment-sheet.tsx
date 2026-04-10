@@ -179,17 +179,24 @@ export function RecordLoanPaymentSheet({
     const fromAcc = payingAccounts.find((a) => a.id === fromAccountId)
     const loanName = account.name.trim() || "Loan"
     const typeLabel = paymentType === "lump_sum" ? "Loan prepayment" : "Loan EMI"
-    const noteParts = [
-      note.trim(),
-      `[Loan: ${loanName}]`,
-      `[Loan account id: ${account.id}]`,
-    ].filter(Boolean)
-    const noteForApi = noteParts.join(" — ")
+    const noteForApi =
+      [note.trim(), `${typeLabel}: ${loanName}`].filter(Boolean).join(" — ") ||
+      `${typeLabel}: ${loanName}`
+    const tagsOut =
+      paymentType === "lump_sum"
+        ? tags.includes("prepayment")
+          ? tags
+          : [...tags, "prepayment"]
+        : tags.includes("emi")
+          ? tags
+          : [...tags, "emi"]
 
     const payload: CreateTransactionPayload = {
-      type: "expense",
+      type: "transfer",
       amount: amt,
-      category: "Bills & utilities",
+      category: "",
+      transferDestination: "loan_emi",
+      loanAccountId: account.id,
       paymentMethod: "account",
       sourceName: fromAcc?.name ?? "",
       feeAmount: "0",
@@ -197,7 +204,7 @@ export function RecordLoanPaymentSheet({
       scheduled: false,
       date,
       note: noteForApi,
-      tags,
+      tags: tagsOut,
       displayTitle: `${typeLabel} · ${loanName}`,
       accountId: fromAccountId,
       accountName: fromAcc?.name,

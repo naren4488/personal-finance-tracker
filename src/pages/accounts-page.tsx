@@ -23,6 +23,10 @@ import { LoanDetailView } from "@/features/accounts/loan-detail-view"
 import { LoanList } from "@/features/accounts/loan-list"
 import { UdharDetailsModal } from "@/features/accounts/udhar-details-modal"
 import { UdharEntryRow } from "@/features/accounts/udhar-entry-row"
+import {
+  AddTransactionModal,
+  type TransferPaymentPreset,
+} from "@/features/entries/add-transaction-modal"
 import type { LoanPaymentMode } from "@/features/accounts/record-loan-payment-sheet"
 import type { Account } from "@/lib/api/account-schemas"
 import {
@@ -78,6 +82,22 @@ export default function AccountsPage() {
     null
   )
   const [cardSheetRequest, setCardSheetRequest] = useState<"spend" | "pay_bill" | null>(null)
+  const [transferModalOpen, setTransferModalOpen] = useState(false)
+  const [transferPreset, setTransferPreset] = useState<TransferPaymentPreset | null>(null)
+
+  const openPayBillFromCardDetail = useCallback(() => {
+    const a = selectedCreditCard
+    if (!a) return
+    setTransferPreset({ kind: "credit_card_bill", creditCardAccountId: String(a.id) })
+    setTransferModalOpen(true)
+  }, [selectedCreditCard])
+
+  const openPayEmiFromLoanDetail = useCallback(() => {
+    const a = selectedLoan
+    if (!a) return
+    setTransferPreset({ kind: "loan_emi", loanAccountId: String(a.id) })
+    setTransferModalOpen(true)
+  }, [selectedLoan])
 
   const consumeLoanPaymentRequest = useCallback(() => {
     setLoanPaymentRequest(null)
@@ -264,6 +284,7 @@ export default function AccountsPage() {
         onCardUpdated={(a) => setSelectedCreditCard(a)}
         openSheetRequest={cardSheetRequest}
         onOpenSheetRequestConsumed={consumeCardSheetRequest}
+        onPayBill={openPayBillFromCardDetail}
       />
       <LoanDetailView
         open={!!selectedLoan}
@@ -277,6 +298,16 @@ export default function AccountsPage() {
         onLoanUpdated={(a) => setSelectedLoan(a)}
         openPaymentRequest={loanPaymentRequest}
         onOpenPaymentRequestConsumed={consumeLoanPaymentRequest}
+        onPayEmi={openPayEmiFromLoanDetail}
+      />
+      <AddTransactionModal
+        open={transferModalOpen}
+        onOpenChange={(v) => {
+          setTransferModalOpen(v)
+          if (!v) setTransferPreset(null)
+        }}
+        initialType="transfer"
+        transferPaymentPreset={transferPreset}
       />
       <AccountDetailView
         open={!!selectedAccount}

@@ -20,7 +20,6 @@ import {
   paymentDueDayNumber,
 } from "@/lib/api/credit-card-map"
 import { AddCardSpendSheet } from "@/features/accounts/add-card-spend-sheet"
-import { PayCreditCardBillSheet } from "@/features/accounts/pay-credit-card-bill-sheet"
 import { formatCurrency } from "@/lib/format"
 import { useUpdateAccountMutation } from "@/store/api/base-api"
 import { cn } from "@/lib/utils"
@@ -70,6 +69,7 @@ export function CreditCardDetailView({
   onCardUpdated,
   openSheetRequest,
   onOpenSheetRequestConsumed,
+  onPayBill,
 }: {
   open: boolean
   onOpenChange: (open: boolean) => void
@@ -78,19 +78,19 @@ export function CreditCardDetailView({
   /** When set with detail open, opens Add Spend or Pay Bill sheet (e.g. entries tile actions). */
   openSheetRequest?: "spend" | "pay_bill" | null
   onOpenSheetRequestConsumed?: () => void
+  /** Pay Bill — opens shared Add Transaction (transfer → credit card bill). */
+  onPayBill?: () => void
 }) {
   const navigate = useNavigate()
   const [updateAccount, { isLoading: isSaving }] = useUpdateAccountMutation()
   const [isEditing, setIsEditing] = useState(false)
   const [draft, setDraft] = useState<Account | null>(null)
   const [spendOpen, setSpendOpen] = useState(false)
-  const [payBillOpen, setPayBillOpen] = useState(false)
 
   const dismiss = useCallback(() => {
     setIsEditing(false)
     setDraft(null)
     setSpendOpen(false)
-    setPayBillOpen(false)
     onOpenChange(false)
   }, [onOpenChange])
 
@@ -260,17 +260,15 @@ export function CreditCardDetailView({
 
   useEffect(() => {
     if (!open || !account || !openSheetRequest) return
-    /* eslint-disable react-hooks/set-state-in-effect -- open spend/bill sheet from parent request when detail opens */
+    /* eslint-disable react-hooks/set-state-in-effect -- open spend or pay bill from parent request when detail opens */
     if (openSheetRequest === "spend") {
       setSpendOpen(true)
-      setPayBillOpen(false)
     } else {
-      setPayBillOpen(true)
-      setSpendOpen(false)
+      onPayBill?.()
     }
     /* eslint-enable react-hooks/set-state-in-effect */
     onOpenSheetRequestConsumed?.()
-  }, [open, account, openSheetRequest, onOpenSheetRequestConsumed])
+  }, [open, account, openSheetRequest, onOpenSheetRequestConsumed, onPayBill])
 
   if (!open || !account) return null
 
@@ -308,7 +306,6 @@ export function CreditCardDetailView({
   return (
     <>
       <AddCardSpendSheet open={spendOpen} onOpenChange={setSpendOpen} account={account} />
-      <PayCreditCardBillSheet open={payBillOpen} onOpenChange={setPayBillOpen} account={account} />
       <div className="fixed inset-0 z-60 flex items-stretch justify-center sm:items-center sm:p-3">
         <button
           type="button"
@@ -654,7 +651,7 @@ export function CreditCardDetailView({
                   <Button
                     type="button"
                     className="h-12 rounded-xl bg-primary font-semibold text-primary-foreground shadow-none hover:bg-primary/90"
-                    onClick={() => setPayBillOpen(true)}
+                    onClick={() => onPayBill?.()}
                   >
                     Pay Bill
                   </Button>

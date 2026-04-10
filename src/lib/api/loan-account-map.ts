@@ -182,6 +182,53 @@ export function resolveLoanEmiAmount(a: Account): number | null {
   return deriveEmiInr(p, rate, months)
 }
 
+function parseOptionalMoneyField(a: Account, keys: readonly string[]): number | null {
+  const r = asRec(a)
+  for (const k of keys) {
+    const v = r[k]
+    if (v === undefined || v === null) continue
+    const n = parseMoney(v)
+    if (Number.isFinite(n) && n > 0) return Math.round(n * 100) / 100
+  }
+  return null
+}
+
+/** Interest slice of next EMI when API exposes it. */
+export function loanNextEmiInterestInr(a: Account): number | null {
+  return parseOptionalMoneyField(a, [
+    "nextEmiInterest",
+    "emiInterest",
+    "interestComponent",
+    "nextPaymentInterest",
+    "next_emi_interest",
+    "nextInstallmentInterest",
+  ])
+}
+
+/**
+ * Principal slice of next EMI when API exposes it; else full EMI from
+ * `resolveLoanEmiAmount` minus interest when both exist; else full EMI as principal.
+ */
+export function loanNextEmiPrincipalInr(a: Account): number | null {
+  const direct = parseOptionalMoneyField(a, [
+    "nextEmiPrincipal",
+    "emiPrincipal",
+    "principalComponent",
+    "nextPaymentPrincipal",
+    "next_emi_principal",
+    "nextInstallmentPrincipal",
+  ])
+  if (direct != null) return direct
+
+  const emi = resolveLoanEmiAmount(a)
+  if (emi == null || !(emi > 0)) return null
+  const interestPart = loanNextEmiInterestInr(a)
+  if (interestPart != null && interestPart > 0 && interestPart < emi) {
+    return Math.round((emi - interestPart) * 100) / 100
+  }
+  return emi
+}
+
 function loanIsActive(a: Account): boolean {
   const r = asRec(a)
   if (r.isActive === false) return false

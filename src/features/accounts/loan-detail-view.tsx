@@ -75,6 +75,7 @@ export function LoanDetailView({
   onLoanUpdated,
   openPaymentRequest,
   onOpenPaymentRequestConsumed,
+  onPayEmi,
 }: {
   open: boolean
   onOpenChange: (open: boolean) => void
@@ -84,6 +85,8 @@ export function LoanDetailView({
   /** When set with detail open, opens Record Loan Payment with this mode (e.g. list → Pay EMI). */
   openPaymentRequest?: { mode: LoanPaymentMode } | null
   onOpenPaymentRequestConsumed?: () => void
+  /** Pay EMI — opens shared Add Transaction (transfer → loan EMI). */
+  onPayEmi?: () => void
 }) {
   const navigate = useNavigate()
   const [updateAccount, { isLoading: isSavingLoan }] = useUpdateAccountMutation()
@@ -282,12 +285,16 @@ export function LoanDetailView({
 
   useEffect(() => {
     if (!open || !account || !openPaymentRequest) return
-    /* eslint-disable react-hooks/set-state-in-effect -- open payment sheet from parent request when detail opens */
-    setPaymentMode(openPaymentRequest.mode)
-    setPaymentOpen(true)
+    /* eslint-disable react-hooks/set-state-in-effect -- open payment from parent request when detail opens */
+    if (openPaymentRequest.mode === "pay_emi") {
+      onPayEmi?.()
+    } else {
+      setPaymentMode(openPaymentRequest.mode)
+      setPaymentOpen(true)
+    }
     /* eslint-enable react-hooks/set-state-in-effect */
     onOpenPaymentRequestConsumed?.()
-  }, [open, account, openPaymentRequest, onOpenPaymentRequestConsumed])
+  }, [open, account, openPaymentRequest, onOpenPaymentRequestConsumed, onPayEmi])
 
   if (!open || !account) return null
 
@@ -735,7 +742,10 @@ export function LoanDetailView({
                   <Button
                     type="button"
                     className="h-11 rounded-xl bg-primary font-semibold text-primary-foreground hover:bg-primary/90"
-                    onClick={() => openPaymentSheet("pay_emi")}
+                    onClick={() => {
+                      if (onPayEmi) onPayEmi()
+                      else openPaymentSheet("pay_emi")
+                    }}
                   >
                     Pay EMI
                   </Button>

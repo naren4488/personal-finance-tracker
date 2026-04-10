@@ -730,6 +730,7 @@ export const baseApi = createApi({
       invalidatesTags: [
         { type: "Transaction", id: "LIST" },
         { type: "Transaction", id: "RECENT" },
+        { type: "Account", id: "LIST" },
       ],
     }),
 

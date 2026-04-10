@@ -33,6 +33,9 @@ export const quickTransactionFormSchema = z.object({
 
 export type QuickTransactionFormValues = z.infer<typeof quickTransactionFormSchema>
 
+/** Unified POST /transactions transfer routing (account→account, card bill, loan EMI). */
+export type TransferDestinationType = "account" | "credit_card_bill" | "loan_emi"
+
 /** Full create payload (Txns modal + quick add) → built into POST /transactions body per type. */
 export type CreateTransactionPayload = {
   type: "income" | "expense" | "transfer"
@@ -41,8 +44,12 @@ export type CreateTransactionPayload = {
   category: string
   /** Income: required for API `incomeSource` (e.g. salary, freelance). */
   incomeSource?: string
-  /** Transfer: destination account id (from account is `accountId`). */
+  /** Transfer → account: destination account id (`accountId` = source). */
   toAccountId?: string
+  /** Transfer: `destinationType` + ids for card bill / loan EMI. */
+  transferDestination?: TransferDestinationType
+  creditCardAccountId?: string
+  loanAccountId?: string
   paymentMethod: "account" | "card"
   sourceName: string
   feeAmount: string

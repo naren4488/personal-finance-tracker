@@ -181,17 +181,15 @@ function PayCreditCardBillSheetInner({
 
     const fromAcc = payingAccounts.find((a) => a.id === fromAccountId)
     const cardName = account.name.trim() || "Card"
-    const noteParts = [
-      note.trim(),
-      `[Card bill: ${cardName}]`,
-      `[Card account id: ${account.id}]`,
-    ].filter(Boolean)
-    const noteForApi = noteParts.join(" — ")
+    const noteForApi = note.trim() || "Card bill payment"
+    const tagsOut = tags.some((t) => t.toLowerCase() === "bill") ? tags : [...tags, "bill"]
 
     const payload: CreateTransactionPayload = {
-      type: "expense",
+      type: "transfer",
       amount: amt,
-      category: "Bills & utilities",
+      category: "",
+      transferDestination: "credit_card_bill",
+      creditCardAccountId: account.id,
       paymentMethod: "account",
       sourceName: fromAcc?.name ?? "",
       feeAmount: "0",
@@ -199,7 +197,7 @@ function PayCreditCardBillSheetInner({
       scheduled: false,
       date,
       note: noteForApi,
-      tags,
+      tags: tagsOut,
       displayTitle: `Credit card payment · ${cardName}`,
       accountId: fromAccountId,
       accountName: fromAcc?.name,

@@ -7,11 +7,26 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Skeleton } from "@/components/ui/skeleton"
-import { accountSelectLabel, filterActiveAccounts } from "@/lib/api/account-schemas"
+import { Switch } from "@/components/ui/switch"
+import { accountSelectLabel, filterActiveAccounts, type Account } from "@/lib/api/account-schemas"
+import {
+  creditCardMinimumPaymentInr,
+  interestRatePercentFromAccount,
+  isCreditCardAccount,
+} from "@/lib/api/credit-card-map"
 import { getErrorMessage } from "@/lib/api/errors"
+import {
+  isLoanAccount,
+  loanNextEmiInterestInr,
+  loanNextEmiPrincipalInr,
+  loanOutstandingInr,
+  loanPrincipalInr,
+  resolveLoanEmiAmount,
+} from "@/lib/api/loan-account-map"
 import { INCOME_SOURCE_OPTIONS } from "@/lib/api/transaction-schemas"
 import { FORM_OVERLAY_FOOTER, FORM_OVERLAY_SCROLL_BODY } from "@/lib/form-overlay-scroll"
-import type { TransactionType } from "@/lib/api/schemas"
+import type { TransactionType, TransferDestinationType } from "@/lib/api/schemas"
+import { formatCurrency } from "@/lib/format"
 import { cn } from "@/lib/utils"
 import { useAddTransactionMutation, useGetAccountsQuery } from "@/store/api/base-api"
 import { useAppSelector } from "@/store/hooks"
@@ -39,6 +54,64 @@ function todayIsoDate(): string {
   return `${y}-${m}-${day}`
 }
 
+function sanitizeDecimalInput(raw: string): string {
+  const t = raw.replace(/[^\d.]/g, "")
+  const dot = t.indexOf(".")
+  if (dot === -1) return t
+  const int = t.slice(0, dot)
+  const dec = t
+    .slice(dot + 1)
+    .replace(/\./g, "")
+    .slice(0, 2)
+  return dec.length > 0 ? `${int}.${dec}` : `${int}.`
+}
+
+function parseDecimalInput(s: string): number {
+  const t = s.trim().replace(/,/g, "")
+  if (!t) return 0
+  const n = Number(t)
+  return Number.isFinite(n) ? n : 0
+}
+
+function formatInr2(n: number): string {
+  if (!Number.isFinite(n)) return "0.00"
+  return n.toFixed(2)
+}
+
+/** en-IN ₹ with up to 2 decimals (EMI / split lines). */
+function formatLoanRupee(n: number): string {
+  return new Intl.NumberFormat("en-IN", {
+    style: "currency",
+    currency: "INR",
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 2,
+  }).format(n)
+}
+
+/** Pure prefill from loan account API fields (no setState — used in useMemo + optional overrides). */
+function computeLoanPrefillStrings(loan: Account): { principal: string; interest: string } {
+  const int = loanNextEmiInterestInr(loan)
+  const pr = loanNextEmiPrincipalInr(loan)
+  if (int != null && int > 0) {
+    const interestStr = formatInr2(int)
+    if (pr != null && pr > 0) {
+      return { principal: formatInr2(pr), interest: interestStr }
+    }
+    const emi = resolveLoanEmiAmount(loan)
+    if (emi != null && emi > int) {
+      return {
+        principal: formatInr2(Math.round((emi - int) * 100) / 100),
+        interest: interestStr,
+      }
+    }
+    return { principal: "", interest: interestStr }
+  }
+  if (pr != null && pr > 0) {
+    return { principal: formatInr2(pr), interest: "" }
+  }
+  return { principal: "", interest: "" }
+}
+
 function SelectChevron() {
   return (
     <ChevronDown
@@ -60,7 +133,7 @@ function NoAccountsEmptyState({ onAddAccount }: { onAddAccount: () => void }) {
       </p>
       <Button
         type="button"
-        className="mt-6 h-11 w-full max-w-[14rem] rounded-xl bg-primary text-base font-semibold text-primary-foreground hover:bg-primary/90"
+        className="mt-6 h-11 w-full max-w-56 rounded-xl bg-primary text-base font-semibold text-primary-foreground hover:bg-primary/90"
         onClick={onAddAccount}
       >
         Add Account
@@ -68,6 +141,11 @@ function NoAccountsEmptyState({ onAddAccount }: { onAddAccount: () => void }) {
     </div>
   )
 }
+
+/** Pay Bill / Pay EMI from account detail — same UI as Transfer with target locked. */
+export type TransferPaymentPreset =
+  | { kind: "credit_card_bill"; creditCardAccountId: string }
+  | { kind: "loan_emi"; loanAccountId: string }
 
 export type AddTransactionModalProps = {
   open: boolean
@@ -81,6 +159,11 @@ export type AddTransactionModalProps = {
   initialType?: TransactionType
   /** When set, “Add Account” opens the shared Accounts sheet instead of navigating away. */
   onOpenAddAccount?: () => void
+  /**
+   * Lock to transfer + card bill or loan EMI with target account pre-filled (Accounts Pay Bill / Pay EMI).
+   * Parent should set `initialType="transfer"` and clear when modal closes.
+   */
+  transferPaymentPreset?: TransferPaymentPreset | null
 }
 
 type MountedProps = {
@@ -88,6 +171,7 @@ type MountedProps = {
   expenseFlow: boolean
   initialType: TransactionType
   onOpenAddAccount?: () => void
+  transferPaymentPreset: TransferPaymentPreset | null
 }
 
 function AddTransactionModalMounted({
@@ -95,13 +179,19 @@ function AddTransactionModalMounted({
   expenseFlow,
   initialType,
   onOpenAddAccount,
+  transferPaymentPreset,
 }: MountedProps) {
+  const lockTransferPayment = transferPaymentPreset != null
   const titleId = useId()
   const categoryId = useId()
   const incomeSourceId = useId()
   const accountIdField = useId()
   const toAccountIdField = useId()
   const transferDestinationTypeId = useId()
+  const creditCardAccountFieldId = useId()
+  const loanAccountFieldId = useId()
+  const loanPrincipalFieldId = useId()
+  const loanInterestFieldId = useId()
   const navigate = useNavigate()
   const user = useAppSelector((s) => s.auth.user)
 
@@ -115,10 +205,17 @@ function AddTransactionModalMounted({
 
   const accounts = useMemo(() => filterActiveAccounts(accountsRaw), [accountsRaw])
 
+  const transferSourceAccounts = useMemo(
+    () => accounts.filter((a) => !isLoanAccount(a) && !isCreditCardAccount(a)),
+    [accounts]
+  )
+  const creditCardAccounts = useMemo(() => accounts.filter(isCreditCardAccount), [accounts])
+  const loanAccounts = useMemo(() => accounts.filter(isLoanAccount), [accounts])
+
   const [addTransaction, { isLoading: isSubmitting }] = useAddTransactionMutation()
 
   const [txType, setTxType] = useState<TransactionType>(() =>
-    expenseFlow ? "expense" : initialType
+    expenseFlow ? "expense" : lockTransferPayment ? "transfer" : initialType
   )
   const [amount, setAmount] = useState("")
   const [description, setDescription] = useState("")
@@ -127,6 +224,14 @@ function AddTransactionModalMounted({
   const [incomeSource, setIncomeSource] = useState<string>("salary")
   const [accountId, setAccountId] = useState("")
   const [toAccountId, setToAccountId] = useState("")
+  const [creditCardAccountId, setCreditCardAccountId] = useState(() =>
+    transferPaymentPreset?.kind === "credit_card_bill"
+      ? transferPaymentPreset.creditCardAccountId
+      : ""
+  )
+  const [loanAccountId, setLoanAccountId] = useState(() =>
+    transferPaymentPreset?.kind === "loan_emi" ? transferPaymentPreset.loanAccountId : ""
+  )
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("account")
   const [paidOnBehalf, setPaidOnBehalf] = useState(false)
   const [scheduleUpcoming, setScheduleUpcoming] = useState(false)
@@ -134,12 +239,159 @@ function AddTransactionModalMounted({
   const [tags, setTags] = useState<string[]>([])
   const [tagPreset, setTagPreset] = useState("")
   const [newTag, setNewTag] = useState("")
-  /** Transfer only — future: person / external; UI matches reference form. */
-  const [transferDestinationType, setTransferDestinationType] = useState<"account">("account")
+  /** Transfer only — drives which destination field is shown. */
+  const [transferDestinationType, setTransferDestinationType] = useState<TransferDestinationType>(
+    () =>
+      transferPaymentPreset?.kind === "credit_card_bill"
+        ? "credit_card_bill"
+        : transferPaymentPreset?.kind === "loan_emi"
+          ? "loan_emi"
+          : "account"
+  )
+  const [payMinimum, setPayMinimum] = useState(false)
+  /** User edits to principal/interest; `undefined` field = use derived prefill from selected loan. */
+  const [loanFieldOverride, setLoanFieldOverride] = useState<{
+    principal?: string
+    interest?: string
+  } | null>(null)
 
   const effectiveType: TransactionType = expenseFlow ? "expense" : txType
-  /** Transfer needs two accounts; income/expense need one. */
-  const hasAccount = effectiveType === "transfer" ? accounts.length >= 2 : accounts.length > 0
+  const hasAccount = accounts.length > 0
+
+  const selectedCreditCardAccount = useMemo(() => {
+    const fromList = creditCardAccounts.find((c) => c.id === creditCardAccountId)
+    if (fromList) return fromList
+    const a = accounts.find((x) => x.id === creditCardAccountId)
+    return a && isCreditCardAccount(a) ? a : undefined
+  }, [creditCardAccounts, creditCardAccountId, accounts])
+  const minimumDueInr = useMemo(
+    () =>
+      selectedCreditCardAccount ? creditCardMinimumPaymentInr(selectedCreditCardAccount) : null,
+    [selectedCreditCardAccount]
+  )
+
+  const selectedLoanAccount = useMemo(() => {
+    const fromList = loanAccounts.find((l) => l.id === loanAccountId)
+    if (fromList) return fromList
+    const a = accounts.find((x) => x.id === loanAccountId)
+    return a && isLoanAccount(a) ? a : null
+  }, [loanAccounts, loanAccountId, accounts])
+
+  const loanPrefillFromSelectedAccount = useMemo(
+    () =>
+      selectedLoanAccount
+        ? computeLoanPrefillStrings(selectedLoanAccount)
+        : { principal: "", interest: "" },
+    [selectedLoanAccount]
+  )
+
+  const loanPrincipalStr =
+    loanFieldOverride?.principal !== undefined
+      ? loanFieldOverride.principal
+      : loanPrefillFromSelectedAccount.principal
+
+  const loanInterestStr =
+    loanFieldOverride?.interest !== undefined
+      ? loanFieldOverride.interest
+      : loanPrefillFromSelectedAccount.interest
+
+  const loanTotalInr = useMemo(() => {
+    const p = parseDecimalInput(loanPrincipalStr)
+    const i = parseDecimalInput(loanInterestStr)
+    return Math.round((p + i) * 100) / 100
+  }, [loanPrincipalStr, loanInterestStr])
+
+  const loanScheduleSummary = useMemo(() => {
+    const a = selectedLoanAccount
+    if (!a) return null
+    const emi = resolveLoanEmiAmount(a)
+    const rate = interestRatePercentFromAccount(a)
+    const interestThisMonth = loanNextEmiInterestInr(a)
+    const principalThisMonth = loanNextEmiPrincipalInr(a)
+    const totalLoanPrincipal = loanPrincipalInr(a)
+    const outstanding = loanOutstandingInr(a)
+    const installmentTotal =
+      emi != null
+        ? emi
+        : principalThisMonth != null || interestThisMonth != null
+          ? Math.round(((principalThisMonth ?? 0) + (interestThisMonth ?? 0)) * 100) / 100
+          : null
+    return {
+      emi,
+      rate,
+      interestThisMonth,
+      principalThisMonth,
+      installmentTotal,
+      totalLoanPrincipal,
+      outstanding,
+    }
+  }, [selectedLoanAccount])
+
+  const loanBreakdownVisible = useMemo(() => {
+    if (!loanScheduleSummary) return false
+    const s = loanScheduleSummary
+    return (
+      (s.emi != null && s.emi > 0) ||
+      (s.rate != null && Number.isFinite(s.rate)) ||
+      (s.principalThisMonth != null && s.principalThisMonth > 0) ||
+      (s.interestThisMonth != null && s.interestThisMonth > 0) ||
+      (s.installmentTotal != null && s.installmentTotal > 0 && !(s.emi != null && s.emi > 0)) ||
+      s.totalLoanPrincipal > 0 ||
+      s.outstanding > 0
+    )
+  }, [loanScheduleSummary])
+
+  function resetTransferDependentState() {
+    setToAccountId("")
+    if (!lockTransferPayment) {
+      setCreditCardAccountId("")
+      setLoanAccountId("")
+    } else if (transferPaymentPreset?.kind === "credit_card_bill") {
+      setLoanAccountId("")
+      setCreditCardAccountId(transferPaymentPreset.creditCardAccountId)
+    } else if (transferPaymentPreset?.kind === "loan_emi") {
+      setCreditCardAccountId("")
+      setLoanAccountId(transferPaymentPreset.loanAccountId)
+    }
+    setAmount("")
+    setPayMinimum(false)
+    setLoanFieldOverride(null)
+  }
+
+  const creditCardSelectOptions = useMemo(() => {
+    const list = [...creditCardAccounts]
+    if (
+      lockTransferPayment &&
+      transferPaymentPreset?.kind === "credit_card_bill" &&
+      creditCardAccountId &&
+      !list.some((c) => c.id === creditCardAccountId)
+    ) {
+      const a = accounts.find((x) => x.id === creditCardAccountId)
+      if (a && isCreditCardAccount(a)) list.push(a)
+    }
+    return list
+  }, [
+    creditCardAccounts,
+    accounts,
+    lockTransferPayment,
+    transferPaymentPreset,
+    creditCardAccountId,
+  ])
+
+  const loanSelectOptions = useMemo(() => {
+    const list = [...loanAccounts]
+    if (
+      lockTransferPayment &&
+      transferPaymentPreset?.kind === "loan_emi" &&
+      loanAccountId &&
+      !list.some((l) => l.id === loanAccountId)
+    ) {
+      const a = accounts.find((x) => x.id === loanAccountId)
+      if (a && isLoanAccount(a)) list.push(a)
+    }
+    return list
+  }, [loanAccounts, accounts, lockTransferPayment, transferPaymentPreset, loanAccountId])
+
   const modalTitle = expenseFlow ? "Add Expense" : "Add Transaction"
   const submitLabel = expenseFlow ? "Add Expense" : "Add Transaction"
 
@@ -188,10 +440,12 @@ function AddTransactionModalMounted({
       }
     }
 
-    const n = amount.replace(/\D/g, "")
-    if (!n || Number(n) <= 0) {
-      toast.error("Enter a valid amount")
-      return
+    if (effectiveType !== "transfer") {
+      const n = amount.replace(/\D/g, "")
+      if (!n || Number(n) <= 0) {
+        toast.error("Enter a valid amount")
+        return
+      }
     }
     if (effectiveType === "expense" && !category) {
       toast.error("Select a category")
@@ -206,14 +460,63 @@ function AddTransactionModalMounted({
       return
     }
     if (effectiveType === "transfer") {
-      if (!toAccountId) {
-        toast.error("Select destination account")
-        return
+      if (transferDestinationType === "account") {
+        if (!toAccountId) {
+          toast.error("Select destination account")
+          return
+        }
+        if (toAccountId === accountId) {
+          toast.error("Choose a different account to transfer to")
+          return
+        }
+        const n = amount.replace(/\D/g, "")
+        if (!n || Number(n) <= 0) {
+          toast.error("Enter a valid amount")
+          return
+        }
+      } else if (transferDestinationType === "credit_card_bill") {
+        if (!creditCardAccountId) {
+          toast.error("Select credit card")
+          return
+        }
+        if (payMinimum) {
+          const m = selectedCreditCardAccount
+            ? creditCardMinimumPaymentInr(selectedCreditCardAccount)
+            : null
+          if (m == null || m <= 0) {
+            toast.error("Minimum due is not available for this card")
+            return
+          }
+        } else {
+          const n = amount.replace(/\D/g, "")
+          if (!n || Number(n) <= 0) {
+            toast.error("Enter a valid amount")
+            return
+          }
+        }
+      } else if (transferDestinationType === "loan_emi") {
+        if (!loanAccountId) {
+          toast.error("Select loan account")
+          return
+        }
+        if (!(loanTotalInr > 0)) {
+          toast.error("Enter principal and/or interest so the total is greater than zero")
+          return
+        }
       }
-      if (toAccountId === accountId) {
-        toast.error("Choose a different account to transfer to")
-        return
+    }
+
+    let submitAmountNum: number
+    if (effectiveType === "transfer") {
+      if (transferDestinationType === "credit_card_bill" && payMinimum) {
+        submitAmountNum = minimumDueInr ?? 0
+      } else if (transferDestinationType === "loan_emi") {
+        submitAmountNum = loanTotalInr
+      } else {
+        submitAmountNum = Number(amount.replace(/\D/g, ""))
       }
+    } else {
+      submitAmountNum = Number(amount.replace(/\D/g, ""))
     }
 
     const acc = accounts.find((a) => a.id === accountId)
@@ -226,10 +529,22 @@ function AddTransactionModalMounted({
 
     const payload = {
       type: effectiveType,
-      amount: Number(n),
+      amount: submitAmountNum,
       category: effectiveType === "expense" ? category : "",
       incomeSource: effectiveType === "income" ? incomeSource : undefined,
-      toAccountId: effectiveType === "transfer" ? toAccountId : undefined,
+      toAccountId:
+        effectiveType === "transfer" && transferDestinationType === "account"
+          ? toAccountId
+          : undefined,
+      creditCardAccountId:
+        effectiveType === "transfer" && transferDestinationType === "credit_card_bill"
+          ? creditCardAccountId
+          : undefined,
+      loanAccountId:
+        effectiveType === "transfer" && transferDestinationType === "loan_emi"
+          ? loanAccountId
+          : undefined,
+      transferDestination: effectiveType === "transfer" ? transferDestinationType : undefined,
       paymentMethod,
       sourceName: acc?.name ?? "",
       feeAmount: "0",
@@ -275,7 +590,7 @@ function AddTransactionModalMounted({
   )
 
   return (
-    <div className="fixed inset-0 z-[60] flex min-h-0 max-h-dvh items-center justify-center overflow-hidden p-2 pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:p-4">
+    <div className="fixed inset-0 z-60 flex min-h-0 max-h-dvh items-center justify-center overflow-hidden p-2 pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:p-4">
       <button
         type="button"
         className="absolute inset-0 bg-black/50 backdrop-blur-[2px]"
@@ -348,36 +663,6 @@ function AddTransactionModalMounted({
             </div>
           )}
 
-          {!isLoading &&
-            !isError &&
-            accounts.length > 0 &&
-            !hasAccount &&
-            !expenseFlow &&
-            effectiveType === "transfer" && (
-              <div
-                className={cn(
-                  FORM_OVERLAY_SCROLL_BODY,
-                  "flex flex-col items-center justify-center gap-3 px-6 py-10 text-center"
-                )}
-              >
-                <p className="text-sm font-semibold text-foreground">Two accounts needed</p>
-                <p className="max-w-xs text-sm text-muted-foreground">
-                  Add another account to transfer money between them.
-                </p>
-                <Button
-                  type="button"
-                  className="mt-2 rounded-xl"
-                  onClick={() => {
-                    dismiss()
-                    if (onOpenAddAccount) onOpenAddAccount()
-                    else navigate("/accounts")
-                  }}
-                >
-                  Add account
-                </Button>
-              </div>
-            )}
-
           {!isLoading && !isError && hasAccount && (
             <form
               id="add-transaction-form"
@@ -387,7 +672,7 @@ function AddTransactionModalMounted({
               <div
                 className={cn(FORM_OVERLAY_SCROLL_BODY, "space-y-1 px-3 py-1.5 sm:px-4 sm:py-2")}
               >
-                {!expenseFlow && (
+                {!expenseFlow && !lockTransferPayment && (
                   <section>
                     <Label className="mb-0.5 block text-[11px] font-bold text-primary sm:text-xs">
                       Type
@@ -404,10 +689,6 @@ function AddTransactionModalMounted({
                           key={id}
                           selected={txType === id}
                           onClick={() => {
-                            if (id === "transfer" && accounts.length < 2) {
-                              toast.message("Add at least two accounts to use transfer")
-                              return
-                            }
                             setTxType(id)
                           }}
                           className={cn(
@@ -443,11 +724,15 @@ function AddTransactionModalMounted({
                           <select
                             id={accountIdField}
                             value={accountId}
-                            onChange={(e) => setAccountId(e.target.value)}
+                            onChange={(e) => {
+                              const v = e.target.value
+                              setAccountId(v)
+                              if (toAccountId === v) setToAccountId("")
+                            }}
                             className={cn(selectFieldClass, !accountId && "text-muted-foreground")}
                           >
                             <option value="">Select account</option>
-                            {accounts.map((a) => (
+                            {transferSourceAccounts.map((a) => (
                               <option key={a.id} value={a.id}>
                                 {accountSelectLabel(a)}
                               </option>
@@ -467,13 +752,21 @@ function AddTransactionModalMounted({
                           <select
                             id={transferDestinationTypeId}
                             value={transferDestinationType}
-                            onChange={(e) =>
-                              setTransferDestinationType(e.target.value as "account")
-                            }
-                            className={selectFieldClass}
-                            aria-label="Destination type"
+                            onChange={(e) => {
+                              const v = e.target.value as TransferDestinationType
+                              setTransferDestinationType(v)
+                              resetTransferDependentState()
+                            }}
+                            disabled={lockTransferPayment}
+                            className={cn(
+                              selectFieldClass,
+                              lockTransferPayment && "cursor-not-allowed opacity-80"
+                            )}
+                            aria-label="Transfer destination"
                           >
                             <option value="account">Account</option>
+                            <option value="credit_card_bill">Credit card bill</option>
+                            <option value="loan_emi">Loan payment</option>
                           </select>
                           <SelectChevron />
                         </div>
@@ -499,7 +792,7 @@ function AddTransactionModalMounted({
                             )}
                           >
                             <option value="">Select account</option>
-                            {accounts
+                            {transferSourceAccounts
                               .filter((a) => a.id !== accountId)
                               .map((a) => (
                                 <option key={a.id} value={a.id}>
@@ -510,9 +803,272 @@ function AddTransactionModalMounted({
                           <SelectChevron />
                         </div>
                       </section>
-                    ) : null}
+                    ) : transferDestinationType === "credit_card_bill" ? (
+                      <>
+                        <section>
+                          <Label
+                            htmlFor={creditCardAccountFieldId}
+                            className="mb-0.5 block text-[11px] font-bold text-primary sm:text-xs"
+                          >
+                            Credit card
+                          </Label>
+                          <div className="relative">
+                            <select
+                              id={creditCardAccountFieldId}
+                              value={creditCardAccountId}
+                              onChange={(e) => setCreditCardAccountId(e.target.value)}
+                              disabled={
+                                lockTransferPayment &&
+                                transferPaymentPreset?.kind === "credit_card_bill"
+                              }
+                              className={cn(
+                                selectFieldClass,
+                                !creditCardAccountId && "text-muted-foreground",
+                                lockTransferPayment &&
+                                  transferPaymentPreset?.kind === "credit_card_bill" &&
+                                  "cursor-not-allowed opacity-80"
+                              )}
+                            >
+                              <option value="">
+                                {creditCardSelectOptions.length === 0
+                                  ? "No credit cards — add in Accounts"
+                                  : "Select card"}
+                              </option>
+                              {creditCardSelectOptions.map((a) => (
+                                <option key={a.id} value={a.id}>
+                                  {accountSelectLabel(a)}
+                                </option>
+                              ))}
+                            </select>
+                            <SelectChevron />
+                          </div>
+                        </section>
+                        <div className="flex items-center justify-between gap-2 rounded-xl border border-border/80 bg-muted/20 px-2.5 py-2 sm:px-3">
+                          <span className="text-[11px] font-bold text-primary sm:text-xs">
+                            Pay minimum?
+                          </span>
+                          <div className="flex items-center gap-2">
+                            <span className="text-[10px] text-muted-foreground sm:text-xs">
+                              {payMinimum ? "Yes" : "No"}
+                            </span>
+                            <Switch
+                              checked={payMinimum}
+                              onCheckedChange={(on) => {
+                                setPayMinimum(on)
+                                if (on) setAmount("")
+                              }}
+                              aria-label="Pay minimum amount"
+                            />
+                          </div>
+                        </div>
+                        <section>
+                          <Label
+                            htmlFor="at-minimum-due-transfer"
+                            className="mb-0.5 block text-[11px] font-bold text-primary sm:text-xs"
+                          >
+                            Minimum amount
+                          </Label>
+                          <Input
+                            id="at-minimum-due-transfer"
+                            readOnly
+                            value={
+                              minimumDueInr != null && minimumDueInr > 0
+                                ? formatInr2(minimumDueInr)
+                                : "0.00"
+                            }
+                            className="h-8 rounded-xl border-border bg-muted/60 px-2.5 text-xs tabular-nums text-muted-foreground shadow-sm sm:h-9 sm:px-3 sm:text-sm"
+                          />
+                        </section>
+                      </>
+                    ) : (
+                      <>
+                        <section>
+                          <Label
+                            htmlFor={loanAccountFieldId}
+                            className="mb-0.5 block text-[11px] font-bold text-primary sm:text-xs"
+                          >
+                            Loan account
+                          </Label>
+                          <div className="relative">
+                            <select
+                              id={loanAccountFieldId}
+                              value={loanAccountId}
+                              onChange={(e) => {
+                                const v = e.target.value
+                                setLoanAccountId(v)
+                                setLoanFieldOverride(null)
+                              }}
+                              disabled={
+                                lockTransferPayment && transferPaymentPreset?.kind === "loan_emi"
+                              }
+                              className={cn(
+                                selectFieldClass,
+                                !loanAccountId && "text-muted-foreground",
+                                lockTransferPayment &&
+                                  transferPaymentPreset?.kind === "loan_emi" &&
+                                  "cursor-not-allowed opacity-80"
+                              )}
+                            >
+                              <option value="">
+                                {loanSelectOptions.length === 0
+                                  ? "No loans — add in Accounts"
+                                  : "Select loan"}
+                              </option>
+                              {loanSelectOptions.map((a) => {
+                                const emiOpt = resolveLoanEmiAmount(a)
+                                const optLabel =
+                                  emiOpt != null
+                                    ? `${a.name} — EMI ${formatLoanRupee(emiOpt)}/mo`
+                                    : accountSelectLabel(a)
+                                return (
+                                  <option key={a.id} value={a.id}>
+                                    {optLabel}
+                                  </option>
+                                )
+                              })}
+                            </select>
+                            <SelectChevron />
+                          </div>
+                        </section>
 
-                    <div className="grid grid-cols-2 gap-1.5 sm:gap-2">
+                        {loanScheduleSummary && loanBreakdownVisible ? (
+                          <div className="space-y-1 rounded-xl border border-border/80 bg-muted/40 px-3 py-2.5 text-[11px] sm:text-xs">
+                            {loanScheduleSummary.emi != null && loanScheduleSummary.emi > 0 ? (
+                              <div className="flex items-center justify-between gap-2">
+                                <span className="text-muted-foreground">Monthly EMI</span>
+                                <span className="font-semibold tabular-nums text-foreground">
+                                  {formatLoanRupee(loanScheduleSummary.emi)}
+                                </span>
+                              </div>
+                            ) : null}
+                            {loanScheduleSummary.rate != null &&
+                            Number.isFinite(loanScheduleSummary.rate) ? (
+                              <div
+                                className={cn(
+                                  "flex items-center justify-between gap-2",
+                                  loanScheduleSummary.emi != null && loanScheduleSummary.emi > 0
+                                    ? "border-t border-border/50 pt-1"
+                                    : ""
+                                )}
+                              >
+                                <span className="text-muted-foreground">Interest rate (p.a.)</span>
+                                <span className="font-semibold tabular-nums text-foreground">
+                                  {loanScheduleSummary.rate % 1 === 0
+                                    ? `${Math.round(loanScheduleSummary.rate)}%`
+                                    : `${loanScheduleSummary.rate.toFixed(2)}%`}
+                                </span>
+                              </div>
+                            ) : null}
+                            {(loanScheduleSummary.principalThisMonth != null &&
+                              loanScheduleSummary.principalThisMonth > 0) ||
+                            (loanScheduleSummary.interestThisMonth != null &&
+                              loanScheduleSummary.interestThisMonth > 0) ? (
+                              <div className="border-t border-border/50 pt-1">
+                                <p className="mb-1 text-[10px] font-semibold text-primary sm:text-[11px]">
+                                  This month&apos;s installment split
+                                </p>
+                                <div className="flex items-center justify-between gap-2">
+                                  <span className="text-muted-foreground">Principal</span>
+                                  <span className="font-semibold tabular-nums text-foreground">
+                                    {loanScheduleSummary.principalThisMonth != null &&
+                                    loanScheduleSummary.principalThisMonth > 0
+                                      ? formatLoanRupee(loanScheduleSummary.principalThisMonth)
+                                      : "—"}
+                                  </span>
+                                </div>
+                                <div className="mt-0.5 flex items-center justify-between gap-2">
+                                  <span className="text-muted-foreground">Interest</span>
+                                  <span className="font-semibold tabular-nums text-foreground">
+                                    {loanScheduleSummary.interestThisMonth != null &&
+                                    loanScheduleSummary.interestThisMonth > 0
+                                      ? formatLoanRupee(loanScheduleSummary.interestThisMonth)
+                                      : "—"}
+                                  </span>
+                                </div>
+                              </div>
+                            ) : null}
+                            {loanScheduleSummary.installmentTotal != null &&
+                            loanScheduleSummary.installmentTotal > 0 &&
+                            (loanScheduleSummary.emi == null || loanScheduleSummary.emi <= 0) ? (
+                              <div className="flex items-center justify-between gap-2 border-t border-border/50 pt-1">
+                                <span className="text-muted-foreground">Installment total</span>
+                                <span className="font-semibold tabular-nums text-foreground">
+                                  {formatLoanRupee(loanScheduleSummary.installmentTotal)}
+                                </span>
+                              </div>
+                            ) : null}
+                            {loanScheduleSummary.totalLoanPrincipal > 0 ? (
+                              <div
+                                className={cn(
+                                  "flex items-center justify-between gap-2",
+                                  "border-t border-border/50 pt-1"
+                                )}
+                              >
+                                <span className="text-muted-foreground">Total loan amount</span>
+                                <span className="font-semibold tabular-nums text-foreground">
+                                  {formatCurrency(loanScheduleSummary.totalLoanPrincipal)}
+                                </span>
+                              </div>
+                            ) : null}
+                            {loanScheduleSummary.outstanding > 0 ? (
+                              <div className="flex items-center justify-between gap-2">
+                                <span className="text-muted-foreground">Outstanding balance</span>
+                                <span className="font-semibold tabular-nums text-foreground">
+                                  {formatCurrency(loanScheduleSummary.outstanding)}
+                                </span>
+                              </div>
+                            ) : null}
+                          </div>
+                        ) : null}
+
+                        <div className="grid grid-cols-2 gap-1.5 sm:gap-2">
+                          <section>
+                            <Label
+                              htmlFor={loanPrincipalFieldId}
+                              className="mb-0.5 block text-[11px] font-bold text-primary sm:text-xs"
+                            >
+                              Principal (payment)
+                            </Label>
+                            <Input
+                              id={loanPrincipalFieldId}
+                              inputMode="decimal"
+                              placeholder="0.00"
+                              value={loanPrincipalStr}
+                              onChange={(e) =>
+                                setLoanFieldOverride((o) => ({
+                                  ...(o ?? {}),
+                                  principal: sanitizeDecimalInput(e.target.value),
+                                }))
+                              }
+                              className="h-8 rounded-xl border-border bg-card px-2.5 text-xs tabular-nums shadow-sm sm:h-9 sm:px-3 sm:text-sm"
+                            />
+                          </section>
+                          <section>
+                            <Label
+                              htmlFor={loanInterestFieldId}
+                              className="mb-0.5 block text-[11px] font-bold text-primary sm:text-xs"
+                            >
+                              Interest (payment)
+                            </Label>
+                            <Input
+                              id={loanInterestFieldId}
+                              inputMode="decimal"
+                              placeholder="0.00"
+                              value={loanInterestStr}
+                              onChange={(e) =>
+                                setLoanFieldOverride((o) => ({
+                                  ...(o ?? {}),
+                                  interest: sanitizeDecimalInput(e.target.value),
+                                }))
+                              }
+                              className="h-8 rounded-xl border-border bg-card px-2.5 text-xs tabular-nums shadow-sm sm:h-9 sm:px-3 sm:text-sm"
+                            />
+                          </section>
+                        </div>
+                      </>
+                    )}
+
+                    <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-3 sm:gap-2">
                       <section>
                         <Label
                           htmlFor="at-amount-transfer"
@@ -520,14 +1076,35 @@ function AddTransactionModalMounted({
                         >
                           Amount (₹)
                         </Label>
-                        <Input
-                          id="at-amount-transfer"
-                          inputMode="numeric"
-                          placeholder="0"
-                          value={amount}
-                          onChange={(e) => setAmount(e.target.value.replace(/[^\d]/g, ""))}
-                          className="h-9 rounded-xl border-border bg-muted/60 text-center text-base font-semibold tabular-nums text-primary/80 placeholder:text-primary/40 sm:h-10 sm:text-lg"
-                        />
+                        {transferDestinationType === "loan_emi" ? (
+                          <Input
+                            id="at-amount-transfer"
+                            readOnly
+                            value={formatInr2(loanTotalInr)}
+                            className="h-8 rounded-xl border-border bg-muted/60 px-2.5 text-center text-xs font-semibold tabular-nums text-muted-foreground shadow-sm sm:h-9 sm:text-sm"
+                          />
+                        ) : transferDestinationType === "credit_card_bill" && payMinimum ? (
+                          <Input
+                            id="at-amount-transfer"
+                            readOnly
+                            value={
+                              minimumDueInr != null && minimumDueInr > 0
+                                ? formatInr2(minimumDueInr)
+                                : ""
+                            }
+                            placeholder="—"
+                            className="h-8 rounded-xl border-border bg-muted/60 px-2.5 text-center text-xs font-semibold tabular-nums text-muted-foreground placeholder:text-muted-foreground/60 sm:h-9 sm:text-sm"
+                          />
+                        ) : (
+                          <Input
+                            id="at-amount-transfer"
+                            inputMode="numeric"
+                            placeholder="0"
+                            value={amount}
+                            onChange={(e) => setAmount(e.target.value.replace(/[^\d]/g, ""))}
+                            className="h-8 rounded-xl border-border bg-muted/60 px-2.5 text-center text-xs font-semibold tabular-nums text-primary/80 placeholder:text-primary/40 sm:h-9 sm:text-sm"
+                          />
+                        )}
                       </section>
                       <section>
                         <Label
@@ -549,6 +1126,21 @@ function AddTransactionModalMounted({
                             aria-hidden
                           />
                         </div>
+                      </section>
+                      <section>
+                        <Label
+                          htmlFor="at-transfer-note-grid"
+                          className="mb-0.5 block text-[11px] font-bold text-primary sm:text-xs"
+                        >
+                          Note
+                        </Label>
+                        <Input
+                          id="at-transfer-note-grid"
+                          placeholder="Optional note"
+                          value={note}
+                          onChange={(e) => setNote(e.target.value)}
+                          className="h-8 rounded-xl border-border bg-card px-2.5 text-xs shadow-sm sm:h-9 sm:px-3 sm:text-sm"
+                        />
                       </section>
                     </div>
                   </>
@@ -762,28 +1354,7 @@ function AddTransactionModalMounted({
                       )}
                     />
                   </section>
-                ) : effectiveType === "transfer" ? (
-                  <section>
-                    <Label
-                      htmlFor="at-transfer-note"
-                      className="mb-0.5 block text-[11px] font-bold text-primary sm:text-xs"
-                    >
-                      Note (optional)
-                    </Label>
-                    <textarea
-                      id="at-transfer-note"
-                      rows={2}
-                      placeholder="Optional note"
-                      value={note}
-                      onChange={(e) => setNote(e.target.value)}
-                      className={cn(
-                        "min-h-12 w-full resize-none rounded-xl border border-border bg-card px-3 py-1.5 text-sm text-foreground shadow-sm outline-none sm:min-h-14",
-                        "placeholder:text-muted-foreground/80",
-                        "focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/50"
-                      )}
-                    />
-                  </section>
-                ) : (
+                ) : effectiveType === "transfer" ? null : (
                   <div className="grid grid-cols-2 gap-1.5 sm:gap-2">
                     <section>
                       <Label
@@ -901,16 +1472,25 @@ export function AddTransactionModal({
   expenseFlow = false,
   initialType = "expense",
   onOpenAddAccount,
+  transferPaymentPreset = null,
 }: AddTransactionModalProps) {
   if (!open) return null
   const typeKey = expenseFlow ? "expense" : initialType
+  const presetKey = transferPaymentPreset
+    ? `${transferPaymentPreset.kind}-${
+        transferPaymentPreset.kind === "credit_card_bill"
+          ? transferPaymentPreset.creditCardAccountId
+          : transferPaymentPreset.loanAccountId
+      }`
+    : "none"
   return (
     <AddTransactionModalMounted
-      key={typeKey}
+      key={`${typeKey}-${presetKey}`}
       expenseFlow={expenseFlow}
       initialType={expenseFlow ? "expense" : initialType}
       onOpenChange={onOpenChange}
       onOpenAddAccount={onOpenAddAccount}
+      transferPaymentPreset={transferPaymentPreset}
     />
   )
 }

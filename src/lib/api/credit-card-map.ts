@@ -25,6 +25,41 @@ export function creditCardLimitInr(a: Account): number {
   return parseMoney(asRec(a).creditLimit)
 }
 
+/**
+ * Minimum amount due for the current billing cycle when the API provides it.
+ * Falls back to `minDuePercent` (or similar) × outstanding when present.
+ */
+export function creditCardMinimumPaymentInr(a: Account): number | null {
+  const r = asRec(a)
+  const explicitKeys = [
+    "minimumDue",
+    "minimumPaymentDue",
+    "minPaymentDue",
+    "minimumPayment",
+    "minDueAmount",
+    "nextMinimumPayment",
+    "minimumPaymentAmount",
+    "min_payment_due",
+    "minimum_payment_due",
+    "minDue",
+  ] as const
+  for (const k of explicitKeys) {
+    const v = r[k]
+    if (v === undefined || v === null) continue
+    const n = parseMoney(v)
+    if (Number.isFinite(n) && n > 0) return Math.round(n * 100) / 100
+  }
+  const pctRaw = r.minDuePercent ?? r.minimumDuePercent ?? r.minimumDuePercentage ?? r.minDuePct
+  if (pctRaw === undefined || pctRaw === null) return null
+  const pct = typeof pctRaw === "number" ? pctRaw : Number(String(pctRaw).replace(/,/g, "").trim())
+  if (!Number.isFinite(pct) || pct <= 0) return null
+  const out = creditCardOutstandingInr(a)
+  if (!(out > 0)) return null
+  const due = (out * pct) / 100
+  if (!Number.isFinite(due) || due <= 0) return null
+  return Math.round(due * 100) / 100
+}
+
 export function paymentDueDayNumber(a: Account): number | null {
   const r = asRec(a)
   const d = r.paymentDueDay

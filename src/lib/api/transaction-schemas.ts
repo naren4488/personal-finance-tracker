@@ -26,21 +26,48 @@ export const createTransactionExpenseBodySchema = z.object({
   tags: z.array(z.string()),
 })
 
-/** POST /transactions — transfer between accounts. */
-export const createTransactionTransferBodySchema = z.object({
+/** POST /transactions — transfer to another account. */
+export const createTransactionTransferToAccountSchema = z.object({
   type: z.literal("transfer"),
   amount: z.string().min(1),
-  fromAccountId: z.string().min(1),
+  accountId: z.string().min(1),
+  destinationType: z.literal("account"),
   toAccountId: z.string().min(1),
   date: z.string(),
   note: z.string(),
   tags: z.array(z.string()),
 })
 
-export const createTransactionApiBodySchema = z.discriminatedUnion("type", [
+/** POST /transactions — pay credit card bill from a bank/cash account. */
+export const createTransactionTransferCreditCardBillSchema = z.object({
+  type: z.literal("transfer"),
+  amount: z.string().min(1),
+  accountId: z.string().min(1),
+  destinationType: z.literal("credit_card_bill"),
+  creditCardAccountId: z.string().min(1),
+  date: z.string(),
+  note: z.string(),
+  tags: z.array(z.string()),
+})
+
+/** POST /transactions — loan EMI / payment from a bank/cash account. */
+export const createTransactionTransferLoanEmiSchema = z.object({
+  type: z.literal("transfer"),
+  amount: z.string().min(1),
+  accountId: z.string().min(1),
+  destinationType: z.literal("loan_emi"),
+  loanAccountId: z.string().min(1),
+  date: z.string(),
+  note: z.string(),
+  tags: z.array(z.string()),
+})
+
+export const createTransactionApiBodySchema = z.union([
   createTransactionIncomeBodySchema,
   createTransactionExpenseBodySchema,
-  createTransactionTransferBodySchema,
+  createTransactionTransferToAccountSchema,
+  createTransactionTransferCreditCardBillSchema,
+  createTransactionTransferLoanEmiSchema,
 ])
 
 export type CreateTransactionApiBody = z.infer<typeof createTransactionApiBodySchema>
@@ -201,14 +228,57 @@ export function buildTransactionPostBody(body: CreateTransactionPayload): Create
     }
   }
 
-  if (!body.accountId || !body.toAccountId) {
-    throw new Error("transfer requires accountId (from) and toAccountId")
+  if (body.type !== "transfer") {
+    throw new Error("buildTransactionPostBody: unreachable")
+  }
+
+  if (!body.accountId) {
+    throw new Error("transfer requires accountId (source)")
+  }
+
+  const dest = body.transferDestination
+
+  if (dest === "credit_card_bill") {
+    if (!body.creditCardAccountId?.trim()) {
+      throw new Error("credit_card_bill transfer requires creditCardAccountId")
+    }
+    return {
+      type: "transfer",
+      amount,
+      accountId: body.accountId,
+      destinationType: "credit_card_bill",
+      creditCardAccountId: body.creditCardAccountId.trim(),
+      date,
+      note,
+      tags,
+    }
+  }
+
+  if (dest === "loan_emi") {
+    if (!body.loanAccountId?.trim()) {
+      throw new Error("loan_emi transfer requires loanAccountId")
+    }
+    return {
+      type: "transfer",
+      amount,
+      accountId: body.accountId,
+      destinationType: "loan_emi",
+      loanAccountId: body.loanAccountId.trim(),
+      date,
+      note,
+      tags,
+    }
+  }
+
+  if (!body.toAccountId?.trim()) {
+    throw new Error("transfer to account requires toAccountId")
   }
   return {
     type: "transfer",
     amount,
-    fromAccountId: body.accountId,
-    toAccountId: body.toAccountId,
+    accountId: body.accountId,
+    destinationType: "account",
+    toAccountId: body.toAccountId.trim(),
     date,
     note,
     tags,
