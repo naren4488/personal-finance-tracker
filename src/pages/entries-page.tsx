@@ -11,6 +11,7 @@ import {
   Search,
   Users,
 } from "lucide-react"
+import { ConfirmDeleteDialog } from "@/components/confirm-delete-dialog"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -21,6 +22,7 @@ import { UdharEntryRow } from "@/features/accounts/udhar-entry-row"
 import { AddTransactionModal } from "@/features/entries/add-transaction-modal"
 import { RecentTransactionRow } from "@/features/entries/recent-transaction-row"
 import { TransferTransactionRow } from "@/features/entries/transfer-transaction-row"
+import { useDeleteTransactionFlow } from "@/features/entries/use-delete-transaction-flow"
 import { accountSelectLabel, type Account } from "@/lib/api/account-schemas"
 import { getErrorMessage } from "@/lib/api/errors"
 import type { TransactionType } from "@/lib/api/schemas"
@@ -149,6 +151,7 @@ export default function EntriesPage() {
   const [txTypeFilter, setTxTypeFilter] = useState<"all" | TransactionType>("all")
   const [txAccountFilter, setTxAccountFilter] = useState<string>("all")
   const [selectedUdharTx, setSelectedUdharTx] = useState<RecentTransaction | null>(null)
+  const txDelete = useDeleteTransactionFlow()
 
   const user = useAppSelector((s) => s.auth.user)
   const {
@@ -352,6 +355,15 @@ export default function EntriesPage() {
         }}
         personName={selectedUdharTx ? inferUdharPersonName(selectedUdharTx) : ""}
         entries={selectedUdharPersonEntries}
+        onDeleteEntry={txDelete.requestDelete}
+      />
+      <ConfirmDeleteDialog
+        open={txDelete.confirmOpen}
+        onOpenChange={(v) => !v && txDelete.dismiss()}
+        title="Delete entry"
+        message="Are you sure you want to delete this transaction? This cannot be undone."
+        isDeleting={txDelete.isDeleting}
+        onConfirm={txDelete.confirmDelete}
       />
 
       <div className="mb-3 grid grid-cols-4 gap-1" role="tablist" aria-label="Entry categories">
@@ -605,7 +617,11 @@ export default function EntriesPage() {
           <ul className="flex list-none flex-col gap-3" aria-label="Entries list">
             {filtered.map((tx) => (
               <li key={tx.id}>
-                <RecentTransactionRow tx={tx} accounts={accounts} />
+                <RecentTransactionRow
+                  tx={tx}
+                  accounts={accounts}
+                  onDelete={txDelete.requestDelete}
+                />
               </li>
             ))}
           </ul>
@@ -620,6 +636,7 @@ export default function EntriesPage() {
                 amountInr={Math.abs(parseSignedAmountString(tx.signedAmount))}
                 direction={udharDirectionLabel(tx)}
                 onClick={() => setSelectedUdharTx(tx)}
+                onDelete={() => txDelete.requestDelete(tx)}
               />
             </li>
           ))}
@@ -630,7 +647,11 @@ export default function EntriesPage() {
         <ul className="flex list-none flex-col gap-3" aria-label="Transfers list">
           {filtered.map((tx) => (
             <li key={tx.id}>
-              <TransferTransactionRow tx={tx} accounts={accounts} />
+              <TransferTransactionRow
+                tx={tx}
+                accounts={accounts}
+                onDelete={txDelete.requestDelete}
+              />
             </li>
           ))}
         </ul>

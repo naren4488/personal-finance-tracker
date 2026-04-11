@@ -1,4 +1,5 @@
 import { z } from "zod"
+import { formatCurrency } from "@/lib/format"
 
 export const createPersonRequestSchema = z.object({
   name: z.string().min(1, "Name is required"),
@@ -53,23 +54,35 @@ export function getPersonDisplayPhone(person: Person): string | undefined {
 }
 
 /**
- * Summary for People list: lent → "You will get ₹X", borrowed → "You owe ₹X".
- * Reads optional `balance` / `type` (or `udharType`) from API; falls back to neutral.
+ * Net balance for People list: prefers total lent vs taken when API sends them; else signed net.
  */
-export function getPersonUdharListSummary(person: Person): {
+function computeNetFromPersonRaw(raw: Record<string, unknown>): {
+  signedNet: number | null
+  absAmount: number
   kind: PersonUdharBalanceType | "neutral"
-  amount: number
-  /** e.g. ₹1,250 */
-  amountFormatted: string
-  /** Right chip: "You get ₹X" / "You owe ₹X" (design reference). */
-  amountChipLabel: string
-  /** Short English line (optional; design uses summary line instead). */
-  directionLabel: string
-  summary: string
-  badgeClassName: string
-  amountTextClassName: string
 } {
-  const raw = person as Record<string, unknown>
+  const lentTotal = parseAmountish(
+    raw.totalLent ?? raw.totalGiven ?? raw.moneyLent ?? raw.givenTotal
+  )
+  const borrowTotal = parseAmountish(
+    raw.totalBorrowed ?? raw.totalTaken ?? raw.moneyBorrowed ?? raw.takenTotal
+  )
+  const hasPartials =
+    raw.totalLent != null ||
+    raw.totalGiven != null ||
+    raw.totalBorrowed != null ||
+    raw.totalTaken != null ||
+    raw.moneyLent != null ||
+    raw.moneyBorrowed != null
+
+  if (hasPartials || lentTotal > 0 || borrowTotal > 0) {
+    const net = lentTotal - borrowTotal
+    const absAmount = Math.abs(net)
+    if (net > 0) return { signedNet: net, absAmount, kind: "lent" }
+    if (net < 0) return { signedNet: net, absAmount, kind: "borrowed" }
+    return { signedNet: 0, absAmount: 0, kind: "neutral" }
+  }
+
   const typeRaw =
     typeof raw.type === "string"
       ? raw.type.trim().toLowerCase()
@@ -81,7 +94,6 @@ export function getPersonUdharListSummary(person: Person): {
 
   let amount = parseAmountish(raw.balance ?? raw.udharBalance ?? raw.amount)
 
-  // Many backends send a single signed net (positive = they owe you / lent, negative = you owe / borrowed).
   const signedCandidates = [
     raw.signedBalance,
     raw.netUdharAmount,
@@ -105,38 +117,177 @@ export function getPersonUdharListSummary(person: Person): {
     amount = Math.abs(signed)
   }
 
-  const formatted = `₹${amount.toLocaleString("en-IN")}`
   if (kind === "lent") {
+    return { signedNet: amount, absAmount: amount, kind: "lent" }
+  }
+  if (kind === "borrowed") {
+    return { signedNet: -amount, absAmount: amount, kind: "borrowed" }
+  }
+  if (signed !== null && signed !== 0) {
+    const abs = Math.abs(signed)
+    return {
+      signedNet: signed,
+      absAmount: abs,
+      kind: signed > 0 ? "lent" : "borrowed",
+    }
+  }
+  if (amount > 0 && kind === "neutral") {
+    return { signedNet: amount, absAmount: amount, kind: "neutral" }
+  }
+  return { signedNet: 0, absAmount: 0, kind: "neutral" }
+}
+
+export type PersonUdharListSummary = {
+  kind: PersonUdharBalanceType | "neutral"
+  /** Signed net in INR (positive = you’re owed / lent side; negative = you owe). */
+  signedNet: number
+  /** Absolute net for display magnitude. */
+  absAmount: number
+  /** Formatted magnitude (en-IN), e.g. ₹1,02,000. */
+  netBalanceFormatted: string
+  amount: number
+  amountFormatted: string
+  /** e.g. "You lent ₹X" | "You borrow ₹X" | "No balance due". */
+  amountChipLabel: string
+  directionLabel: string
+  /** e.g. "You will get ₹X from this person." */
+  summary: string
+  badgeClassName: string
+  amountTextClassName: string
+}
+
+/**
+ * List + detail copy from batch/ledger totals — net = totalLent − totalBorrowed (same as ledger modal).
+ */
+export function getPersonUdharListSummaryFromTotals(
+  totalLent: number,
+  totalBorrowed: number
+): PersonUdharListSummary {
+  const net = totalLent - totalBorrowed
+  const absAmount = Math.abs(net)
+  const amtStr = formatCurrency(absAmount)
+
+  if (net > 0) {
     return {
       kind: "lent",
-      amount,
-      amountFormatted: formatted,
-      amountChipLabel: `You get ${formatted}`,
-      directionLabel: "You lent — you'll get this back",
-      summary: `You will get ${formatted} from this person.`,
+      signedNet: net,
+      absAmount: net,
+      netBalanceFormatted: amtStr,
+      amount: net,
+      amountFormatted: amtStr,
+      amountChipLabel: `You lent ${amtStr}`,
+      directionLabel: "You lent — you will get this back",
+      summary: `You will get ${amtStr} from this person.`,
+      badgeClassName: "bg-emerald-500/15 text-emerald-700 dark:text-emerald-400",
+      amountTextClassName: "text-emerald-600 dark:text-emerald-400",
+    }
+  }
+  if (net < 0) {
+    return {
+      kind: "borrowed",
+      signedNet: net,
+      absAmount,
+      netBalanceFormatted: amtStr,
+      amount: absAmount,
+      amountFormatted: amtStr,
+      amountChipLabel: `You borrow ${amtStr}`,
+      directionLabel: "You borrow — repay when due",
+      summary: `You owe ${amtStr} to this person.`,
+      badgeClassName: "bg-red-500/15 text-red-700 dark:text-red-400",
+      amountTextClassName: "text-red-600 dark:text-red-400",
+    }
+  }
+
+  return {
+    kind: "neutral",
+    signedNet: 0,
+    absAmount: 0,
+    netBalanceFormatted: formatCurrency(0),
+    amount: 0,
+    amountFormatted: formatCurrency(0),
+    amountChipLabel: "No balance due",
+    directionLabel: "No activity",
+    summary: "There is no net balance with this person.",
+    badgeClassName: "bg-muted text-muted-foreground",
+    amountTextClassName: "text-muted-foreground",
+  }
+}
+
+/**
+ * Summary for People list — net balance always shown (including ₹0); text labels instead of +/-.
+ * Prefer {@link getPersonUdharListSummaryFromTotals} when batch udhar-summary is available.
+ */
+export function getPersonUdharListSummary(person: Person): PersonUdharListSummary {
+  const raw = person as Record<string, unknown>
+  const { absAmount, kind } = computeNetFromPersonRaw(raw)
+  const netBalanceFormatted = formatCurrency(absAmount)
+  const amtStr = formatCurrency(absAmount)
+
+  if (kind === "lent") {
+    const chip = absAmount === 0 ? `You lent ${formatCurrency(0)}` : `You lent ${amtStr}`
+    return {
+      kind: "lent",
+      signedNet: absAmount === 0 ? 0 : absAmount,
+      absAmount,
+      netBalanceFormatted,
+      amount: absAmount,
+      amountFormatted: amtStr,
+      amountChipLabel: chip,
+      directionLabel: "You lent — you will get this back",
+      summary:
+        absAmount === 0
+          ? "There is no net balance with this person."
+          : `You will get ${amtStr} from this person.`,
       badgeClassName: "bg-emerald-500/15 text-emerald-700 dark:text-emerald-400",
       amountTextClassName: "text-emerald-600 dark:text-emerald-400",
     }
   }
   if (kind === "borrowed") {
+    const chip = absAmount === 0 ? `You borrow ${formatCurrency(0)}` : `You borrow ${amtStr}`
     return {
       kind: "borrowed",
-      amount,
-      amountFormatted: formatted,
-      amountChipLabel: `You owe ${formatted}`,
-      directionLabel: "You borrowed — you need to repay",
-      summary: `You owe ${formatted} to this person.`,
+      signedNet: absAmount === 0 ? 0 : -absAmount,
+      absAmount,
+      netBalanceFormatted,
+      amount: absAmount,
+      amountFormatted: amtStr,
+      amountChipLabel: chip,
+      directionLabel: "You borrow — repay when due",
+      summary:
+        absAmount === 0
+          ? "There is no net balance with this person."
+          : `You owe ${amtStr} to this person.`,
       badgeClassName: "bg-red-500/15 text-red-700 dark:text-red-400",
       amountTextClassName: "text-red-600 dark:text-red-400",
     }
   }
+
+  if (absAmount > 0) {
+    return {
+      kind: "neutral",
+      signedNet: 0,
+      absAmount,
+      netBalanceFormatted,
+      amount: absAmount,
+      amountFormatted: amtStr,
+      amountChipLabel: `Balance ${amtStr}`,
+      directionLabel: "Outstanding balance",
+      summary: `Net balance is ${amtStr}.`,
+      badgeClassName: "bg-muted text-muted-foreground",
+      amountTextClassName: "text-muted-foreground",
+    }
+  }
+
   return {
     kind: "neutral",
-    amount,
-    amountFormatted: amount > 0 ? formatted : "—",
-    amountChipLabel: amount > 0 ? formatted : "—",
-    directionLabel: amount > 0 ? "Outstanding balance" : "No open balance",
-    summary: amount > 0 ? `Balance ${formatted}` : "No open balance for this account.",
+    signedNet: 0,
+    absAmount: 0,
+    netBalanceFormatted: formatCurrency(0),
+    amount: 0,
+    amountFormatted: formatCurrency(0),
+    amountChipLabel: "No balance due",
+    directionLabel: "No activity",
+    summary: "There is no net balance with this person.",
     badgeClassName: "bg-muted text-muted-foreground",
     amountTextClassName: "text-muted-foreground",
   }

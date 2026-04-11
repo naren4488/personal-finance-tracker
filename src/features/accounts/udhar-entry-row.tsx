@@ -1,4 +1,5 @@
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
+import { TransactionEntryDeleteButton } from "@/features/entries/transaction-entry-delete-button"
 import { formatCurrency } from "@/lib/format"
 import { cn } from "@/lib/utils"
 
@@ -18,6 +19,7 @@ export function UdharEntryRow({
   entryCount,
   statusLabel,
   onClick,
+  onDelete,
 }: {
   personName: string
   amountInr: number
@@ -25,39 +27,51 @@ export function UdharEntryRow({
   entryCount?: number
   statusLabel?: string
   onClick?: () => void
+  /** Separate from row navigation — uses pill Delete like other entry lists. */
+  onDelete?: () => void
 }) {
   const amountColor = direction === "given" ? "text-income" : "text-destructive"
   const sign = direction === "given" ? "+" : "-"
-  const Comp = onClick ? "button" : "div"
+  const showDelete = Boolean(onDelete)
 
   return (
-    <Comp
-      type={onClick ? "button" : undefined}
-      onClick={onClick}
+    <div
       className={cn(
-        "flex w-full items-center gap-3 rounded-2xl border border-border/80 bg-card px-3 py-3 text-left shadow-sm",
-        onClick && "transition-colors hover:bg-muted/40 active:bg-muted/60"
+        "flex w-full items-center gap-3 rounded-2xl border border-border/80 bg-card px-3 py-3 shadow-sm",
+        onClick && "transition-colors hover:bg-muted/40"
       )}
     >
-      <Avatar className="size-11 shrink-0 border-0 bg-sky-100 dark:bg-sky-950/40">
-        <AvatarFallback className="bg-transparent text-sm font-bold text-primary">
-          {initialsFromName(personName)}
-        </AvatarFallback>
-      </Avatar>
-      <div className="min-w-0 flex-1">
-        <p className="truncate font-semibold text-foreground">{personName}</p>
-        {typeof entryCount === "number" ? (
-          <p className="text-sm text-muted-foreground">
-            {entryCount} {entryCount === 1 ? "entry" : "entries"}
+      <button
+        type="button"
+        className={cn(
+          "flex min-w-0 flex-1 items-center gap-3 text-left outline-none",
+          onClick && "rounded-xl active:bg-muted/60"
+        )}
+        onClick={onClick}
+      >
+        <Avatar className="size-11 shrink-0 border-0 bg-sky-100 dark:bg-sky-950/40">
+          <AvatarFallback className="bg-transparent text-sm font-bold text-primary">
+            {initialsFromName(personName)}
+          </AvatarFallback>
+        </Avatar>
+        <div className="min-w-0 flex-1">
+          <p className="truncate font-semibold text-foreground">{personName}</p>
+          {typeof entryCount === "number" ? (
+            <p className="text-sm text-muted-foreground">
+              {entryCount} {entryCount === 1 ? "entry" : "entries"}
+            </p>
+          ) : null}
+        </div>
+      </button>
+      <div className="flex shrink-0 items-center gap-2">
+        {showDelete ? <TransactionEntryDeleteButton onClick={() => onDelete?.()} /> : null}
+        <div className="text-right">
+          <p className={cn("text-base font-bold tabular-nums", amountColor)}>
+            {`${sign}${formatCurrency(Math.abs(amountInr))}`}
           </p>
-        ) : null}
+          {statusLabel ? <p className="text-sm text-muted-foreground">{statusLabel}</p> : null}
+        </div>
       </div>
-      <div className="text-right">
-        <p className={cn("text-base font-bold tabular-nums", amountColor)}>
-          {`${sign}${formatCurrency(Math.abs(amountInr))}`}
-        </p>
-        {statusLabel ? <p className="text-sm text-muted-foreground">{statusLabel}</p> : null}
-      </div>
-    </Comp>
+    </div>
   )
 }

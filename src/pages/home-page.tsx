@@ -1,11 +1,13 @@
 import { useEffect } from "react"
 import { useNavigate } from "react-router-dom"
 import { toast } from "sonner"
+import { ConfirmDeleteDialog } from "@/components/confirm-delete-dialog"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
 import { RecentTransactionRow } from "@/features/entries/recent-transaction-row"
+import { useDeleteTransactionFlow } from "@/features/entries/use-delete-transaction-flow"
 import { getErrorMessage } from "@/lib/api/errors"
 import { parseSignedAmountString } from "@/lib/api/transaction-schemas"
 import { formatCurrency } from "@/lib/format"
@@ -25,6 +27,8 @@ export default function HomePage() {
     error,
     refetch,
   } = useGetRecentTransactionsQuery(HOME_RECENT_LIMIT)
+
+  const txDelete = useDeleteTransactionFlow()
 
   useEffect(() => {
     if (!isError || !error) return
@@ -47,6 +51,14 @@ export default function HomePage() {
 
   return (
     <main className="flex-1 space-y-4 px-4 py-4 pb-24">
+      <ConfirmDeleteDialog
+        open={txDelete.confirmOpen}
+        onOpenChange={(v) => !v && txDelete.dismiss()}
+        title="Delete entry"
+        message="Are you sure you want to delete this transaction? This cannot be undone."
+        isDeleting={txDelete.isDeleting}
+        onConfirm={txDelete.confirmDelete}
+      />
       <Card className="rounded-2xl border-0 bg-primary py-5 text-primary-foreground shadow-xl ring-0">
         <CardHeader className="px-5 pb-0">
           <p className="text-[10px] font-medium uppercase tracking-wide text-primary-foreground/70">
@@ -107,7 +119,12 @@ export default function HomePage() {
         {!isLoading &&
           !isError &&
           homeRecentRows.map((tx) => (
-            <RecentTransactionRow key={tx.id} tx={tx} accounts={accounts} />
+            <RecentTransactionRow
+              key={tx.id}
+              tx={tx}
+              accounts={accounts}
+              onDelete={txDelete.requestDelete}
+            />
           ))}
       </section>
 

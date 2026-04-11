@@ -16,6 +16,7 @@ import {
 } from "@/lib/api/account-schemas"
 import { getErrorMessage, isFetchBaseQueryError } from "@/lib/api/errors"
 import { RecentTransactionRow } from "@/features/entries/recent-transaction-row"
+import { useDeleteTransactionFlow } from "@/features/entries/use-delete-transaction-flow"
 import { formatCurrency } from "@/lib/format"
 import { parseSignedAmountString, type RecentTransaction } from "@/lib/api/transaction-schemas"
 import {
@@ -94,6 +95,7 @@ export function AccountDetailView({
   const [updateAccount, { isLoading: isSaving }] = useUpdateAccountMutation()
   const [deleteAccount, { isLoading: isDeletingAccount }] = useDeleteAccountMutation()
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false)
+  const txDelete = useDeleteTransactionFlow()
   const [isEditing, setIsEditing] = useState(initialEditing)
   const [draftName, setDraftName] = useState(() => account?.name?.trim() ?? "")
 
@@ -251,6 +253,14 @@ export function AccountDetailView({
         warning={deleteWarning}
         isDeleting={isDeletingAccount}
         onConfirm={confirmDeleteAccount}
+      />
+      <ConfirmDeleteDialog
+        open={txDelete.confirmOpen}
+        onOpenChange={(v) => !v && txDelete.dismiss()}
+        title="Delete entry"
+        message="Are you sure you want to delete this transaction? This cannot be undone."
+        isDeleting={txDelete.isDeleting}
+        onConfirm={txDelete.confirmDelete}
       />
       <div className="fixed inset-0 z-60 flex items-stretch justify-center sm:items-center sm:p-3">
         <button
@@ -429,7 +439,11 @@ export function AccountDetailView({
                 <ul className="flex list-none flex-col gap-2" aria-label="Account transactions">
                   {accountTxs.map((tx) => (
                     <li key={tx.id}>
-                      <RecentTransactionRow tx={tx} accounts={accountsForRows} />
+                      <RecentTransactionRow
+                        tx={tx}
+                        accounts={accountsForRows}
+                        onDelete={txDelete.requestDelete}
+                      />
                     </li>
                   ))}
                 </ul>

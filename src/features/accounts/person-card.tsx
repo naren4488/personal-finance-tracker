@@ -1,44 +1,73 @@
+import { useMemo } from "react"
+import { Skeleton } from "@/components/ui/skeleton"
+import type { UdharAccountPersonBalance } from "@/lib/api/udhar-summary-schemas"
 import type { Person } from "@/lib/api/people-schemas"
-import { getPersonDisplayPhone, getPersonUdharListSummary } from "@/lib/api/people-schemas"
+import {
+  getPersonDisplayPhone,
+  getPersonUdharListSummaryFromTotals,
+  type PersonUdharListSummary,
+} from "@/lib/api/people-schemas"
+import { transactionEntryDeleteChipClass } from "@/features/entries/transaction-entry-delete-button"
 import { cn } from "@/lib/utils"
-
-/** Design reference: light red delete chip */
-const chipDelete =
-  "rounded-full px-3 py-1 text-xs font-semibold bg-[#FCE8E6] text-[#C5221F] transition-opacity hover:opacity-90 dark:bg-rose-950/50 dark:text-rose-200"
-
-/** Lent / receivable — light green */
-const chipAmountLent =
-  "rounded-full px-3 py-1 text-xs font-semibold tabular-nums bg-[#E6F4EA] text-[#1E7E34] dark:bg-emerald-950/40 dark:text-emerald-300"
-
-/** Borrowed — light red/green contrast per design language */
-const chipAmountBorrowed =
-  "rounded-full px-3 py-1 text-xs font-semibold tabular-nums bg-rose-100 text-rose-900 dark:bg-rose-950/40 dark:text-rose-200"
-
-const chipAmountNeutral =
-  "rounded-full px-3 py-1 text-xs font-semibold tabular-nums bg-muted text-muted-foreground"
 
 const chipActive =
   "rounded-full px-3 py-1 text-[10px] font-bold uppercase tracking-wide bg-[#E6F4EA] text-[#1E7E34] dark:bg-emerald-950/40 dark:text-emerald-300"
 
 export type PersonCardProps = {
   person: Person
-  /** Opens ledger / detail (main row tap). */
   onClick: (person: Person) => void
-  /** Opens delete confirmation in parent; must not trigger `onClick`. */
   onDelete?: (person: Person) => void
+  /** Aggregated from GET /transactions/ledger (same as detail modal). */
+  ledgerBalance?: UdharAccountPersonBalance
+  /** True until ledger for this person has been loaded or errored. */
+  balancePending?: boolean
+  balanceError?: string | null
 }
 
-export function PersonCard({ person, onClick, onDelete }: PersonCardProps) {
+export function PersonCard({
+  person,
+  onClick,
+  onDelete,
+  ledgerBalance,
+  balancePending,
+  balanceError,
+}: PersonCardProps) {
   const phone = getPersonDisplayPhone(person)
-  const { kind, summary, amountChipLabel } = getPersonUdharListSummary(person)
 
-  const amountChipClass =
-    kind === "lent" ? chipAmountLent : kind === "borrowed" ? chipAmountBorrowed : chipAmountNeutral
+  const summary: PersonUdharListSummary | "loading" | "error" = useMemo(() => {
+    if (balanceError) return "error"
+    if (balancePending || !ledgerBalance) return "loading"
+    return getPersonUdharListSummaryFromTotals(ledgerBalance.totalLent, ledgerBalance.totalBorrowed)
+  }, [balanceError, balancePending, ledgerBalance])
+
+  const body =
+    summary === "loading" ? (
+      <div className="mt-2 space-y-2">
+        <Skeleton className="h-4 w-44 max-w-full" />
+        <Skeleton className="h-3 w-56 max-w-full" />
+      </div>
+    ) : summary === "error" ? (
+      <p className="mt-1 text-sm text-destructive">{balanceError ?? "Could not load balance"}</p>
+    ) : (
+      <>
+        <p
+          className={cn(
+            "mt-1 text-sm font-semibold tabular-nums leading-snug",
+            summary.amountTextClassName
+          )}
+        >
+          {summary.amountChipLabel}
+        </p>
+        <p className="mt-0.5 text-sm leading-snug text-[#6B7280] dark:text-muted-foreground">
+          {summary.summary}
+        </p>
+      </>
+    )
 
   return (
     <div
       className={cn(
-        "flex w-full items-center justify-between gap-3 rounded-xl border border-[#E5E7EB] bg-card px-4 py-3 shadow-sm",
+        "flex w-full items-start justify-between gap-3 rounded-xl border border-[#E5E7EB] bg-card px-4 py-3 shadow-sm",
         "dark:border-border"
       )}
     >
@@ -47,7 +76,7 @@ export function PersonCard({ person, onClick, onDelete }: PersonCardProps) {
         className="min-w-0 flex-1 text-left outline-none transition-opacity hover:opacity-95"
         onClick={() => onClick(person)}
       >
-        <p className="truncate text-base font-bold tracking-tight text-[#111827] dark:text-foreground">
+        <p className="text-base font-bold tracking-tight text-[#111827] dark:text-foreground">
           {person.name}
         </p>
         {phone ? (
@@ -55,9 +84,7 @@ export function PersonCard({ person, onClick, onDelete }: PersonCardProps) {
             {phone}
           </p>
         ) : null}
-        <p className="mt-0.5 text-sm leading-snug text-[#6B7280] dark:text-muted-foreground">
-          {summary}
-        </p>
+        {body}
       </button>
 
       <div
@@ -68,7 +95,7 @@ export function PersonCard({ person, onClick, onDelete }: PersonCardProps) {
         {onDelete ? (
           <button
             type="button"
-            className={chipDelete}
+            className={transactionEntryDeleteChipClass}
             onClick={(e) => {
               e.preventDefault()
               e.stopPropagation()
@@ -78,7 +105,6 @@ export function PersonCard({ person, onClick, onDelete }: PersonCardProps) {
             Delete
           </button>
         ) : null}
-        <span className={amountChipClass}>{amountChipLabel}</span>
         {person.isActive !== false ? (
           <span className={chipActive} aria-label="Active">
             Active

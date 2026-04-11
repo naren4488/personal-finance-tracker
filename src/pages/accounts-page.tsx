@@ -22,6 +22,11 @@ import { CreditCardList } from "@/features/accounts/credit-card-list"
 import { LoanDetailView } from "@/features/accounts/loan-detail-view"
 import { LoanList } from "@/features/accounts/loan-list"
 import { PeopleList } from "@/features/accounts/people-list"
+import {
+  readPersonLedgerCache,
+  usePeopleLedgerBalances,
+} from "@/features/accounts/use-people-ledger-balances"
+import { useDeleteTransactionFlow } from "@/features/entries/use-delete-transaction-flow"
 import { UdharDetailsModal } from "@/features/accounts/udhar-details-modal"
 import {
   AddTransactionModal,
@@ -34,6 +39,7 @@ import { accountSelectLabel, filterNormalAccounts } from "@/lib/api/account-sche
 import { getErrorMessage } from "@/lib/api/errors"
 import { resolvePersonDeleteTarget } from "@/lib/people/person-delete"
 import type { Person } from "@/lib/api/people-schemas"
+import type { UdharAccountPersonBalance } from "@/lib/api/udhar-summary-schemas"
 import type { RecentTransaction } from "@/lib/api/transaction-schemas"
 import { cn } from "@/lib/utils"
 import {
@@ -55,6 +61,10 @@ const SEGMENT_ICONS: Record<AccountsSegmentId, typeof Users> = {
   loans: Landmark,
   cards: CreditCard,
 }
+
+const EMPTY_LEDGER_BALANCE_MAP = new Map<string, UdharAccountPersonBalance>()
+const EMPTY_PENDING_IDS = new Set<string>()
+const EMPTY_LEDGER_ERR_MAP = new Map<string, string>()
 
 export default function AccountsPage() {
   const navigate = useNavigate()
@@ -84,6 +94,7 @@ export default function AccountsPage() {
   const [isConfirmingPersonDelete, setIsConfirmingPersonDelete] = useState(false)
   const [deleteAccount, { isLoading: isDeletingFromList }] = useDeleteAccountMutation()
   const [deletePerson] = useDeletePersonMutation()
+  const txDelete = useDeleteTransactionFlow()
 
   const openPayBillFromCardDetail = useCallback(() => {
     const a = selectedCreditCard
@@ -204,7 +215,9 @@ export default function AccountsPage() {
   const onPersonClickLedger = useCallback(
     async (person: Person) => {
       try {
-        const entries = await fetchPersonLedger({ personId: person.id, limit: 500 }).unwrap()
+        const cached = readPersonLedgerCache(person.id)
+        const entries =
+          cached ?? (await fetchPersonLedger({ personId: person.id, limit: 500 }).unwrap())
         setUdharLedgerName(person.name)
         setUdharLedgerEntries(entries)
         setUdharLedgerOpen(true)
@@ -215,17 +228,23 @@ export default function AccountsPage() {
     [fetchPersonLedger]
   )
 
+  const peopleQuerySkip = !user || segment !== "people" || !peopleAccountId
+
   const {
     data: peopleForAccount = [],
+    fulfilledTimeStamp: peopleListFulfilledAt,
     isLoading: peopleQueryLoading,
     isFetching: peopleQueryFetching,
     isError: peopleListError,
     error: peopleQueryError,
     refetch: refetchPeople,
-  } = useGetPeopleQuery(
-    { accountId: peopleAccountId },
-    { skip: !user || segment !== "people" || !peopleAccountId }
-  )
+  } = useGetPeopleQuery({ accountId: peopleAccountId }, { skip: peopleQuerySkip })
+
+  const {
+    balanceByPersonId: ledgerBalanceByPersonId,
+    balanceErrorByPersonId,
+    pendingPersonIds: ledgerPendingPersonIds,
+  } = usePeopleLedgerBalances(peopleForAccount, !peopleQuerySkip, 2, peopleListFulfilledAt)
 
   const showPeopleLoading =
     segment === "people" &&
@@ -317,6 +336,14 @@ export default function AccountsPage() {
         isDeleting={isConfirmingPersonDelete}
         onConfirm={confirmDeletePerson}
       />
+      <ConfirmDeleteDialog
+        open={txDelete.confirmOpen}
+        onOpenChange={(v) => !v && txDelete.dismiss()}
+        title="Delete entry"
+        message="Are you sure you want to delete this transaction? This cannot be undone."
+        isDeleting={txDelete.isDeleting}
+        onConfirm={txDelete.confirmDelete}
+      />
       <AddAccountSheet open={addAccountOpen} onOpenChange={setAddAccountOpen} />
       <AddUdharEntrySheet open={udharOpen} onOpenChange={setUdharOpen} />
       <AddLoanSheet open={loanOpen} onOpenChange={setLoanOpen} />
@@ -389,6 +416,7 @@ export default function AccountsPage() {
         }}
         personName={udharLedgerName}
         entries={udharLedgerEntries}
+        onDeleteEntry={txDelete.requestDelete}
       />
 
       <div
@@ -497,6 +525,9 @@ export default function AccountsPage() {
             error={null}
             onRetry={() => void refetchAccounts()}
             onPersonClick={() => {}}
+            balanceByPersonId={EMPTY_LEDGER_BALANCE_MAP}
+            pendingPersonIds={EMPTY_PENDING_IDS}
+            balanceErrorByPersonId={EMPTY_LEDGER_ERR_MAP}
           />
         ) : segment === "people" && accountsError ? (
           <div className="space-y-3 rounded-2xl border border-destructive/30 bg-destructive/5 px-4 py-4">
@@ -562,6 +593,9 @@ export default function AccountsPage() {
                 onRetry={() => void refetchPeople()}
                 onPersonClick={onPersonClickLedger}
                 onPersonDelete={(p) => setPendingDeletePerson(p)}
+                balanceByPersonId={ledgerBalanceByPersonId}
+                pendingPersonIds={ledgerPendingPersonIds}
+                balanceErrorByPersonId={balanceErrorByPersonId}
               />
             </div>
           </div>

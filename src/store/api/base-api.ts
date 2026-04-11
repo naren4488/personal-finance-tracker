@@ -47,6 +47,10 @@ import {
   type Person,
 } from "@/lib/api/people-schemas"
 import {
+  parseGetUdharAccountBalancesSuccess,
+  type UdharAccountPersonBalance,
+} from "@/lib/api/udhar-summary-schemas"
+import {
   buildTransactionPostBody,
   createTransactionApiBodySchema,
   mapApiTransactionToClient,
@@ -187,7 +191,7 @@ const baseQueryWithReauth: BaseQueryFn<string | FetchArgs, unknown, FetchBaseQue
 export const baseApi = createApi({
   reducerPath: "api",
   baseQuery: baseQueryWithReauth,
-  tagTypes: ["Transaction", "People", "Account", "User"],
+  tagTypes: ["Transaction", "People", "Account", "User", "UdharSummary", "PersonLedger"],
   endpoints: (build) => ({
     getMe: build.query<ProfileUser, string>({
       async queryFn(userId, _api, _extraOptions, baseQuery) {
@@ -465,6 +469,8 @@ export const baseApi = createApi({
         { type: "Transaction", id: "LIST" },
         { type: "Transaction", id: "RECENT" },
         { type: "People", id: "LIST" },
+        { type: "UdharSummary" },
+        { type: "PersonLedger" },
       ],
     }),
 
@@ -499,6 +505,8 @@ export const baseApi = createApi({
         { type: "Transaction", id: "LIST" },
         { type: "Transaction", id: "RECENT" },
         { type: "Account", id: "LIST" },
+        { type: "UdharSummary" },
+        { type: "PersonLedger" },
       ],
     }),
 
@@ -568,6 +576,34 @@ export const baseApi = createApi({
         }
         return { data: parsed.transactions }
       },
+      providesTags: (_result, _error, arg) => [{ type: "PersonLedger", id: arg.personId }],
+    }),
+
+    getUdharAccountBalances: build.query<UdharAccountPersonBalance[], { accountId: string }>({
+      async queryFn({ accountId }, _api, _extraOptions, baseQuery) {
+        const id = accountId.trim()
+        if (!id) {
+          return { error: { status: 422, data: "Account id is required" } }
+        }
+        const res = await baseQuery({
+          url: TRANSACTION_PATHS.udharSummary,
+          method: "GET",
+          params: { accountId: id },
+        })
+        if (res.error) {
+          return { error: normalizeFetchError(res.error) }
+        }
+        const failMsg = parseApiFailureMessage(res.data)
+        if (failMsg) {
+          return { error: { status: 400, data: failMsg } }
+        }
+        const parsed = parseGetUdharAccountBalancesSuccess(res.data)
+        if (!parsed.ok) {
+          return { error: { status: 422, data: parsed.error } }
+        }
+        return { data: parsed.balances }
+      },
+      providesTags: [{ type: "UdharSummary" }],
     }),
 
     createPerson: build.mutation<Person, CreatePersonRequest>({
@@ -595,7 +631,11 @@ export const baseApi = createApi({
         api.dispatch(addPerson(parsed.person))
         return { data: parsed.person }
       },
-      invalidatesTags: [{ type: "People", id: "LIST" }],
+      invalidatesTags: [
+        { type: "People", id: "LIST" },
+        { type: "UdharSummary" },
+        { type: "PersonLedger" },
+      ],
     }),
 
     register: build.mutation<AuthResult, RegisterRequest>({
@@ -770,6 +810,43 @@ export const baseApi = createApi({
       providesTags: [{ type: "Transaction", id: "RECENT" }],
     }),
 
+    /** Deletes any transaction by id; invalidates accounts + recent tx so balances and lists stay consistent. */
+    deleteTransaction: build.mutation<{ message?: string }, string>({
+      async queryFn(transactionId, _api, _extraOptions, baseQuery) {
+        const id = transactionId.trim()
+        if (!id) {
+          return { error: { status: 422, data: "Transaction id is required" } }
+        }
+        const res = await baseQuery({
+          url: `${TRANSACTION_PATHS.create}/${encodeURIComponent(id)}`,
+          method: "DELETE",
+        })
+        if (res.error) {
+          return { error: normalizeFetchError(res.error) }
+        }
+        if (res.data === undefined || res.data === null || res.data === "") {
+          return { data: { message: "Deleted" } }
+        }
+        const failMsg = parseApiFailureMessage(res.data)
+        if (failMsg) {
+          return { error: { status: 400, data: failMsg } }
+        }
+        const parsed = parseDeleteAccountApiSuccess(res.data)
+        if (!parsed.ok) {
+          return { error: { status: 400, data: parsed.error } }
+        }
+        return { data: { message: parsed.message } }
+      },
+      invalidatesTags: [
+        { type: "Transaction", id: "LIST" },
+        { type: "Transaction", id: "RECENT" },
+        { type: "Account", id: "LIST" },
+        { type: "PersonLedger" },
+        { type: "UdharSummary" },
+        { type: "People", id: "LIST" },
+      ],
+    }),
+
     addTransaction: build.mutation<Transaction, CreateTransactionPayload>({
       async queryFn(body, _api, _extraOptions, baseQuery) {
         let apiBody: CreateTransactionApiBody
@@ -839,6 +916,8 @@ export const baseApi = createApi({
         { type: "Transaction", id: "LIST" },
         { type: "Transaction", id: "RECENT" },
         { type: "Account", id: "LIST" },
+        { type: "UdharSummary" },
+        { type: "PersonLedger" },
       ],
     }),
 
@@ -888,6 +967,8 @@ export const baseApi = createApi({
         { type: "Transaction", id: "RECENT" },
         { type: "People", id: "LIST" },
         { type: "Account", id: "LIST" },
+        { type: "UdharSummary" },
+        { type: "PersonLedger" },
       ],
     }),
   }),
@@ -906,10 +987,12 @@ export const {
   useDeleteAccountMutation,
   useDeletePersonMutation,
   useGetPeopleQuery,
+  useGetUdharAccountBalancesQuery,
   useLazyGetPersonLedgerQuery,
   useGetPersonLedgerQuery,
   useCreatePersonMutation,
   useGetRecentTransactionsQuery,
+  useDeleteTransactionMutation,
   useAddTransactionMutation,
   useCreateUdharEntryMutation,
   useGetMeQuery,
