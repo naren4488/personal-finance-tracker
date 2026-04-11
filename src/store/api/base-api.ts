@@ -10,6 +10,7 @@ import { TRANSACTION_PATHS } from "@/api/transaction-paths"
 import { AUTH_PATHS } from "@/api/auth-paths"
 import { PEOPLE_PATHS } from "@/api/people-paths"
 import { USER_PATHS } from "@/api/user-paths"
+import { DASHBOARD_PATHS } from "@/api/dashboard-paths"
 import { isAccountCreateApiDisabled } from "@/lib/feature-flags"
 import { getApiBaseUrl } from "@/lib/env"
 import { clearToken, getRefreshToken, setAuthTokens } from "@/lib/auth/token"
@@ -50,6 +51,19 @@ import {
   parseGetUdharAccountBalancesSuccess,
   type UdharAccountPersonBalance,
 } from "@/lib/api/udhar-summary-schemas"
+import {
+  parseDashboardAnalyticsResponse,
+  type DashboardAnalyticsView,
+} from "@/lib/api/dashboard-analytics-schemas"
+
+export type DashboardAnalyticsQueryArg = {
+  days: number
+  /**
+   * When true, sends `include_all=true` so the API aggregates every module (transactions, Udhar,
+   * transfers, all account types). Backend must honor this flag.
+   */
+  includeAll?: boolean
+}
 import {
   buildTransactionPostBody,
   createTransactionApiBodySchema,
@@ -191,7 +205,15 @@ const baseQueryWithReauth: BaseQueryFn<string | FetchArgs, unknown, FetchBaseQue
 export const baseApi = createApi({
   reducerPath: "api",
   baseQuery: baseQueryWithReauth,
-  tagTypes: ["Transaction", "People", "Account", "User", "UdharSummary", "PersonLedger"],
+  tagTypes: [
+    "Transaction",
+    "People",
+    "Account",
+    "User",
+    "UdharSummary",
+    "PersonLedger",
+    "DashboardAnalytics",
+  ],
   endpoints: (build) => ({
     getMe: build.query<ProfileUser, string>({
       async queryFn(userId, _api, _extraOptions, baseQuery) {
@@ -810,6 +832,37 @@ export const baseApi = createApi({
       providesTags: [{ type: "Transaction", id: "RECENT" }],
     }),
 
+    getDashboardAnalytics: build.query<DashboardAnalyticsView, DashboardAnalyticsQueryArg>({
+      async queryFn(arg, _api, _extraOptions, baseQuery) {
+        const daysArg = arg?.days
+        const includeAll = arg?.includeAll !== false
+        const days =
+          typeof daysArg === "number" && Number.isFinite(daysArg) && daysArg > 0
+            ? Math.floor(daysArg)
+            : 30
+        const params: Record<string, string> = { days: String(days) }
+        if (includeAll) params.include_all = "true"
+        const res = await baseQuery({
+          url: DASHBOARD_PATHS.analytics,
+          method: "GET",
+          params,
+        })
+        if (res.error) {
+          return { error: normalizeFetchError(res.error) }
+        }
+        const failMsg = parseApiFailureMessage(res.data)
+        if (failMsg) {
+          return { error: { status: 400, data: failMsg } }
+        }
+        const parsed = parseDashboardAnalyticsResponse(res.data)
+        if (!parsed.ok) {
+          return { error: { status: 422, data: parsed.error } }
+        }
+        return { data: parsed.view }
+      },
+      providesTags: [{ type: "DashboardAnalytics", id: "LIST" }],
+    }),
+
     /** Deletes any transaction by id; invalidates accounts + recent tx so balances and lists stay consistent. */
     deleteTransaction: build.mutation<{ message?: string }, string>({
       async queryFn(transactionId, _api, _extraOptions, baseQuery) {
@@ -844,6 +897,7 @@ export const baseApi = createApi({
         { type: "PersonLedger" },
         { type: "UdharSummary" },
         { type: "People", id: "LIST" },
+        { type: "DashboardAnalytics", id: "LIST" },
       ],
     }),
 
@@ -918,6 +972,7 @@ export const baseApi = createApi({
         { type: "Account", id: "LIST" },
         { type: "UdharSummary" },
         { type: "PersonLedger" },
+        { type: "DashboardAnalytics", id: "LIST" },
       ],
     }),
 
@@ -969,6 +1024,7 @@ export const baseApi = createApi({
         { type: "Account", id: "LIST" },
         { type: "UdharSummary" },
         { type: "PersonLedger" },
+        { type: "DashboardAnalytics", id: "LIST" },
       ],
     }),
   }),
@@ -995,6 +1051,7 @@ export const {
   useDeleteTransactionMutation,
   useAddTransactionMutation,
   useCreateUdharEntryMutation,
+  useGetDashboardAnalyticsQuery,
   useGetMeQuery,
   useUpdateMeMutation,
   useDeleteMeMutation,
