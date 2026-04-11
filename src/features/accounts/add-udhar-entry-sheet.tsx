@@ -105,8 +105,11 @@ function AddUdharEntrySheetMounted({ onOpenChange }: MountedProps) {
   const navigate = useNavigate()
   const dispatch = useAppDispatch()
   const user = useAppSelector((s) => s.auth.user)
-  const people = useAppSelector((s) => s.people.items)
-  const { isLoading: peopleQueryLoading, isFetching: peopleQueryFetching } = useGetPeopleQuery()
+  const {
+    data: people = [],
+    isLoading: peopleQueryLoading,
+    isFetching: peopleQueryFetching,
+  } = useGetPeopleQuery({}, { skip: !user })
   const [createPerson, { isLoading: isCreatingPerson }] = useCreatePersonMutation()
   const [createUdharEntry, { isLoading: isUdharSubmitting }] = useCreateUdharEntryMutation()
   const {

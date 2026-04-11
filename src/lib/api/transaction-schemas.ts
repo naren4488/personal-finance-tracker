@@ -359,7 +359,7 @@ function extractRecentTransactionsArray(raw: unknown): unknown[] | null {
   if (Array.isArray(data)) return data
   if (data !== null && typeof data === "object" && !Array.isArray(data)) {
     const d = data as Record<string, unknown>
-    const keys = ["transactions", "items", "recentTransactions", "records"] as const
+    const keys = ["transactions", "items", "recentTransactions", "records", "ledger"] as const
     for (const k of keys) {
       const v = d[k]
       if (Array.isArray(v)) return v

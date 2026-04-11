@@ -31,6 +31,7 @@ import {
 import {
   buildCreateAccountPostBody,
   parseCreateAccountSuccess,
+  parseDeleteAccountApiSuccess,
   parseGetAccountsSuccess,
   type Account,
   type CreateAccountRequest,
@@ -41,6 +42,7 @@ import { isLoanAccount } from "@/lib/api/loan-account-map"
 import {
   parseCreatePersonSuccess,
   parseGetPeopleSuccess,
+  personSchema,
   type CreatePersonRequest,
   type Person,
 } from "@/lib/api/people-schemas"
@@ -432,14 +434,87 @@ export const baseApi = createApi({
       invalidatesTags: [{ type: "Account", id: "LIST" }],
     }),
 
-    getPeople: build.query<Person[], void>({
-      async queryFn(_arg, api, _extraOptions, baseQuery) {
+    deleteAccount: build.mutation<{ message?: string }, string>({
+      async queryFn(accountId, _api, _extraOptions, baseQuery) {
+        const id = accountId.trim()
+        if (!id) {
+          return { error: { status: 422, data: "Account id is required" } }
+        }
+        const res = await baseQuery({
+          url: `${ACCOUNT_PATHS.create}/${encodeURIComponent(id)}`,
+          method: "DELETE",
+        })
+        if (res.error) {
+          return { error: normalizeFetchError(res.error) }
+        }
+        if (res.data === undefined || res.data === null || res.data === "") {
+          return { data: { message: "Deleted" } }
+        }
+        const failMsg = parseApiFailureMessage(res.data)
+        if (failMsg) {
+          return { error: { status: 400, data: failMsg } }
+        }
+        const parsed = parseDeleteAccountApiSuccess(res.data)
+        if (!parsed.ok) {
+          return { error: { status: 400, data: parsed.error } }
+        }
+        return { data: { message: parsed.message } }
+      },
+      invalidatesTags: [
+        { type: "Account", id: "LIST" },
+        { type: "Transaction", id: "LIST" },
+        { type: "Transaction", id: "RECENT" },
+        { type: "People", id: "LIST" },
+      ],
+    }),
+
+    deletePerson: build.mutation<{ message?: string }, string>({
+      async queryFn(personId, _api, _extraOptions, baseQuery) {
+        const id = personId.trim()
+        if (!id) {
+          return { error: { status: 422, data: "Person id is required" } }
+        }
+        const res = await baseQuery({
+          url: `${PEOPLE_PATHS.create}/${encodeURIComponent(id)}`,
+          method: "DELETE",
+        })
+        if (res.error) {
+          return { error: normalizeFetchError(res.error) }
+        }
+        if (res.data === undefined || res.data === null || res.data === "") {
+          return { data: { message: "Deleted" } }
+        }
+        const failMsg = parseApiFailureMessage(res.data)
+        if (failMsg) {
+          return { error: { status: 400, data: failMsg } }
+        }
+        const parsed = parseDeleteAccountApiSuccess(res.data)
+        if (!parsed.ok) {
+          return { error: { status: 400, data: parsed.error } }
+        }
+        return { data: { message: parsed.message } }
+      },
+      invalidatesTags: [
+        { type: "People", id: "LIST" },
+        { type: "Transaction", id: "LIST" },
+        { type: "Transaction", id: "RECENT" },
+        { type: "Account", id: "LIST" },
+      ],
+    }),
+
+    getPeople: build.query<Person[], { accountId?: string } | void>({
+      async queryFn(arg, api, _extraOptions, baseQuery) {
+        const accountId =
+          arg && typeof arg === "object" && typeof arg.accountId === "string"
+            ? arg.accountId.trim()
+            : undefined
         if (import.meta.env.DEV) {
-          console.debug("[people] GET list")
+          console.debug("[people] GET list", accountId ? { accountId } : {})
         }
         const res = await baseQuery({
           url: PEOPLE_PATHS.list,
           method: "GET",
+          params: accountId ? { accountId } : undefined,
         })
         if (res.error) {
           if (import.meta.env.DEV) {
@@ -459,10 +534,40 @@ export const baseApi = createApi({
         if (import.meta.env.DEV) {
           console.debug("[people] OK, count:", people.length)
         }
-        api.dispatch(setPeople(people))
+        if (!accountId) {
+          api.dispatch(setPeople(people))
+        }
         return { data: people }
       },
       providesTags: [{ type: "People", id: "LIST" }],
+    }),
+
+    getPersonLedger: build.query<RecentTransaction[], { personId: string; limit?: number }>({
+      async queryFn({ personId, limit = 500 }, _api, _extraOptions, baseQuery) {
+        const id = personId.trim()
+        if (!id) {
+          return { error: { status: 422, data: "Person id is required" } }
+        }
+        const lim =
+          typeof limit === "number" && Number.isFinite(limit) && limit > 0 ? Math.floor(limit) : 500
+        const res = await baseQuery({
+          url: TRANSACTION_PATHS.ledger,
+          method: "GET",
+          params: { personId: id, limit: String(lim) },
+        })
+        if (res.error) {
+          return { error: normalizeFetchError(res.error) }
+        }
+        const failMsg = parseApiFailureMessage(res.data)
+        if (failMsg) {
+          return { error: { status: 400, data: failMsg } }
+        }
+        const parsed = parseGetRecentTransactionsSuccess(res.data)
+        if (!parsed.ok) {
+          return { error: { status: 422, data: parsed.error } }
+        }
+        return { data: parsed.transactions }
+      },
     }),
 
     createPerson: build.mutation<Person, CreatePersonRequest>({
@@ -738,7 +843,7 @@ export const baseApi = createApi({
     }),
 
     createUdharEntry: build.mutation<CreateUdharEntryResult, CreateUdharEntryRequest>({
-      async queryFn(body, _api, _extraOptions, baseQuery) {
+      async queryFn(body, api, _extraOptions, baseQuery) {
         const validated = createUdharEntryRequestSchema.safeParse(body)
         if (!validated.success) {
           const first = validated.error.flatten().formErrors[0]
@@ -760,6 +865,12 @@ export const baseApi = createApi({
         const parsed = parseCreateUdharEntrySuccess(res.data)
         if (!parsed.ok) {
           return { error: { status: 422, data: parsed.error } }
+        }
+        if (parsed.entry?.person) {
+          const personOk = personSchema.safeParse(parsed.entry.person)
+          if (personOk.success) {
+            api.dispatch(addPerson(personOk.data))
+          }
         }
         const message =
           parsed.message?.trim() && parsed.message.trim().length > 0
@@ -792,7 +903,11 @@ export const {
   useGetLoansQuery,
   useCreateAccountMutation,
   useUpdateAccountMutation,
+  useDeleteAccountMutation,
+  useDeletePersonMutation,
   useGetPeopleQuery,
+  useLazyGetPersonLedgerQuery,
+  useGetPersonLedgerQuery,
   useCreatePersonMutation,
   useGetRecentTransactionsQuery,
   useAddTransactionMutation,

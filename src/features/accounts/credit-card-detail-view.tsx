@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react"
 import { useNavigate } from "react-router-dom"
 import { Archive, ArrowLeft, Check, ChevronDown, CreditCard, Pencil, Trash2, X } from "lucide-react"
 import { toast } from "sonner"
+import { ConfirmDeleteDialog } from "@/components/confirm-delete-dialog"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -20,8 +21,9 @@ import {
   paymentDueDayNumber,
 } from "@/lib/api/credit-card-map"
 import { AddCardSpendSheet } from "@/features/accounts/add-card-spend-sheet"
+import { getAccountDeleteWarning } from "@/lib/accounts/account-delete"
 import { formatCurrency } from "@/lib/format"
-import { useUpdateAccountMutation } from "@/store/api/base-api"
+import { useDeleteAccountMutation, useUpdateAccountMutation } from "@/store/api/base-api"
 import { cn } from "@/lib/utils"
 
 const CARD_NETWORKS = [
@@ -70,6 +72,7 @@ export function CreditCardDetailView({
   openSheetRequest,
   onOpenSheetRequestConsumed,
   onPayBill,
+  onCardDeleted,
 }: {
   open: boolean
   onOpenChange: (open: boolean) => void
@@ -80,9 +83,12 @@ export function CreditCardDetailView({
   onOpenSheetRequestConsumed?: () => void
   /** Pay Bill — opens shared Add Transaction (transfer → credit card bill). */
   onPayBill?: () => void
+  onCardDeleted?: () => void
 }) {
   const navigate = useNavigate()
   const [updateAccount, { isLoading: isSaving }] = useUpdateAccountMutation()
+  const [deleteAccount, { isLoading: isDeletingAccount }] = useDeleteAccountMutation()
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false)
   const [isEditing, setIsEditing] = useState(false)
   const [draft, setDraft] = useState<Account | null>(null)
   const [spendOpen, setSpendOpen] = useState(false)
@@ -91,6 +97,7 @@ export function CreditCardDetailView({
     setIsEditing(false)
     setDraft(null)
     setSpendOpen(false)
+    setDeleteConfirmOpen(false)
     onOpenChange(false)
   }, [onOpenChange])
 
@@ -227,6 +234,27 @@ export function CreditCardDetailView({
     }
   }, [account, draft, navigate, onCardUpdated, updateAccount])
 
+  const confirmDeleteCard = useCallback(async () => {
+    if (!account) return
+    const id = String(account.id ?? "").trim()
+    if (!id) {
+      toast.error("Unable to delete: missing account id")
+      return
+    }
+    try {
+      const res = await deleteAccount(id).unwrap()
+      toast.success(res.message ?? "Card deleted")
+      setDeleteConfirmOpen(false)
+      setSpendOpen(false)
+      setIsEditing(false)
+      setDraft(null)
+      onOpenChange(false)
+      onCardDeleted?.()
+    } catch (e) {
+      toast.error(getErrorMessage(e) || "Failed to delete")
+    }
+  }, [account, deleteAccount, onCardDeleted, onOpenChange])
+
   useEffect(() => {
     if (!open) return
     function onKey(e: KeyboardEvent) {
@@ -303,8 +331,18 @@ export function CreditCardDetailView({
 
   const labelSm = "text-[10px] font-medium text-muted-foreground sm:text-xs"
 
+  const deleteWarning = getAccountDeleteWarning(account)
+
   return (
     <>
+      <ConfirmDeleteDialog
+        open={deleteConfirmOpen}
+        onOpenChange={setDeleteConfirmOpen}
+        title="Delete credit card"
+        warning={deleteWarning}
+        isDeleting={isDeletingAccount}
+        onConfirm={confirmDeleteCard}
+      />
       <AddCardSpendSheet open={spendOpen} onOpenChange={setSpendOpen} account={account} />
       <div className="fixed inset-0 z-60 flex items-stretch justify-center sm:items-center sm:p-3">
         <button
@@ -668,7 +706,7 @@ export function CreditCardDetailView({
                     type="button"
                     variant="destructive"
                     className="h-12 rounded-xl font-semibold shadow-none"
-                    onClick={() => comingSoon("Delete card")}
+                    onClick={() => setDeleteConfirmOpen(true)}
                   >
                     <Trash2 className="mr-2 size-4 shrink-0" strokeWidth={2} aria-hidden />
                     Delete

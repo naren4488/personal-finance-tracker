@@ -2,5 +2,6 @@
 export const TRANSACTION_PATHS = {
   create: "/transactions",
   recent: "/transactions/recent",
+  ledger: "/transactions/ledger",
   udhar: "/transactions/udhar",
 } as const

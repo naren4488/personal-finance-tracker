@@ -2,7 +2,9 @@ import { useCallback, useEffect, useMemo, useState } from "react"
 import { useNavigate } from "react-router-dom"
 import { toast } from "sonner"
 import { CreditCard, Landmark, Users, Wallet } from "lucide-react"
+import { ConfirmDeleteDialog } from "@/components/confirm-delete-dialog"
 import { Button } from "@/components/ui/button"
+import { Label } from "@/components/ui/label"
 import { Card, CardContent } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
 import { AddAccountSheet } from "@/features/accounts/add-account-sheet"
@@ -19,29 +21,29 @@ import { CreditCardDetailView } from "@/features/accounts/credit-card-detail-vie
 import { CreditCardList } from "@/features/accounts/credit-card-list"
 import { LoanDetailView } from "@/features/accounts/loan-detail-view"
 import { LoanList } from "@/features/accounts/loan-list"
+import { PeopleList } from "@/features/accounts/people-list"
 import { UdharDetailsModal } from "@/features/accounts/udhar-details-modal"
-import { UdharEntryRow } from "@/features/accounts/udhar-entry-row"
 import {
   AddTransactionModal,
   type TransferPaymentPreset,
 } from "@/features/entries/add-transaction-modal"
 import type { LoanPaymentMode } from "@/features/accounts/record-loan-payment-sheet"
 import type { Account } from "@/lib/api/account-schemas"
-import { filterNormalAccounts } from "@/lib/api/account-schemas"
+import { getAccountDeleteWarning } from "@/lib/accounts/account-delete"
+import { accountSelectLabel, filterNormalAccounts } from "@/lib/api/account-schemas"
 import { getErrorMessage } from "@/lib/api/errors"
-import {
-  inferUdharPersonName,
-  isUdharRecentTransaction,
-  parseSignedAmountString,
-  type RecentTransaction,
-  udharDirectionLabel,
-} from "@/lib/api/transaction-schemas"
+import { resolvePersonDeleteTarget } from "@/lib/people/person-delete"
+import type { Person } from "@/lib/api/people-schemas"
+import type { RecentTransaction } from "@/lib/api/transaction-schemas"
 import { cn } from "@/lib/utils"
 import {
   useGetAccountsQuery,
   useGetCreditCardsQuery,
   useGetLoansQuery,
-  useGetRecentTransactionsQuery,
+  useDeleteAccountMutation,
+  useDeletePersonMutation,
+  useGetPeopleQuery,
+  useLazyGetPersonLedgerQuery,
 } from "@/store/api/base-api"
 import { useAppSelector } from "@/store/hooks"
 
@@ -54,13 +56,6 @@ const SEGMENT_ICONS: Record<AccountsSegmentId, typeof Users> = {
   cards: CreditCard,
 }
 
-type PersonUdharGroup = {
-  id: string
-  name: string
-  amountInr: number
-  entries: RecentTransaction[]
-}
-
 export default function AccountsPage() {
   const navigate = useNavigate()
   const [segment, setSegment] = useState<AccountsSegmentId>("accounts")
@@ -68,7 +63,11 @@ export default function AccountsPage() {
   const [addAccountOpen, setAddAccountOpen] = useState(false)
   const [loanOpen, setLoanOpen] = useState(false)
   const [cardOpen, setCardOpen] = useState(false)
-  const [selectedGroupId, setSelectedGroupId] = useState<string | null>(null)
+  /** User-picked account for People tab; falls back to first normal account when unset or stale. */
+  const [peopleAccountPick, setPeopleAccountPick] = useState<string | null>(null)
+  const [udharLedgerOpen, setUdharLedgerOpen] = useState(false)
+  const [udharLedgerName, setUdharLedgerName] = useState("")
+  const [udharLedgerEntries, setUdharLedgerEntries] = useState<RecentTransaction[]>([])
   const [selectedCreditCard, setSelectedCreditCard] = useState<Account | null>(null)
   const [selectedLoan, setSelectedLoan] = useState<Account | null>(null)
   const [selectedAccount, setSelectedAccount] = useState<Account | null>(null)
@@ -80,6 +79,11 @@ export default function AccountsPage() {
   const [transferPreset, setTransferPreset] = useState<TransferPaymentPreset | null>(null)
   const [accountDetailStartInEdit, setAccountDetailStartInEdit] = useState(false)
   const [accountDetailOpenNonce, setAccountDetailOpenNonce] = useState(0)
+  const [pendingListDeleteAccount, setPendingListDeleteAccount] = useState<Account | null>(null)
+  const [pendingDeletePerson, setPendingDeletePerson] = useState<Person | null>(null)
+  const [isConfirmingPersonDelete, setIsConfirmingPersonDelete] = useState(false)
+  const [deleteAccount, { isLoading: isDeletingFromList }] = useDeleteAccountMutation()
+  const [deletePerson] = useDeletePersonMutation()
 
   const openPayBillFromCardDetail = useCallback(() => {
     const a = selectedCreditCard
@@ -102,6 +106,43 @@ export default function AccountsPage() {
   const consumeCardSheetRequest = useCallback(() => {
     setCardSheetRequest(null)
   }, [])
+
+  const confirmDeleteFromList = useCallback(async () => {
+    if (!pendingListDeleteAccount) return
+    const id = String(pendingListDeleteAccount.id ?? "").trim()
+    if (!id) return
+    try {
+      const res = await deleteAccount(id).unwrap()
+      toast.success(res.message ?? "Account deleted")
+      setPendingListDeleteAccount(null)
+      if (selectedAccount && String(selectedAccount.id) === id) {
+        setSelectedAccount(null)
+        setAccountDetailStartInEdit(false)
+      }
+    } catch (e) {
+      toast.error(getErrorMessage(e) || "Failed to delete")
+    }
+  }, [deleteAccount, pendingListDeleteAccount, selectedAccount])
+
+  const confirmDeletePerson = useCallback(async () => {
+    if (!pendingDeletePerson) return
+    setIsConfirmingPersonDelete(true)
+    try {
+      const target = resolvePersonDeleteTarget(pendingDeletePerson)
+      if (target.mode === "account") {
+        const res = await deleteAccount(target.id).unwrap()
+        toast.success(res.message ?? "Deleted")
+      } else {
+        const res = await deletePerson(target.id).unwrap()
+        toast.success(res.message ?? "Deleted")
+      }
+      setPendingDeletePerson(null)
+    } catch (e) {
+      toast.error(getErrorMessage(e) || "Failed to delete")
+    } finally {
+      setIsConfirmingPersonDelete(false)
+    }
+  }, [deleteAccount, deletePerson, pendingDeletePerson])
 
   const meta = ACCOUNTS_SEGMENT_META[segment]
   const user = useAppSelector((s) => s.auth.user)
@@ -130,14 +171,6 @@ export default function AccountsPage() {
     refetch: refetchLoans,
   } = useGetLoansQuery(undefined, { skip: !user || segment !== "loans" })
 
-  const {
-    data: recentTransactions = [],
-    isLoading: recentLoading,
-    isError: recentError,
-    error: recentQueryError,
-    refetch: refetchRecent,
-  } = useGetRecentTransactionsQuery(5000, { refetchOnMountOrArgChange: true })
-
   useEffect(() => {
     if (!creditCardsError || !creditCardsQueryError) return
     const msg = getErrorMessage(creditCardsQueryError)
@@ -157,6 +190,47 @@ export default function AccountsPage() {
   }, [loansError, loansQueryError, navigate])
 
   const normalAccounts = useMemo(() => filterNormalAccounts(apiAccounts ?? []), [apiAccounts])
+
+  const peopleAccountId = useMemo(() => {
+    if (normalAccounts.length === 0) return ""
+    if (peopleAccountPick && normalAccounts.some((a) => String(a.id) === peopleAccountPick)) {
+      return peopleAccountPick
+    }
+    return String(normalAccounts[0].id)
+  }, [normalAccounts, peopleAccountPick])
+
+  const [fetchPersonLedger] = useLazyGetPersonLedgerQuery()
+
+  const onPersonClickLedger = useCallback(
+    async (person: Person) => {
+      try {
+        const entries = await fetchPersonLedger({ personId: person.id, limit: 500 }).unwrap()
+        setUdharLedgerName(person.name)
+        setUdharLedgerEntries(entries)
+        setUdharLedgerOpen(true)
+      } catch (err) {
+        toast.error(getErrorMessage(err))
+      }
+    },
+    [fetchPersonLedger]
+  )
+
+  const {
+    data: peopleForAccount = [],
+    isLoading: peopleQueryLoading,
+    isFetching: peopleQueryFetching,
+    isError: peopleListError,
+    error: peopleQueryError,
+    refetch: refetchPeople,
+  } = useGetPeopleQuery(
+    { accountId: peopleAccountId },
+    { skip: !user || segment !== "people" || !peopleAccountId }
+  )
+
+  const showPeopleLoading =
+    segment === "people" &&
+    normalAccounts.length > 0 &&
+    (!peopleAccountId || peopleQueryLoading || peopleQueryFetching)
 
   /** Prefer latest row from GET /accounts cache (updated after transactions) over the object captured at click time. */
   const resolveAccountFromCache = useCallback(
@@ -181,45 +255,6 @@ export default function AccountsPage() {
     () => resolveAccountFromCache(selectedLoan),
     [resolveAccountFromCache, selectedLoan]
   )
-
-  const peopleGroups = useMemo((): PersonUdharGroup[] => {
-    const aggregate = new Map<string, PersonUdharGroup>()
-
-    for (const tx of recentTransactions) {
-      if (!isUdharRecentTransaction(tx)) continue
-      const rec = tx as unknown as Record<string, unknown>
-      const personId =
-        typeof rec.personId === "string" && rec.personId.trim() ? rec.personId : undefined
-      const key = personId
-        ? `person:${personId}`
-        : inferUdharPersonName(tx).trim().toLowerCase() || tx.id
-      const signed = parseSignedAmountString(tx.signedAmount)
-      const direction = udharDirectionLabel(tx)
-      const amt = direction === "given" ? -Math.abs(signed) : Math.abs(signed)
-      const name = inferUdharPersonName(tx)
-      const prev = aggregate.get(key)
-      if (prev) {
-        prev.amountInr += amt
-        prev.entries.push(tx)
-      } else {
-        aggregate.set(key, { id: key, name, amountInr: amt, entries: [tx] })
-      }
-    }
-
-    const groups = Array.from(aggregate.values())
-    groups.forEach((g) => {
-      g.entries.sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0))
-    })
-    return groups.sort((a, b) => b.entries.length - a.entries.length)
-  }, [recentTransactions])
-
-  const selectedPeopleGroup = useMemo(
-    () => (selectedGroupId ? (peopleGroups.find((g) => g.id === selectedGroupId) ?? null) : null),
-    [selectedGroupId, peopleGroups]
-  )
-
-  const showPeopleLoading = segment === "people" && recentLoading
-  const showPeopleError = segment === "people" && recentError
 
   const showAccountsLoading = segment === "accounts" && accountsLoading
   const showAccountsError = segment === "accounts" && accountsError
@@ -255,12 +290,33 @@ export default function AccountsPage() {
       !showAccountsLoading &&
       !showAccountsError &&
       normalAccounts.length > 0) ||
-    (segment === "people" && !showPeopleLoading && !showPeopleError && peopleGroups.length > 0) ||
+    (segment === "people" && normalAccounts.length > 0 && !peopleListError) ||
     (segment === "loans" && !loansLoading && !loansError && loans.length > 0) ||
     (segment === "cards" && !creditCardsLoading && !creditCardsError && creditCards.length > 0)
 
   return (
     <main className="flex min-h-0 flex-1 flex-col overflow-hidden bg-background px-4 py-4 pb-28">
+      <ConfirmDeleteDialog
+        open={!!pendingListDeleteAccount}
+        onOpenChange={(v) => {
+          if (!v) setPendingListDeleteAccount(null)
+        }}
+        title="Delete account"
+        warning={
+          pendingListDeleteAccount ? getAccountDeleteWarning(pendingListDeleteAccount) : null
+        }
+        isDeleting={isDeletingFromList}
+        onConfirm={confirmDeleteFromList}
+      />
+      <ConfirmDeleteDialog
+        open={!!pendingDeletePerson}
+        onOpenChange={(v) => {
+          if (!v) setPendingDeletePerson(null)
+        }}
+        title="Delete"
+        isDeleting={isConfirmingPersonDelete}
+        onConfirm={confirmDeletePerson}
+      />
       <AddAccountSheet open={addAccountOpen} onOpenChange={setAddAccountOpen} />
       <AddUdharEntrySheet open={udharOpen} onOpenChange={setUdharOpen} />
       <AddLoanSheet open={loanOpen} onOpenChange={setLoanOpen} />
@@ -278,6 +334,7 @@ export default function AccountsPage() {
         openSheetRequest={cardSheetRequest}
         onOpenSheetRequestConsumed={consumeCardSheetRequest}
         onPayBill={openPayBillFromCardDetail}
+        onCardDeleted={() => setSelectedCreditCard(null)}
       />
       <LoanDetailView
         open={!!selectedLoan}
@@ -292,6 +349,7 @@ export default function AccountsPage() {
         openPaymentRequest={loanPaymentRequest}
         onOpenPaymentRequestConsumed={consumeLoanPaymentRequest}
         onPayEmi={openPayEmiFromLoanDetail}
+        onLoanDeleted={() => setSelectedLoan(null)}
       />
       <AddTransactionModal
         open={transferModalOpen}
@@ -315,15 +373,22 @@ export default function AccountsPage() {
           account={resolvedSelectedAccount}
           onAccountUpdated={(a) => setSelectedAccount(a)}
           initialEditing={accountDetailStartInEdit}
+          onAccountDeleted={() => {
+            setSelectedAccount(null)
+            setAccountDetailStartInEdit(false)
+          }}
         />
       ) : null}
       <UdharDetailsModal
-        open={!!selectedPeopleGroup}
+        open={udharLedgerOpen}
         onOpenChange={(v) => {
-          if (!v) setSelectedGroupId(null)
+          if (!v) {
+            setUdharLedgerOpen(false)
+            setUdharLedgerEntries([])
+          }
         }}
-        personName={selectedPeopleGroup?.name ?? ""}
-        entries={selectedPeopleGroup?.entries ?? []}
+        personName={udharLedgerName}
+        entries={udharLedgerEntries}
       />
 
       <div
@@ -425,22 +490,80 @@ export default function AccountsPage() {
               </Button>
             </CardContent>
           </Card>
-        ) : showPeopleLoading ? (
-          <p className="py-8 text-center text-sm text-muted-foreground">Loading…</p>
-        ) : showPeopleError ? (
+        ) : segment === "people" && accountsLoading ? (
+          <PeopleList
+            people={[]}
+            loading
+            error={null}
+            onRetry={() => void refetchAccounts()}
+            onPersonClick={() => {}}
+          />
+        ) : segment === "people" && accountsError ? (
           <div className="space-y-3 rounded-2xl border border-destructive/30 bg-destructive/5 px-4 py-4">
-            <p className="text-sm text-destructive">{getErrorMessage(recentQueryError)}</p>
+            <p className="text-sm text-destructive">{getErrorMessage(accountsQueryError)}</p>
             <Button
               type="button"
               variant="outline"
               size="sm"
               className="rounded-xl"
-              onClick={() => {
-                refetchRecent()
-              }}
+              onClick={() => void refetchAccounts()}
             >
               Retry
             </Button>
+          </div>
+        ) : segment === "people" && normalAccounts.length === 0 ? (
+          <Card className="flex min-h-0 flex-1 flex-col border-2 border-dashed border-border/90 bg-card py-0 shadow-none">
+            <CardContent className="flex flex-1 flex-col items-center justify-center px-6 py-12 text-center">
+              <div className="mb-4 flex size-14 items-center justify-center rounded-2xl bg-muted/80">
+                <Users className="size-7 text-primary" strokeWidth={2} aria-hidden />
+              </div>
+              <p className="text-base font-bold text-primary">No accounts for people</p>
+              <p className="mt-1 max-w-xs text-sm text-muted-foreground">
+                Add a bank account or wallet to list people linked to it.
+              </p>
+              <Button
+                type="button"
+                className="mt-6 h-11 rounded-xl px-8 text-base font-semibold"
+                onClick={() => setAddAccountOpen(true)}
+              >
+                Add Account
+              </Button>
+            </CardContent>
+          </Card>
+        ) : segment === "people" ? (
+          <div className="min-h-0 flex-1 overflow-y-auto [-ms-overflow-style:none] [scrollbar-width:thin]">
+            <div className="space-y-3">
+              {normalAccounts.length > 1 ? (
+                <div className="space-y-1">
+                  <Label htmlFor="people-account-filter" className="text-xs font-bold text-primary">
+                    Account
+                  </Label>
+                  <select
+                    id="people-account-filter"
+                    value={peopleAccountId}
+                    onChange={(e) => setPeopleAccountPick(e.target.value)}
+                    className={cn(
+                      "h-10 w-full rounded-xl border border-border bg-card px-3 text-sm text-foreground shadow-sm outline-none",
+                      "focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/50"
+                    )}
+                  >
+                    {normalAccounts.map((a) => (
+                      <option key={a.id} value={String(a.id)}>
+                        {accountSelectLabel(a)}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              ) : null}
+              <PeopleList
+                people={peopleForAccount}
+                loading={showPeopleLoading && !peopleListError}
+                error={peopleListError ? peopleQueryError : null}
+                onRetry={() => void refetchPeople()}
+                onPersonClick={onPersonClickLedger}
+                onPersonDelete={(p) => setPendingDeletePerson(p)}
+              />
+            </div>
           </div>
         ) : segment === "cards" && creditCardsLoading ? (
           <div className="flex flex-col gap-2">
@@ -544,36 +667,24 @@ export default function AccountsPage() {
               />
             ) : (
               <ul className="flex list-none flex-col gap-2.5" aria-label={`${meta.listTitle} list`}>
-                {segment === "people"
-                  ? peopleGroups.map((group) => (
-                      <li key={group.id}>
-                        <UdharEntryRow
-                          personName={group.name}
-                          amountInr={Math.abs(group.amountInr)}
-                          direction={group.amountInr >= 0 ? "given" : "taken"}
-                          entryCount={group.entries.length}
-                          statusLabel={group.amountInr >= 0 ? "to receive" : "to pay"}
-                          onClick={() => setSelectedGroupId(group.id)}
-                        />
-                      </li>
-                    ))
-                  : normalAccounts.map((a) => (
-                      <li key={a.id}>
-                        <AccountCard
-                          account={a}
-                          onOpen={() => {
-                            setAccountDetailStartInEdit(false)
-                            setAccountDetailOpenNonce((n) => n + 1)
-                            setSelectedAccount(a)
-                          }}
-                          onEdit={() => {
-                            setAccountDetailStartInEdit(true)
-                            setAccountDetailOpenNonce((n) => n + 1)
-                            setSelectedAccount(a)
-                          }}
-                        />
-                      </li>
-                    ))}
+                {normalAccounts.map((a) => (
+                  <li key={a.id}>
+                    <AccountCard
+                      account={a}
+                      onOpen={() => {
+                        setAccountDetailStartInEdit(false)
+                        setAccountDetailOpenNonce((n) => n + 1)
+                        setSelectedAccount(a)
+                      }}
+                      onEdit={() => {
+                        setAccountDetailStartInEdit(true)
+                        setAccountDetailOpenNonce((n) => n + 1)
+                        setSelectedAccount(a)
+                      }}
+                      onDelete={() => setPendingListDeleteAccount(a)}
+                    />
+                  </li>
+                ))}
               </ul>
             )}
           </div>

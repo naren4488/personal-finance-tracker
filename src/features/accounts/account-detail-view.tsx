@@ -2,8 +2,10 @@ import { useCallback, useEffect, useMemo, useState } from "react"
 import { useNavigate } from "react-router-dom"
 import { Archive, ArrowLeft, Banknote, Check, Pencil, Trash2, X } from "lucide-react"
 import { toast } from "sonner"
+import { ConfirmDeleteDialog } from "@/components/confirm-delete-dialog"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { getAccountDeleteWarning } from "@/lib/accounts/account-delete"
 import type { Account } from "@/lib/api/account-schemas"
 import {
   accountAvailableBalanceInrFromApi,
@@ -17,6 +19,7 @@ import { RecentTransactionRow } from "@/features/entries/recent-transaction-row"
 import { formatCurrency } from "@/lib/format"
 import { parseSignedAmountString, type RecentTransaction } from "@/lib/api/transaction-schemas"
 import {
+  useDeleteAccountMutation,
   useGetAccountsQuery,
   useGetRecentTransactionsQuery,
   useUpdateAccountMutation,
@@ -75,6 +78,7 @@ export function AccountDetailView({
   account,
   onAccountUpdated,
   initialEditing = false,
+  onAccountDeleted,
 }: {
   open: boolean
   onOpenChange: (open: boolean) => void
@@ -82,10 +86,14 @@ export function AccountDetailView({
   onAccountUpdated?: (account: Account) => void
   /** Set when opening from list card "Edit" (use a distinct `key` on the parent so state remounts). */
   initialEditing?: boolean
+  /** Called after successful DELETE /accounts/:id so parent can clear selection. */
+  onAccountDeleted?: () => void
 }) {
   const navigate = useNavigate()
   const user = useAppSelector((s) => s.auth.user)
   const [updateAccount, { isLoading: isSaving }] = useUpdateAccountMutation()
+  const [deleteAccount, { isLoading: isDeletingAccount }] = useDeleteAccountMutation()
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false)
   const [isEditing, setIsEditing] = useState(initialEditing)
   const [draftName, setDraftName] = useState(() => account?.name?.trim() ?? "")
 
@@ -98,6 +106,7 @@ export function AccountDetailView({
   })
 
   const dismiss = useCallback(() => {
+    setDeleteConfirmOpen(false)
     setIsEditing(false)
     setDraftName("")
     onOpenChange(false)
@@ -176,6 +185,27 @@ export function AccountDetailView({
     return () => window.removeEventListener("keydown", onKey)
   }, [open, isEditing, cancelEdit, dismiss])
 
+  const confirmDeleteAccount = useCallback(async () => {
+    if (!account) return
+    const accountId = String(account.id ?? "").trim()
+    if (!accountId) {
+      toast.error("Unable to delete: missing account id")
+      return
+    }
+    try {
+      const res = await deleteAccount(accountId).unwrap()
+      toast.success(res.message ?? "Account deleted")
+      setDeleteConfirmOpen(false)
+      setIsEditing(false)
+      setDraftName("")
+      onOpenChange(false)
+      onAccountDeleted?.()
+    } catch (error) {
+      const msg = getErrorMessage(error)
+      toast.error(msg || "Failed to delete")
+    }
+  }, [account, deleteAccount, onAccountDeleted, onOpenChange])
+
   useEffect(() => {
     if (!open) return
     const prev = document.body.style.overflow
@@ -210,192 +240,204 @@ export function AccountDetailView({
   const statTile =
     "rounded-xl border border-border/80 bg-card px-3 py-3 text-center shadow-sm sm:px-4 sm:py-3.5"
 
-  return (
-    <div className="fixed inset-0 z-60 flex items-stretch justify-center sm:items-center sm:p-3">
-      <button
-        type="button"
-        className="absolute inset-0 bg-black/45 backdrop-blur-[1px]"
-        aria-label="Close"
-        onClick={dismiss}
-      />
-      <div
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="account-detail-name"
-        className={cn(
-          "relative z-10 flex min-h-0 w-full max-w-lg flex-1 flex-col overflow-hidden bg-background shadow-2xl sm:max-h-[min(92dvh,calc(100dvh-1.5rem))] sm:rounded-2xl"
-        )}
-      >
-        <div className="shrink-0 px-4 pb-1 pt-3 sm:px-5 sm:pt-4">
-          <button
-            type="button"
-            onClick={dismiss}
-            className="inline-flex items-center gap-1 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground"
-          >
-            <ArrowLeft className="size-4 shrink-0" strokeWidth={2} aria-hidden />
-            Back
-          </button>
-        </div>
+  const deleteWarning = account ? getAccountDeleteWarning(account) : null
 
+  return (
+    <>
+      <ConfirmDeleteDialog
+        open={deleteConfirmOpen}
+        onOpenChange={setDeleteConfirmOpen}
+        title="Delete account"
+        warning={deleteWarning}
+        isDeleting={isDeletingAccount}
+        onConfirm={confirmDeleteAccount}
+      />
+      <div className="fixed inset-0 z-60 flex items-stretch justify-center sm:items-center sm:p-3">
+        <button
+          type="button"
+          className="absolute inset-0 bg-black/45 backdrop-blur-[1px]"
+          aria-label="Close"
+          onClick={dismiss}
+        />
         <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="account-detail-name"
           className={cn(
-            "min-h-0 flex-1 overflow-y-auto overflow-x-hidden overscroll-y-contain px-4 pb-8 pt-1 [-ms-overflow-style:none] [scrollbar-width:thin] sm:px-5 sm:pb-10"
+            "relative z-10 flex min-h-0 w-full max-w-lg flex-1 flex-col overflow-hidden bg-background shadow-2xl sm:max-h-[min(92dvh,calc(100dvh-1.5rem))] sm:rounded-2xl"
           )}
         >
-          <div className="overflow-hidden rounded-2xl bg-primary text-primary-foreground shadow-md">
-            <div className="px-4 pb-5 pt-4 sm:px-5 sm:pb-6 sm:pt-5">
-              {!isEditing ? (
-                <div className="flex items-start justify-between gap-3">
-                  <div className="min-w-0 flex-1">
-                    <p
-                      id="account-detail-name"
-                      className="truncate text-xl font-bold tracking-tight sm:text-2xl"
-                    >
-                      {workingName}
-                    </p>
-                  </div>
-                  <div className="flex shrink-0 items-center gap-1">
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="icon-sm"
-                      className="size-9 shrink-0 rounded-full text-primary-foreground hover:bg-primary-foreground/15"
-                      aria-label="Edit account"
-                      onClick={startEdit}
-                    >
-                      <Pencil className="size-[18px]" strokeWidth={2} aria-hidden />
-                    </Button>
-                    <span className="flex size-9 items-center justify-center" aria-hidden>
-                      <Banknote className="size-6 text-primary-foreground/95" strokeWidth={2} />
-                    </span>
-                  </div>
-                </div>
-              ) : (
-                <div className="flex flex-wrap items-center gap-2">
-                  <Input
-                    id="account-detail-name"
-                    value={draftName}
-                    onChange={(e) => setDraftName(e.target.value)}
-                    className="min-w-0 flex-1 rounded-xl border-0 bg-background px-3 py-2 text-base font-semibold text-foreground shadow-sm"
-                    placeholder="Account name"
-                    autoComplete="off"
-                    aria-label="Account name"
-                  />
-                  <Button
-                    type="button"
-                    size="icon-sm"
-                    variant="secondary"
-                    className="size-10 shrink-0 rounded-full"
-                    disabled={isSaving}
-                    onClick={() => void saveEdit()}
-                    aria-label="Save"
-                  >
-                    <Check className="size-5 text-income" strokeWidth={2} aria-hidden />
-                  </Button>
-                  <Button
-                    type="button"
-                    size="icon-sm"
-                    variant="secondary"
-                    className="size-10 shrink-0 rounded-full"
-                    disabled={isSaving}
-                    onClick={cancelEdit}
-                    aria-label="Cancel"
-                  >
-                    <X className="size-5" strokeWidth={2} aria-hidden />
-                  </Button>
-                </div>
-              )}
-
-              {subtitle ? (
-                <p className="mt-2 truncate text-sm font-medium text-primary-foreground/80">
-                  {subtitle}
-                </p>
-              ) : null}
-
-              <div className="mt-5 sm:mt-6">
-                <p className="text-[11px] font-medium uppercase tracking-wide text-primary-foreground/70">
-                  Available balance
-                </p>
-                <p className="mt-1 text-3xl font-bold tabular-nums sm:text-4xl">
-                  {formatCurrency(availableBalance)}
-                </p>
-                {Math.round(bookBalance * 100) !== Math.round(availableBalance * 100) ? (
-                  <p className="mt-1 text-xs font-medium text-primary-foreground/75">
-                    Book balance: {formatCurrency(bookBalance)}
-                  </p>
-                ) : null}
-                <p className="mt-2 text-sm font-medium text-primary-foreground/85">
-                  Initial: {formatCurrency(initialBalance)}
-                </p>
-              </div>
-            </div>
+          <div className="shrink-0 px-4 pb-1 pt-3 sm:px-5 sm:pt-4">
+            <button
+              type="button"
+              onClick={dismiss}
+              className="inline-flex items-center gap-1 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground"
+            >
+              <ArrowLeft className="size-4 shrink-0" strokeWidth={2} aria-hidden />
+              Back
+            </button>
           </div>
 
-          <div className="mt-4 rounded-2xl border border-border/80 bg-card p-4 shadow-sm">
-            <div className="grid grid-cols-2 gap-3">
-              <div className={statTile}>
-                <p className="text-[11px] font-medium text-muted-foreground">This Month In</p>
-                <p className="mt-1 text-lg font-bold tabular-nums text-income">
-                  {formatCurrency(monthIn)}
-                </p>
-              </div>
-              <div className={statTile}>
-                <p className="text-[11px] font-medium text-muted-foreground">This Month Out</p>
-                <p className="mt-1 text-lg font-bold tabular-nums text-destructive">
-                  {formatCurrency(monthOut)}
-                </p>
+          <div
+            className={cn(
+              "min-h-0 flex-1 overflow-y-auto overflow-x-hidden overscroll-y-contain px-4 pb-8 pt-1 [-ms-overflow-style:none] [scrollbar-width:thin] sm:px-5 sm:pb-10"
+            )}
+          >
+            <div className="overflow-hidden rounded-2xl bg-primary text-primary-foreground shadow-md">
+              <div className="px-4 pb-5 pt-4 sm:px-5 sm:pb-6 sm:pt-5">
+                {!isEditing ? (
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0 flex-1">
+                      <p
+                        id="account-detail-name"
+                        className="truncate text-xl font-bold tracking-tight sm:text-2xl"
+                      >
+                        {workingName}
+                      </p>
+                    </div>
+                    <div className="flex shrink-0 items-center gap-1">
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon-sm"
+                        className="size-9 shrink-0 rounded-full text-primary-foreground hover:bg-primary-foreground/15"
+                        aria-label="Edit account"
+                        onClick={startEdit}
+                      >
+                        <Pencil className="size-[18px]" strokeWidth={2} aria-hidden />
+                      </Button>
+                      <span className="flex size-9 items-center justify-center" aria-hidden>
+                        <Banknote className="size-6 text-primary-foreground/95" strokeWidth={2} />
+                      </span>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Input
+                      id="account-detail-name"
+                      value={draftName}
+                      onChange={(e) => setDraftName(e.target.value)}
+                      className="min-w-0 flex-1 rounded-xl border-0 bg-background px-3 py-2 text-base font-semibold text-foreground shadow-sm"
+                      placeholder="Account name"
+                      autoComplete="off"
+                      aria-label="Account name"
+                    />
+                    <Button
+                      type="button"
+                      size="icon-sm"
+                      variant="secondary"
+                      className="size-10 shrink-0 rounded-full"
+                      disabled={isSaving}
+                      onClick={() => void saveEdit()}
+                      aria-label="Save"
+                    >
+                      <Check className="size-5 text-income" strokeWidth={2} aria-hidden />
+                    </Button>
+                    <Button
+                      type="button"
+                      size="icon-sm"
+                      variant="secondary"
+                      className="size-10 shrink-0 rounded-full"
+                      disabled={isSaving}
+                      onClick={cancelEdit}
+                      aria-label="Cancel"
+                    >
+                      <X className="size-5" strokeWidth={2} aria-hidden />
+                    </Button>
+                  </div>
+                )}
+
+                {subtitle ? (
+                  <p className="mt-2 truncate text-sm font-medium text-primary-foreground/80">
+                    {subtitle}
+                  </p>
+                ) : null}
+
+                <div className="mt-5 sm:mt-6">
+                  <p className="text-[11px] font-medium uppercase tracking-wide text-primary-foreground/70">
+                    Available balance
+                  </p>
+                  <p className="mt-1 text-3xl font-bold tabular-nums sm:text-4xl">
+                    {formatCurrency(availableBalance)}
+                  </p>
+                  {Math.round(bookBalance * 100) !== Math.round(availableBalance * 100) ? (
+                    <p className="mt-1 text-xs font-medium text-primary-foreground/75">
+                      Book balance: {formatCurrency(bookBalance)}
+                    </p>
+                  ) : null}
+                  <p className="mt-2 text-sm font-medium text-primary-foreground/85">
+                    Initial: {formatCurrency(initialBalance)}
+                  </p>
+                </div>
               </div>
             </div>
 
-            <Button
-              type="button"
-              variant="outline"
-              className="mt-4 h-11 w-full rounded-xl border-border font-semibold"
-              onClick={() => comingSoon("Add transaction")}
-            >
-              Add Transaction
-            </Button>
+            <div className="mt-4 rounded-2xl border border-border/80 bg-card p-4 shadow-sm">
+              <div className="grid grid-cols-2 gap-3">
+                <div className={statTile}>
+                  <p className="text-[11px] font-medium text-muted-foreground">This Month In</p>
+                  <p className="mt-1 text-lg font-bold tabular-nums text-income">
+                    {formatCurrency(monthIn)}
+                  </p>
+                </div>
+                <div className={statTile}>
+                  <p className="text-[11px] font-medium text-muted-foreground">This Month Out</p>
+                  <p className="mt-1 text-lg font-bold tabular-nums text-destructive">
+                    {formatCurrency(monthOut)}
+                  </p>
+                </div>
+              </div>
 
-            <div className="mt-3 grid grid-cols-2 gap-2">
               <Button
                 type="button"
                 variant="outline"
-                className="h-11 rounded-xl font-semibold"
-                onClick={() => comingSoon("Archive account")}
+                className="mt-4 h-11 w-full rounded-xl border-border font-semibold"
+                onClick={() => comingSoon("Add transaction")}
               >
-                <Archive className="mr-2 size-4 shrink-0" strokeWidth={2} aria-hidden />
-                Archive
+                Add Transaction
               </Button>
-              <Button
-                type="button"
-                variant="destructive"
-                className="h-11 rounded-xl font-semibold"
-                onClick={() => comingSoon("Delete account")}
-              >
-                <Trash2 className="mr-2 size-4 shrink-0" strokeWidth={2} aria-hidden />
-                Delete
-              </Button>
-            </div>
-          </div>
 
-          <div className="mt-5">
-            <h2 className="mb-3 text-base font-bold text-foreground">Recent Transactions</h2>
-            {accountTxs.length === 0 ? (
-              <p className="rounded-xl border border-dashed border-border/80 px-4 py-8 text-center text-sm text-muted-foreground">
-                No transactions for this account yet.
-              </p>
-            ) : (
-              <ul className="flex list-none flex-col gap-2" aria-label="Account transactions">
-                {accountTxs.map((tx) => (
-                  <li key={tx.id}>
-                    <RecentTransactionRow tx={tx} accounts={accountsForRows} />
-                  </li>
-                ))}
-              </ul>
-            )}
+              <div className="mt-3 grid grid-cols-2 gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="h-11 rounded-xl font-semibold"
+                  onClick={() => comingSoon("Archive account")}
+                >
+                  <Archive className="mr-2 size-4 shrink-0" strokeWidth={2} aria-hidden />
+                  Archive
+                </Button>
+                <Button
+                  type="button"
+                  variant="destructive"
+                  className="h-11 rounded-xl font-semibold"
+                  onClick={() => setDeleteConfirmOpen(true)}
+                >
+                  <Trash2 className="mr-2 size-4 shrink-0" strokeWidth={2} aria-hidden />
+                  Delete
+                </Button>
+              </div>
+            </div>
+
+            <div className="mt-5">
+              <h2 className="mb-3 text-base font-bold text-foreground">Recent Transactions</h2>
+              {accountTxs.length === 0 ? (
+                <p className="rounded-xl border border-dashed border-border/80 px-4 py-8 text-center text-sm text-muted-foreground">
+                  No transactions for this account yet.
+                </p>
+              ) : (
+                <ul className="flex list-none flex-col gap-2" aria-label="Account transactions">
+                  {accountTxs.map((tx) => (
+                    <li key={tx.id}>
+                      <RecentTransactionRow tx={tx} accounts={accountsForRows} />
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
           </div>
         </div>
       </div>
-    </div>
+    </>
   )
 }

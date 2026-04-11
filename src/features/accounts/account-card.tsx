@@ -34,9 +34,11 @@ export type AccountCardProps = {
   onOpen: () => void
   /** Opens account detail with name field focused for editing. */
   onEdit: () => void
+  /** When set, Delete opens confirmation in parent (do not delete inline). */
+  onDelete?: () => void
 }
 
-export function AccountCard({ account, onOpen, onEdit }: AccountCardProps) {
+export function AccountCard({ account, onOpen, onEdit, onDelete }: AccountCardProps) {
   const name = account.name?.trim() || "Account"
   const typeLabel = accountTypeDisplayLabel(account)
   const balance = accountAvailableBalanceInrFromApi(account)
@@ -109,7 +111,8 @@ export function AccountCard({ account, onOpen, onEdit }: AccountCardProps) {
           )}
           onClick={(e) => {
             e.stopPropagation()
-            comingSoon("Delete account")
+            if (onDelete) onDelete()
+            else comingSoon("Delete account")
           }}
         >
           Delete

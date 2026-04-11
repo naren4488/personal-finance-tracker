@@ -12,6 +12,7 @@ import {
 } from "lucide-react"
 import { toast } from "sonner"
 import { useNavigate } from "react-router-dom"
+import { ConfirmDeleteDialog } from "@/components/confirm-delete-dialog"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -31,9 +32,10 @@ import {
   RecordLoanPaymentSheet,
   type LoanPaymentMode,
 } from "@/features/accounts/record-loan-payment-sheet"
+import { getAccountDeleteWarning } from "@/lib/accounts/account-delete"
 import { getErrorMessage } from "@/lib/api/errors"
 import { formatCurrency } from "@/lib/format"
-import { useUpdateAccountMutation } from "@/store/api/base-api"
+import { useDeleteAccountMutation, useUpdateAccountMutation } from "@/store/api/base-api"
 import { cn } from "@/lib/utils"
 
 function comingSoon(label: string) {
@@ -76,6 +78,7 @@ export function LoanDetailView({
   openPaymentRequest,
   onOpenPaymentRequestConsumed,
   onPayEmi,
+  onLoanDeleted,
 }: {
   open: boolean
   onOpenChange: (open: boolean) => void
@@ -87,9 +90,12 @@ export function LoanDetailView({
   onOpenPaymentRequestConsumed?: () => void
   /** Pay EMI — opens shared Add Transaction (transfer → loan EMI). */
   onPayEmi?: () => void
+  onLoanDeleted?: () => void
 }) {
   const navigate = useNavigate()
   const [updateAccount, { isLoading: isSavingLoan }] = useUpdateAccountMutation()
+  const [deleteAccount, { isLoading: isDeletingAccount }] = useDeleteAccountMutation()
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false)
   const [paymentOpen, setPaymentOpen] = useState(false)
   const [paymentMode, setPaymentMode] = useState<LoanPaymentMode>("pay_emi")
   const [isEditing, setIsEditing] = useState(false)
@@ -98,6 +104,7 @@ export function LoanDetailView({
   const dismiss = useCallback(() => {
     setIsEditing(false)
     setDraft(null)
+    setDeleteConfirmOpen(false)
     onOpenChange(false)
   }, [onOpenChange])
 
@@ -260,6 +267,27 @@ export function LoanDetailView({
     }
   }, [account?.id, draft, navigate, onLoanUpdated, updateAccount])
 
+  const confirmDeleteLoan = useCallback(async () => {
+    if (!account) return
+    const id = String(account.id ?? "").trim()
+    if (!id) {
+      toast.error("Unable to delete: missing account id")
+      return
+    }
+    try {
+      const res = await deleteAccount(id).unwrap()
+      toast.success(res.message ?? "Loan deleted")
+      setDeleteConfirmOpen(false)
+      setPaymentOpen(false)
+      setIsEditing(false)
+      setDraft(null)
+      onOpenChange(false)
+      onLoanDeleted?.()
+    } catch (e) {
+      toast.error(getErrorMessage(e) || "Failed to delete")
+    }
+  }, [account, deleteAccount, onLoanDeleted, onOpenChange])
+
   useEffect(() => {
     if (!open || paymentOpen) return
     function onKey(e: KeyboardEvent) {
@@ -324,8 +352,18 @@ export function LoanDetailView({
 
   const labelSm = "text-[10px] font-medium text-muted-foreground sm:text-xs"
 
+  const deleteWarning = getAccountDeleteWarning(account)
+
   return (
     <>
+      <ConfirmDeleteDialog
+        open={deleteConfirmOpen}
+        onOpenChange={setDeleteConfirmOpen}
+        title="Delete loan"
+        warning={deleteWarning}
+        isDeleting={isDeletingAccount}
+        onConfirm={confirmDeleteLoan}
+      />
       <RecordLoanPaymentSheet
         open={paymentOpen}
         onOpenChange={setPaymentOpen}
@@ -771,7 +809,7 @@ export function LoanDetailView({
                   type="button"
                   variant="destructive"
                   className="h-11 w-full rounded-xl font-semibold"
-                  onClick={() => comingSoon("Delete loan")}
+                  onClick={() => setDeleteConfirmOpen(true)}
                 >
                   <Trash2 className="mr-2 size-4 shrink-0" strokeWidth={2} aria-hidden />
                   Delete Loan

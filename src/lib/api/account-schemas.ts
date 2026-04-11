@@ -332,3 +332,28 @@ export function parseCreateAccountSuccess(
   }
   return { ok: false, error: "Invalid create account response." }
 }
+
+/**
+ * DELETE /accounts/:id — 200 with optional JSON body, or empty body.
+ */
+export function parseDeleteAccountApiSuccess(
+  raw: unknown
+): { ok: true; message?: string } | { ok: false; error: string } {
+  if (raw === undefined || raw === null || raw === "") {
+    return { ok: true, message: "Deleted" }
+  }
+  if (typeof raw !== "object" || raw === null) {
+    return { ok: true }
+  }
+  const r = raw as Record<string, unknown>
+  if (r.success === false) {
+    const m =
+      typeof r.message === "string" && r.message.trim() ? r.message.trim() : "Failed to delete"
+    return { ok: false, error: m }
+  }
+  if (r.success === true) {
+    const m = typeof r.message === "string" && r.message.trim() ? r.message.trim() : undefined
+    return { ok: true, message: m }
+  }
+  return { ok: true }
+}

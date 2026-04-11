@@ -1,5 +1,5 @@
 import { useId } from "react"
-import { CalendarDays, ChevronDown } from "lucide-react"
+import { ChevronDown } from "lucide-react"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
@@ -19,14 +19,14 @@ function SelectChevron() {
 export function LoanEmiFormFields({
   value,
   onChange,
-  compact = false,
   showOverdue = true,
-  loanSheetDense = false, // Kept for API compatibility, but visually overridden to match the design
 }: {
   value: LoanEmiFormModel
   onChange: (patch: Partial<LoanEmiFormModel>) => void
+  /** @deprecated Kept for call-site compatibility; unused. */
   compact?: boolean
   showOverdue?: boolean
+  /** @deprecated Kept for call-site compatibility; unused. */
   loanSheetDense?: boolean
 }) {
   const overdueAmountId = useId()
@@ -139,7 +139,9 @@ export function LoanEmiFormFields({
               onChange={(e) => onChange({ emiDueDay: e.target.value })}
               className={cn(fieldBase, "appearance-none pr-9 focus:border-primary")}
             >
-              <option value="" disabled>Select day</option>
+              <option value="" disabled>
+                Select day
+              </option>
               {BILLING_DAY_OPTIONS.map(({ value: v, label }) => (
                 <option key={v} value={v}>
                   {label}
@@ -160,7 +162,7 @@ export function LoanEmiFormFields({
             onClick={() => onChange({ dueCycle: "fixed" })}
             className={cn(
               "flex-1 py-2.5 text-[13px] font-medium transition-colors",
-              (!value.dueCycle || value.dueCycle === "fixed")
+              !value.dueCycle || value.dueCycle === "fixed"
                 ? "m-[-1px] rounded-xl border border-primary bg-background text-primary shadow-sm"
                 : "text-muted-foreground hover:text-foreground"
             )}
