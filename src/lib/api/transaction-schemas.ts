@@ -438,6 +438,12 @@ function normalizeRecentDate(rec: Record<string, unknown>): string | null {
   return null
 }
 
+/** Map a loose API object (e.g. dashboard `recentTransactions[]`) into a `RecentTransaction`. */
+export function coerceUnknownToRecentTransaction(raw: unknown): RecentTransaction | null {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null
+  return normalizeRawToRecentTransaction(raw as Record<string, unknown>)
+}
+
 function normalizeRawToRecentTransaction(rec: Record<string, unknown>): RecentTransaction | null {
   const date = normalizeRecentDate(rec)
   if (!date) return null

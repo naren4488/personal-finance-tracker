@@ -23,13 +23,12 @@ import { AddTransactionModal } from "@/features/entries/add-transaction-modal"
 import { RecentTransactionRow } from "@/features/entries/recent-transaction-row"
 import { TransferTransactionRow } from "@/features/entries/transfer-transaction-row"
 import { useDeleteTransactionFlow } from "@/features/entries/use-delete-transaction-flow"
-import { accountSelectLabel, type Account } from "@/lib/api/account-schemas"
+import { useDebouncedValue } from "@/hooks/use-debounced-value"
 import { getErrorMessage } from "@/lib/api/errors"
 import type { TransactionType } from "@/lib/api/schemas"
+import type { RecentTransactionsQueryArg } from "@/store/api/base-api"
 import {
-  getTransferRouteLabels,
   inferUdharPersonName,
-  isRecentTransactionLinkedToLoanOrCard,
   isUdharRecentTransaction,
   parseSignedAmountString,
   type RecentTransaction,
@@ -41,10 +40,9 @@ import { useGetAccountsQuery, useGetRecentTransactionsQuery } from "@/store/api/
 import { useAppSelector } from "@/store/hooks"
 
 type EntrySegment = "txns" | "expenses" | "udhar" | "transfer"
-type TimePreset = "7d" | "month" | "3m" | "year" | "all"
+type TimePreset = "7d" | "month" | "3m" | "year" | "all" | "custom"
 
-/** Recent list cap for entries (time range + filters apply on the client). */
-const RECENT_TX_LIMIT = 400
+const SEARCH_DEBOUNCE_MS = 400
 
 const ENTRY_SEGMENTS: {
   id: EntrySegment
@@ -63,7 +61,10 @@ const TIME_PRESETS: { id: TimePreset; label: string }[] = [
   { id: "3m", label: "3M" },
   { id: "year", label: "Year" },
   { id: "all", label: "All" },
+  { id: "custom", label: "Custom" },
 ]
+
+const LIMIT_OPTIONS = [50, 100, 200, 400, 1000] as const
 
 function startOfLocalDay(d: Date): Date {
   const x = new Date(d)
@@ -71,40 +72,51 @@ function startOfLocalDay(d: Date): Date {
   return x
 }
 
-function transactionInTimeRange(dateStr: string, preset: TimePreset, now: Date): boolean {
-  if (preset === "all") return true
-  const txDay = startOfLocalDay(new Date(`${dateStr}T12:00:00`))
-  const today = startOfLocalDay(now)
+/** Backend example: `1-04-2026` (day-month-year). */
+function formatApiDmyFromLocalDay(d: Date): string {
+  const day = d.getDate()
+  const month = d.getMonth() + 1
+  const y = d.getFullYear()
+  return `${day}-${String(month).padStart(2, "0")}-${y}`
+}
 
+function dateRangeForPreset(
+  preset: Exclude<TimePreset, "custom">,
+  now: Date
+): {
+  fromDate?: string
+  toDate?: string
+} {
+  const today = startOfLocalDay(now)
+  const toDate = formatApiDmyFromLocalDay(today)
+  if (preset === "all") return {}
   if (preset === "7d") {
     const start = new Date(today)
     start.setDate(start.getDate() - 6)
-    return txDay >= start && txDay <= today
+    return { fromDate: formatApiDmyFromLocalDay(start), toDate }
   }
   if (preset === "month") {
-    return txDay.getMonth() === today.getMonth() && txDay.getFullYear() === today.getFullYear()
+    const start = new Date(today.getFullYear(), today.getMonth(), 1)
+    return { fromDate: formatApiDmyFromLocalDay(start), toDate }
   }
   if (preset === "3m") {
     const start = new Date(today)
     start.setMonth(start.getMonth() - 3)
-    return txDay >= start && txDay <= today
+    return { fromDate: formatApiDmyFromLocalDay(start), toDate }
   }
   if (preset === "year") {
-    return txDay.getFullYear() === today.getFullYear()
+    const start = new Date(today.getFullYear(), 0, 1)
+    return { fromDate: formatApiDmyFromLocalDay(start), toDate }
   }
-  return true
+  return {}
 }
 
-function filterBySegmentRecent(
-  list: RecentTransaction[],
-  segment: EntrySegment,
-  accounts: Account[]
-): RecentTransaction[] {
-  const keep = (t: RecentTransaction) => !isRecentTransactionLinkedToLoanOrCard(t, accounts)
-  if (segment === "txns") return list.filter(keep)
-  if (segment === "expenses") return list.filter((t) => t.type === "expense" && keep(t))
-  if (segment === "transfer") return list.filter((t) => t.type === "transfer" && keep(t))
-  return []
+function isoDateInputToApiDmy(iso: string): string | undefined {
+  const t = iso.trim()
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(t)) return undefined
+  const [y, m, d] = t.split("-").map(Number)
+  if (!Number.isFinite(y) || !Number.isFinite(m) || !Number.isFinite(d)) return undefined
+  return formatApiDmyFromLocalDay(new Date(y, m - 1, d))
 }
 
 function headerTotalLabel(
@@ -142,25 +154,71 @@ export default function EntriesPage() {
 
   const [segment, setSegment] = useState<EntrySegment>("txns")
   const [timePreset, setTimePreset] = useState<TimePreset>("month")
-  const [search, setSearch] = useState("")
+  const [searchInput, setSearchInput] = useState("")
+  const debouncedSearch = useDebouncedValue(searchInput, SEARCH_DEBOUNCE_MS)
   const [txModalOpen, setTxModalOpen] = useState(false)
   const [txModalInitialType, setTxModalInitialType] = useState<TransactionType>("expense")
   const [expenseModalOpen, setExpenseModalOpen] = useState(false)
   const [udharSheetOpen, setUdharSheetOpen] = useState(false)
   const [addAccountSheetOpen, setAddAccountSheetOpen] = useState(false)
   const [txTypeFilter, setTxTypeFilter] = useState<"all" | TransactionType>("all")
-  const [txAccountFilter, setTxAccountFilter] = useState<string>("all")
+  const [directionFilter, setDirectionFilter] = useState<"all" | "debit" | "credit">("all")
+  const [listLimit, setListLimit] = useState<number>(200)
+  const [customRangeFrom, setCustomRangeFrom] = useState("")
+  const [customRangeTo, setCustomRangeTo] = useState("")
   const [selectedUdharTx, setSelectedUdharTx] = useState<RecentTransaction | null>(null)
   const txDelete = useDeleteTransactionFlow()
 
   const user = useAppSelector((s) => s.auth.user)
+
+  const recentQueryArg = useMemo((): RecentTransactionsQueryArg => {
+    const arg: RecentTransactionsQueryArg = { limit: listLimit }
+
+    const q = debouncedSearch.trim()
+    if (q) arg.search = q
+
+    if (segment === "expenses") arg.type = "expense"
+    else if (segment === "transfer") arg.type = "transfer"
+    else if (segment === "txns" && txTypeFilter !== "all") arg.type = txTypeFilter
+
+    if (directionFilter !== "all") arg.direction = directionFilter
+
+    if (timePreset === "custom") {
+      const from = customRangeFrom ? isoDateInputToApiDmy(customRangeFrom) : undefined
+      const to = customRangeTo ? isoDateInputToApiDmy(customRangeTo) : undefined
+      if (from) arg.fromDate = from
+      if (to) arg.toDate = to
+    } else {
+      const r = dateRangeForPreset(timePreset as Exclude<TimePreset, "custom">, new Date())
+      if (r.fromDate) arg.fromDate = r.fromDate
+      if (r.toDate) arg.toDate = r.toDate
+    }
+
+    return arg
+  }, [
+    listLimit,
+    debouncedSearch,
+    segment,
+    txTypeFilter,
+    directionFilter,
+    timePreset,
+    customRangeFrom,
+    customRangeTo,
+  ])
+
+  const customRangeIncomplete =
+    timePreset === "custom" && (!customRangeFrom.trim() || !customRangeTo.trim())
+
   const {
     data: recentTransactions = [],
     isLoading,
+    isFetching,
     isError,
     error,
     refetch,
-  } = useGetRecentTransactionsQuery(RECENT_TX_LIMIT)
+  } = useGetRecentTransactionsQuery(recentQueryArg, {
+    skip: !user || customRangeIncomplete,
+  })
 
   const {
     data: accounts = [],
@@ -193,74 +251,37 @@ export default function EntriesPage() {
         .sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0)),
     [recentTransactions]
   )
+
   const selectedUdharPersonEntries = useMemo(() => {
     if (!selectedUdharTx) return []
     const selectedName = inferUdharPersonName(selectedUdharTx).toLowerCase()
     return udharTransactions.filter((tx) => inferUdharPersonName(tx).toLowerCase() === selectedName)
   }, [selectedUdharTx, udharTransactions])
 
-  const filtered = useMemo(() => {
-    const now = new Date()
-    const q = search.trim().toLowerCase()
-    let list = filterBySegmentRecent(recentTransactions, segment, accounts)
-    list = list.filter((t) => transactionInTimeRange(t.date, timePreset, now))
-    if (q) {
-      list = list.filter((t) => {
-        const base = `${t.title} ${t.subtitle}`.toLowerCase()
-        if (t.type === "transfer") {
-          const { fromLabel, toLabel } = getTransferRouteLabels(t, accounts)
-          const route = `${fromLabel} ${toLabel}`.toLowerCase()
-          return base.includes(q) || route.includes(q) || q.includes("transfer")
-        }
-        return base.includes(q)
-      })
-    }
+  const sortedServerList = useMemo(
+    () => [...recentTransactions].sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0)),
+    [recentTransactions]
+  )
 
-    if (segment === "txns") {
-      if (txTypeFilter !== "all") {
-        list = list.filter((t) => t.type === txTypeFilter)
-      }
-      if (txAccountFilter !== "all") {
-        list = list.filter((t) => {
-          if (t.type === "transfer") {
-            return (
-              t.accountId === txAccountFilter ||
-              (typeof t.toAccountId === "string" && t.toAccountId === txAccountFilter)
-            )
-          }
-          if (t.accountId) return t.accountId === txAccountFilter
-          return true
-        })
-      }
-    }
-
-    if (segment === "expenses" && txAccountFilter !== "all") {
-      list = list.filter((t) => t.accountId === txAccountFilter)
-    }
-
-    if (segment === "transfer" && txAccountFilter !== "all") {
-      list = list.filter((t) => {
-        return (
-          t.accountId === txAccountFilter ||
-          (typeof t.toAccountId === "string" && t.toAccountId === txAccountFilter)
-        )
-      })
-    }
-
-    return list.sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0))
-  }, [recentTransactions, segment, timePreset, search, txTypeFilter, txAccountFilter, accounts])
+  const displayList: RecentTransaction[] =
+    segment === "udhar" ? udharTransactions : sortedServerList
 
   const entriesHasList = useMemo(() => {
-    if (segment === "txns" || segment === "expenses" || segment === "transfer") {
-      return !isLoading && !isError && filtered.length > 0
-    }
+    if (customRangeIncomplete) return false
     if (segment === "udhar") {
       return !isLoading && !isError && udharTransactions.length > 0
     }
-    return false
-  }, [segment, isLoading, isError, filtered.length, udharTransactions.length])
+    return !isLoading && !isError && sortedServerList.length > 0
+  }, [
+    customRangeIncomplete,
+    segment,
+    isLoading,
+    isError,
+    udharTransactions.length,
+    sortedServerList.length,
+  ])
 
-  const totalDisplay = headerTotalLabel(segment, filtered)
+  const totalDisplay = headerTotalLabel(segment, displayList)
 
   function openTxModalWithType(initial: TransactionType) {
     setTxModalInitialType(initial)
@@ -296,7 +317,7 @@ export default function EntriesPage() {
             ? "Udhar (Lend & Borrow)"
             : "All Entries"
   const showHeaderTotal = segment === "txns" || segment === "expenses"
-  const showTimeAndSearch = segment !== "udhar"
+  const showTimeAndSearch = true
   const searchPlaceholder =
     segment === "expenses"
       ? "Search expenses…"
@@ -305,29 +326,18 @@ export default function EntriesPage() {
         : segment === "transfer"
           ? "Search transfers…"
           : "Search entries…"
-  const emptyTitle =
-    segment === "txns"
-      ? "No transactions found"
-      : segment === "expenses"
-        ? "No expenses found"
-        : segment === "transfer"
-          ? ""
-          : segment === "udhar"
-            ? "No udhar entries"
-            : "No entries found"
-  const emptySubtitle =
-    segment === "txns"
-      ? "No transactions match your filters"
-      : segment === "expenses"
-        ? "No expenses match your filters"
-        : segment === "transfer"
-          ? ""
-          : segment === "udhar"
-            ? "Add an udhar entry to track money given or taken"
-            : "No entries match your filters"
+
+  const showEmptyNoResults = !customRangeIncomplete && !isLoading && !isError && !entriesHasList
+
+  const updating = isFetching && !isLoading
 
   return (
-    <main className="min-h-0 flex-1 bg-background px-4 py-4 pb-28">
+    <main
+      className={cn(
+        "min-h-0 flex-1 bg-background px-4 py-4 pb-28 transition-opacity",
+        updating && "opacity-[0.98]"
+      )}
+    >
       <AddAccountSheet open={addAccountSheetOpen} onOpenChange={setAddAccountSheetOpen} />
       <AddTransactionModal
         open={txModalOpen}
@@ -398,7 +408,7 @@ export default function EntriesPage() {
       <div className="mb-3 flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
         <h1 className="text-lg font-bold tracking-tight text-foreground">{pageTitle}</h1>
         <div className="flex flex-wrap items-center justify-end gap-x-3 gap-y-1 sm:ml-auto">
-          {showHeaderTotal && !isLoading && !isError ? (
+          {showHeaderTotal && !isLoading && !isError && !customRangeIncomplete ? (
             <span className={totalDisplay.className}>{totalDisplay.text}</span>
           ) : showHeaderTotal && isLoading ? (
             <Skeleton className="h-6 w-16 rounded-md" />
@@ -419,6 +429,22 @@ export default function EntriesPage() {
 
       {showTimeAndSearch && (
         <>
+          <div className="mb-2 flex flex-wrap items-center gap-2">
+            <span className="text-[10px] font-medium text-muted-foreground">Limit</span>
+            <select
+              value={listLimit}
+              onChange={(e) => setListLimit(Number(e.target.value))}
+              className="h-9 rounded-full border border-border/80 bg-muted/70 px-3 pr-8 text-xs font-semibold outline-none"
+              aria-label="Max transactions to load"
+            >
+              {LIMIT_OPTIONS.map((n) => (
+                <option key={n} value={n}>
+                  {n}
+                </option>
+              ))}
+            </select>
+          </div>
+
           <div
             className="mb-3 flex flex-wrap gap-2 sm:flex-nowrap sm:overflow-x-auto sm:pb-0.5"
             role="group"
@@ -444,6 +470,29 @@ export default function EntriesPage() {
             })}
           </div>
 
+          {timePreset === "custom" && (
+            <div className="mb-3 flex flex-wrap items-end gap-3">
+              <div className="grid gap-1">
+                <span className="text-[10px] font-medium text-muted-foreground">From</span>
+                <Input
+                  type="date"
+                  value={customRangeFrom}
+                  onChange={(e) => setCustomRangeFrom(e.target.value)}
+                  className="h-10 w-[11rem] rounded-xl"
+                />
+              </div>
+              <div className="grid gap-1">
+                <span className="text-[10px] font-medium text-muted-foreground">To</span>
+                <Input
+                  type="date"
+                  value={customRangeTo}
+                  onChange={(e) => setCustomRangeTo(e.target.value)}
+                  className="h-10 w-[11rem] rounded-xl"
+                />
+              </div>
+            </div>
+          )}
+
           {(segment === "txns" || segment === "expenses" || segment === "transfer") && (
             <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-stretch">
               {segment === "txns" && (
@@ -462,24 +511,16 @@ export default function EntriesPage() {
                   <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
                 </div>
               )}
-              <div
-                className={cn(
-                  "relative min-w-0 flex-1 sm:max-w-[11rem]",
-                  segment !== "txns" && "sm:max-w-full"
-                )}
-              >
+              <div className="relative min-w-0 flex-1 sm:max-w-[11rem]">
                 <select
-                  value={txAccountFilter}
-                  onChange={(e) => setTxAccountFilter(e.target.value)}
+                  value={directionFilter}
+                  onChange={(e) => setDirectionFilter(e.target.value as "all" | "debit" | "credit")}
                   className="h-10 w-full appearance-none rounded-full border border-border/80 bg-muted/70 px-3.5 pr-9 text-xs font-semibold text-foreground outline-none"
-                  aria-label="Filter by account"
+                  aria-label="Filter by direction"
                 >
-                  <option value="all">All accounts</option>
-                  {accounts.map((a) => (
-                    <option key={a.id} value={a.id}>
-                      {accountSelectLabel(a)}
-                    </option>
-                  ))}
+                  <option value="all">All directions</option>
+                  <option value="debit">Debit</option>
+                  <option value="credit">Credit</option>
                 </select>
                 <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
               </div>
@@ -499,13 +540,19 @@ export default function EntriesPage() {
               id="entries-search"
               type="search"
               placeholder={searchPlaceholder}
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
+              value={searchInput}
+              onChange={(e) => setSearchInput(e.target.value)}
               className="h-11 rounded-xl border-border/80 bg-muted/40 pl-10"
               autoComplete="off"
             />
           </div>
         </>
+      )}
+
+      {customRangeIncomplete && (
+        <p className="mb-4 text-sm text-muted-foreground">
+          Select both start and end dates for the custom range.
+        </p>
       )}
 
       {isError && (
@@ -523,7 +570,7 @@ export default function EntriesPage() {
         </div>
       )}
 
-      {isLoading && !isError && (
+      {isLoading && !isError && !customRangeIncomplete && (
         <div className="space-y-2">
           <Skeleton className="h-18 w-full rounded-2xl" />
           <Skeleton className="h-18 w-full rounded-2xl" />
@@ -531,7 +578,7 @@ export default function EntriesPage() {
         </div>
       )}
 
-      {!isLoading && !isError && !entriesHasList && (
+      {showEmptyNoResults && (
         <div
           className={cn(
             "flex min-h-[min(52vh,22rem)] flex-col items-center justify-center px-6 py-12 text-center",
@@ -560,8 +607,12 @@ export default function EntriesPage() {
           )}
           {segment === "transfer" ? null : (
             <>
-              <p className="text-base font-bold text-primary">{emptyTitle}</p>
-              <p className="mt-1 max-w-xs text-sm text-muted-foreground">{emptySubtitle}</p>
+              <p className="text-base font-bold text-primary">No transactions found</p>
+              <p className="mt-1 max-w-xs text-sm text-muted-foreground">
+                {segment === "udhar"
+                  ? "No udhar entries in this range. Add an udhar entry to track money given or taken."
+                  : "Try adjusting filters or date range."}
+              </p>
             </>
           )}
           {segment === "txns" ? (
@@ -615,7 +666,7 @@ export default function EntriesPage() {
         entriesHasList &&
         (segment === "txns" || segment === "expenses") && (
           <ul className="flex list-none flex-col gap-3" aria-label="Entries list">
-            {filtered.map((tx) => (
+            {displayList.map((tx) => (
               <li key={tx.id}>
                 <RecentTransactionRow
                   tx={tx}
@@ -629,7 +680,7 @@ export default function EntriesPage() {
 
       {!isLoading && !isError && entriesHasList && segment === "udhar" && (
         <ul className="flex list-none flex-col gap-2.5" aria-label="Udhar list">
-          {udharTransactions.map((tx) => (
+          {displayList.map((tx) => (
             <li key={tx.id}>
               <UdharEntryRow
                 personName={inferUdharPersonName(tx)}
@@ -645,7 +696,7 @@ export default function EntriesPage() {
 
       {!isLoading && !isError && entriesHasList && segment === "transfer" && (
         <ul className="flex list-none flex-col gap-3" aria-label="Transfers list">
-          {filtered.map((tx) => (
+          {displayList.map((tx) => (
             <li key={tx.id}>
               <TransferTransactionRow
                 tx={tx}

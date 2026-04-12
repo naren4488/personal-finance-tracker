@@ -29,12 +29,14 @@ import { Input } from "@/components/ui/input"
 import { Skeleton } from "@/components/ui/skeleton"
 import { AddCommitmentModal } from "@/features/analytics/add-commitment-modal"
 import { getErrorMessage } from "@/lib/api/errors"
+import type { Commitment } from "@/lib/api/commitment-schemas"
 import {
   monthlyTrendHasExtendedSeries,
   type DashboardAnalyticsView,
 } from "@/lib/api/dashboard-analytics-schemas"
 import { formatDate } from "@/lib/format"
-import { useGetDashboardAnalyticsQuery } from "@/store/api/base-api"
+import { useDebouncedValue } from "@/hooks/use-debounced-value"
+import { useGetCommitmentsQuery, useGetDashboardAnalyticsQuery } from "@/store/api/base-api"
 import { useAppSelector } from "@/store/hooks"
 import { cn } from "@/lib/utils"
 
@@ -46,6 +48,8 @@ const RANGE_TO_DAYS: Record<(typeof RANGE_TABS)[number], number> = {
   Year: 365,
 }
 
+const ANALYTICS_SEARCH_DEBOUNCE_MS = 400
+
 function formatExpenseDateLabel(raw: string): string {
   if (!raw?.trim()) return "—"
   const t = Date.parse(raw)
@@ -53,28 +57,23 @@ function formatExpenseDateLabel(raw: string): string {
   return formatDate(raw)
 }
 
-function filterTopExpenses(
-  rows: DashboardAnalyticsView["topExpenses"],
-  q: string
-): DashboardAnalyticsView["topExpenses"] {
-  const s = q.trim().toLowerCase()
-  if (!s) return rows
-  return rows.filter(
-    (e) =>
-      e.name.toLowerCase().includes(s) ||
-      e.date.toLowerCase().includes(s) ||
-      String(e.amount).includes(s)
-  )
+function formatCommitmentInr(amount: string | number): string {
+  const n = Number(String(amount).replace(/,/g, "").trim())
+  return Number.isFinite(n) ? n.toLocaleString("en-IN") : String(amount)
 }
 
 export default function AnalyticsFullPage() {
   const navigate = useNavigate()
   const user = useAppSelector((s) => s.auth.user)
   const [activeTab, setActiveTab] = useState<(typeof RANGE_TABS)[number]>("Month")
-  const [searchTerm, setSearchTerm] = useState("")
+  const [searchInput, setSearchInput] = useState("")
   const [commitmentOpen, setCommitmentOpen] = useState(false)
 
   const days = RANGE_TO_DAYS[activeTab] ?? 30
+  const debouncedSearch = useDebouncedValue(searchInput, ANALYTICS_SEARCH_DEBOUNCE_MS)
+  const searchForApi = debouncedSearch.trim() || undefined
+  const searchDebouncePending = searchInput.trim() !== (debouncedSearch.trim() || "")
+
   const {
     data: dashboardData,
     isLoading,
@@ -82,7 +81,16 @@ export default function AnalyticsFullPage() {
     isError,
     error,
     refetch,
-  } = useGetDashboardAnalyticsQuery({ days, includeAll: true }, { skip: !user })
+  } = useGetDashboardAnalyticsQuery(
+    { days, includeAll: true, ...(searchForApi ? { search: searchForApi } : {}) },
+    { skip: !user }
+  )
+  const {
+    data: commitments = [],
+    isLoading: commitmentsLoading,
+    isError: commitmentsError,
+    error: commitmentsQueryError,
+  } = useGetCommitmentsQuery({}, { skip: !user })
 
   useEffect(() => {
     if (!isError || !error) return
@@ -93,18 +101,14 @@ export default function AnalyticsFullPage() {
     }
   }, [isError, error, navigate])
 
-  const filteredTopExpenses = useMemo(
-    () => (dashboardData ? filterTopExpenses(dashboardData.topExpenses, searchTerm) : []),
-    [dashboardData, searchTerm]
-  )
-
   const showSkeleton = Boolean(user) && isLoading && !dashboardData
+  const analyticsUpdating = isFetching || searchDebouncePending
 
   return (
     <div
       className={cn(
         "flex flex-col min-h-screen bg-slate-50 font-sans pb-20 transition-opacity",
-        isFetching && dashboardData && "opacity-95"
+        analyticsUpdating && dashboardData && "opacity-95"
       )}
     >
       <AddCommitmentModal open={commitmentOpen} onOpenChange={setCommitmentOpen} />
@@ -163,9 +167,18 @@ export default function AnalyticsFullPage() {
         ) : dashboardData ? (
           <AnalyticsContent
             dashboardData={dashboardData}
-            filteredTopExpenses={filteredTopExpenses}
-            searchTerm={searchTerm}
-            onSearchChange={setSearchTerm}
+            searchInput={searchInput}
+            onSearchChange={setSearchInput}
+            searchDebouncePending={searchDebouncePending}
+            isSearchFilterActive={Boolean(searchForApi)}
+            commitments={commitments}
+            commitmentsLoading={commitmentsLoading}
+            commitmentsError={commitmentsError}
+            commitmentsErrorMessage={
+              commitmentsError && commitmentsQueryError
+                ? getErrorMessage(commitmentsQueryError)
+                : undefined
+            }
           />
         ) : null}
       </main>
@@ -224,32 +237,52 @@ function AnalyticsSkeleton() {
 
 type AnalyticsContentProps = {
   dashboardData: DashboardAnalyticsView
-  filteredTopExpenses: DashboardAnalyticsView["topExpenses"]
-  searchTerm: string
+  searchInput: string
   onSearchChange: (v: string) => void
+  searchDebouncePending: boolean
+  isSearchFilterActive: boolean
+  commitments: Commitment[]
+  commitmentsLoading: boolean
+  commitmentsError: boolean
+  commitmentsErrorMessage?: string
 }
 
 function AnalyticsContent({
   dashboardData,
-  filteredTopExpenses,
-  searchTerm,
+  searchInput,
   onSearchChange,
+  searchDebouncePending,
+  isSearchFilterActive,
+  commitments,
+  commitmentsLoading,
+  commitmentsError,
+  commitmentsErrorMessage,
 }: AnalyticsContentProps) {
   const netPositive = dashboardData.summary.netSavings >= 0
   const udharNet = dashboardData.udhar.net
   const udharNetPositive = udharNet >= 0
   const showExtendedMonthly = monthlyTrendHasExtendedSeries(dashboardData.monthlyTrends)
+  const commitmentsSorted = useMemo(
+    () => [...commitments].sort((a, b) => a.dueDate.localeCompare(b.dueDate)),
+    [commitments]
+  )
 
   return (
     <>
-      <div className="relative">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 w-4 h-4" />
-        <Input
-          placeholder="Search transactions..."
-          value={searchTerm}
-          onChange={(e) => onSearchChange(e.target.value)}
-          className="pl-9 bg-white border-slate-200 shadow-sm rounded-xl"
-        />
+      <div className="space-y-1">
+        <div className="relative">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 w-4 h-4" />
+          <Input
+            placeholder="Search (filters analytics from server)…"
+            value={searchInput}
+            onChange={(e) => onSearchChange(e.target.value)}
+            className="pl-9 bg-white border-slate-200 shadow-sm rounded-xl"
+            autoComplete="off"
+          />
+        </div>
+        {searchDebouncePending ? (
+          <p className="text-[10px] text-slate-400 px-0.5">Updating search…</p>
+        ) : null}
       </div>
 
       <div className="grid grid-cols-3 gap-3">
@@ -377,14 +410,12 @@ function AnalyticsContent({
           <CardTitle className="text-sm font-bold">Top 5 Expenses</CardTitle>
         </CardHeader>
         <CardContent className="space-y-0 pt-0">
-          {filteredTopExpenses.length === 0 ? (
+          {dashboardData.topExpenses.length === 0 ? (
             <p className="text-sm text-slate-500 py-4 text-center">
-              {dashboardData.topExpenses.length === 0
-                ? "No expenses in this period."
-                : "No matches for your search."}
+              {isSearchFilterActive ? "No matches for your search." : "No expenses in this period."}
             </p>
           ) : (
-            filteredTopExpenses.map((expense, index) => (
+            dashboardData.topExpenses.map((expense, index) => (
               <div
                 key={`${expense.id}-${index}`}
                 className="flex justify-between items-center py-3 border-b border-slate-50 last:border-0 gap-2"
@@ -650,6 +681,49 @@ function AnalyticsContent({
               {udharNet < 0 ? "-" : ""}₹{Math.abs(udharNet).toLocaleString("en-IN")}
             </span>
           </div>
+        </CardContent>
+      </Card>
+
+      <Card className="shadow-sm border-slate-100 rounded-2xl">
+        <CardHeader className="pb-2">
+          <CardTitle className="text-sm font-bold">Commitments</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-0 pt-0">
+          {commitmentsLoading ? (
+            <p className="text-sm text-slate-500 py-4 text-center">Loading commitments…</p>
+          ) : commitmentsError ? (
+            <p className="text-sm text-destructive py-3">
+              {commitmentsErrorMessage ?? "Could not load commitments."}
+            </p>
+          ) : commitmentsSorted.length === 0 ? (
+            <p className="text-sm text-slate-500 py-4 text-center">No commitments yet.</p>
+          ) : (
+            commitmentsSorted.map((c) => (
+              <div
+                key={c.id}
+                className="flex flex-col gap-1 py-3 border-b border-slate-50 last:border-0"
+              >
+                <div className="flex justify-between gap-2 items-start">
+                  <span className="text-xs font-bold text-slate-800">{c.title}</span>
+                  <span className="text-xs font-bold text-slate-900 shrink-0 tabular-nums">
+                    ₹{formatCommitmentInr(c.amount)}
+                  </span>
+                </div>
+                <div className="flex flex-wrap gap-x-2 gap-y-1 text-[10px] text-slate-500">
+                  <span>{c.dueDate}</span>
+                  <span aria-hidden>·</span>
+                  <span>{c.direction}</span>
+                  <span aria-hidden>·</span>
+                  <span>{c.kind}</span>
+                  <span aria-hidden>·</span>
+                  <span className="capitalize">{c.status}</span>
+                </div>
+                {c.note?.trim() ? (
+                  <p className="text-[10px] text-slate-600 line-clamp-2">{c.note.trim()}</p>
+                ) : null}
+              </div>
+            ))
+          )}
         </CardContent>
       </Card>
     </>

@@ -1,14 +1,18 @@
 import { useCallback, useEffect, useId, useMemo, useState } from "react"
+import { useNavigate } from "react-router-dom"
 import { CalendarDays, ChevronDown, X } from "lucide-react"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { accountSelectLabel, filterActiveAccounts } from "@/lib/api/account-schemas"
+import { buildCreateCommitmentBody } from "@/lib/api/commitment-schemas"
+import { getErrorMessage } from "@/lib/api/errors"
+import { endUserSession } from "@/lib/auth/end-session"
 import { FORM_OVERLAY_FOOTER, FORM_OVERLAY_SCROLL_BODY } from "@/lib/form-overlay-scroll"
 import { cn } from "@/lib/utils"
-import { useGetCreditCardsQuery } from "@/store/api/base-api"
-import { useAppSelector } from "@/store/hooks"
+import { useCreateCommitmentMutation, useGetCreditCardsQuery } from "@/store/api/base-api"
+import { useAppDispatch, useAppSelector } from "@/store/hooks"
 
 const DIRECTIONS = [
   { value: "payable" as const, label: "payable" },
@@ -71,7 +75,10 @@ type MountedProps = {
 
 function AddCommitmentModalMounted({ onOpenChange }: MountedProps) {
   const titleId = useId()
+  const navigate = useNavigate()
+  const dispatch = useAppDispatch()
   const user = useAppSelector((s) => s.auth.user)
+  const [createCommitment, { isLoading: isCreating }] = useCreateCommitmentMutation()
   const {
     data: cardsRaw = [],
     isLoading: cardsLoading,
@@ -81,7 +88,6 @@ function AddCommitmentModalMounted({ onOpenChange }: MountedProps) {
   const cardsBusy = cardsLoading || cardsFetching
 
   const [form, setForm] = useState(() => initialForm())
-  const [isSubmitting, setIsSubmitting] = useState(false)
 
   const dismiss = useCallback(() => {
     document.body.style.overflow = ""
@@ -128,20 +134,43 @@ function AddCommitmentModalMounted({ onOpenChange }: MountedProps) {
       return
     }
 
-    setIsSubmitting(true)
+    let body
     try {
-      // Wire to POST /commitments (or dashboard) when the API contract is available.
-      await new Promise((r) => setTimeout(r, 300))
+      body = buildCreateCommitmentBody({
+        direction: form.direction,
+        kind: form.kind,
+        title,
+        amountInput: form.amount,
+        dueDate: form.dueDate,
+        status: "pending",
+        accountId: form.kind === "card_bill" ? form.cardAccountId : undefined,
+        note: form.note,
+      })
+    } catch {
+      toast.error("Enter a valid amount")
+      return
+    }
+
+    try {
+      await createCommitment(body).unwrap()
       toast.success("Commitment saved")
       setForm(initialForm())
       dismiss()
-    } finally {
-      setIsSubmitting(false)
+    } catch (err) {
+      const msg = getErrorMessage(err)
+      if (/authorization token is required/i.test(msg)) {
+        toast.error("Please sign in again")
+        endUserSession(dispatch)
+        dismiss()
+        navigate("/login", { replace: true })
+        return
+      }
+      toast.error(msg)
     }
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex min-h-0 max-h-dvh items-center justify-center overflow-hidden p-2 pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:p-4">
+    <div className="fixed inset-0 z-70 flex min-h-0 max-h-dvh items-center justify-center overflow-hidden p-2 pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:p-4">
       <button
         type="button"
         className="absolute inset-0 bg-black/50 backdrop-blur-[2px]"
@@ -322,10 +351,10 @@ function AddCommitmentModalMounted({ onOpenChange }: MountedProps) {
             <div className="flex justify-start">
               <Button
                 type="submit"
-                disabled={isSubmitting}
+                disabled={isCreating}
                 className="h-10 rounded-xl bg-[#1e1b4b] px-6 text-sm font-bold text-white hover:bg-[#16143a] disabled:opacity-60"
               >
-                {isSubmitting ? "Saving…" : "Save Commitment"}
+                {isCreating ? "Saving…" : "Save Commitment"}
               </Button>
             </div>
           </div>

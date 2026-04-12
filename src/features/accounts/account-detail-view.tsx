@@ -103,9 +103,12 @@ export function AccountDetailView({
     skip: !user || !open,
   })
 
-  const { data: recentTransactions = [] } = useGetRecentTransactionsQuery(5000, {
-    skip: !open || !account,
-  })
+  const { data: recentTransactions = [] } = useGetRecentTransactionsQuery(
+    { limit: 5000 },
+    {
+      skip: !open || !account,
+    }
+  )
 
   const dismiss = useCallback(() => {
     setDeleteConfirmOpen(false)

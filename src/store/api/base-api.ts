@@ -11,6 +11,7 @@ import { AUTH_PATHS } from "@/api/auth-paths"
 import { PEOPLE_PATHS } from "@/api/people-paths"
 import { USER_PATHS } from "@/api/user-paths"
 import { DASHBOARD_PATHS } from "@/api/dashboard-paths"
+import { COMMITMENT_PATHS } from "@/api/commitment-paths"
 import { isAccountCreateApiDisabled } from "@/lib/feature-flags"
 import { getApiBaseUrl } from "@/lib/env"
 import { clearToken, getRefreshToken, setAuthTokens } from "@/lib/auth/token"
@@ -55,6 +56,17 @@ import {
   parseDashboardAnalyticsResponse,
   type DashboardAnalyticsView,
 } from "@/lib/api/dashboard-analytics-schemas"
+import {
+  parseDashboardHomeResponse,
+  type DashboardHomeView,
+} from "@/lib/api/dashboard-home-schemas"
+import {
+  parseCreateCommitmentSuccess,
+  parseGetCommitmentsSuccess,
+  type Commitment,
+  type CreateCommitmentRequest,
+  type GetCommitmentsQueryArg,
+} from "@/lib/api/commitment-schemas"
 
 export type DashboardAnalyticsQueryArg = {
   days: number
@@ -63,6 +75,42 @@ export type DashboardAnalyticsQueryArg = {
    * transfers, all account types). Backend must honor this flag.
    */
   includeAll?: boolean
+  /** Server-side filter; sent as `search` query param when non-empty after trim. */
+  search?: string
+}
+
+export type DashboardHomeQueryArg = {
+  days?: number
+  /** Sent as `recentLimit`; caps length of `recentTransactions` in the response. */
+  recentLimit?: number
+}
+
+/** GET /transactions/recent — all filters combined in one request (query string). */
+export type RecentTransactionsQueryArg = {
+  limit?: number
+  search?: string
+  type?: "income" | "expense" | "transfer"
+  direction?: "debit" | "credit"
+  /** API format e.g. `1-04-2026` (day-month-year). */
+  fromDate?: string
+  toDate?: string
+}
+
+function buildRecentTransactionsParams(
+  arg: RecentTransactionsQueryArg | undefined
+): Record<string, string> {
+  const params: Record<string, string> = {}
+  const lim =
+    arg && typeof arg.limit === "number" && Number.isFinite(arg.limit) && arg.limit > 0
+      ? Math.min(5000, Math.max(1, Math.floor(arg.limit)))
+      : 50
+  params.limit = String(lim)
+  if (arg?.search?.trim()) params.search = arg.search.trim()
+  if (arg?.type) params.type = arg.type
+  if (arg?.direction) params.direction = arg.direction
+  if (arg?.fromDate?.trim()) params.fromDate = arg.fromDate.trim()
+  if (arg?.toDate?.trim()) params.toDate = arg.toDate.trim()
+  return params
 }
 import {
   buildTransactionPostBody,
@@ -213,6 +261,8 @@ export const baseApi = createApi({
     "UdharSummary",
     "PersonLedger",
     "DashboardAnalytics",
+    "Dashboard",
+    "Commitment",
   ],
   endpoints: (build) => ({
     getMe: build.query<ProfileUser, string>({
@@ -422,7 +472,10 @@ export const baseApi = createApi({
           },
         }
       },
-      invalidatesTags: [{ type: "Account", id: "LIST" }],
+      invalidatesTags: [
+        { type: "Account", id: "LIST" },
+        { type: "Dashboard", id: "HOME" },
+      ],
     }),
 
     updateAccount: build.mutation<
@@ -457,7 +510,10 @@ export const baseApi = createApi({
           },
         }
       },
-      invalidatesTags: [{ type: "Account", id: "LIST" }],
+      invalidatesTags: [
+        { type: "Account", id: "LIST" },
+        { type: "Dashboard", id: "HOME" },
+      ],
     }),
 
     deleteAccount: build.mutation<{ message?: string }, string>({
@@ -493,6 +549,7 @@ export const baseApi = createApi({
         { type: "People", id: "LIST" },
         { type: "UdharSummary" },
         { type: "PersonLedger" },
+        { type: "Dashboard", id: "HOME" },
       ],
     }),
 
@@ -805,16 +862,15 @@ export const baseApi = createApi({
       },
     }),
 
-    getRecentTransactions: build.query<RecentTransaction[], number | undefined>({
-      async queryFn(limitArg, _api, _extraOptions, baseQuery) {
-        const limit =
-          typeof limitArg === "number" && Number.isFinite(limitArg) && limitArg > 0
-            ? Math.floor(limitArg)
-            : 50
+    getRecentTransactions: build.query<RecentTransaction[], RecentTransactionsQueryArg | void>({
+      async queryFn(arg, _api, _extraOptions, baseQuery) {
+        const params = buildRecentTransactionsParams(
+          arg && typeof arg === "object" ? arg : undefined
+        )
         const res = await baseQuery({
           url: TRANSACTION_PATHS.recent,
           method: "GET",
-          params: { limit: String(limit) },
+          params,
         })
         if (res.error) {
           return { error: normalizeFetchError(res.error) }
@@ -832,6 +888,40 @@ export const baseApi = createApi({
       providesTags: [{ type: "Transaction", id: "RECENT" }],
     }),
 
+    getDashboard: build.query<DashboardHomeView, DashboardHomeQueryArg | void>({
+      async queryFn(arg, _api, _extraOptions, baseQuery) {
+        const daysArg = arg && typeof arg === "object" ? arg.days : undefined
+        const days =
+          typeof daysArg === "number" && Number.isFinite(daysArg) && daysArg > 0
+            ? Math.floor(daysArg)
+            : 7
+        const recentArg = arg && typeof arg === "object" ? arg.recentLimit : undefined
+        const recentLimitRaw =
+          typeof recentArg === "number" && Number.isFinite(recentArg) && recentArg > 0
+            ? Math.floor(recentArg)
+            : 5
+        const recentLimit = Math.min(100, Math.max(1, recentLimitRaw))
+        const res = await baseQuery({
+          url: DASHBOARD_PATHS.root,
+          method: "GET",
+          params: { days: String(days), recentLimit: String(recentLimit) },
+        })
+        if (res.error) {
+          return { error: normalizeFetchError(res.error) }
+        }
+        const failMsg = parseApiFailureMessage(res.data)
+        if (failMsg) {
+          return { error: { status: 400, data: failMsg } }
+        }
+        const parsed = parseDashboardHomeResponse(res.data, { horizonDays: days })
+        if (!parsed.ok) {
+          return { error: { status: 422, data: parsed.error } }
+        }
+        return { data: parsed.view }
+      },
+      providesTags: [{ type: "Dashboard", id: "HOME" }],
+    }),
+
     getDashboardAnalytics: build.query<DashboardAnalyticsView, DashboardAnalyticsQueryArg>({
       async queryFn(arg, _api, _extraOptions, baseQuery) {
         const daysArg = arg?.days
@@ -840,8 +930,12 @@ export const baseApi = createApi({
           typeof daysArg === "number" && Number.isFinite(daysArg) && daysArg > 0
             ? Math.floor(daysArg)
             : 30
+        const searchRaw = arg?.search
+        const search =
+          typeof searchRaw === "string" && searchRaw.trim() ? searchRaw.trim() : undefined
         const params: Record<string, string> = { days: String(days) }
         if (includeAll) params.include_all = "true"
+        if (search) params.search = search
         const res = await baseQuery({
           url: DASHBOARD_PATHS.analytics,
           method: "GET",
@@ -861,6 +955,57 @@ export const baseApi = createApi({
         return { data: parsed.view }
       },
       providesTags: [{ type: "DashboardAnalytics", id: "LIST" }],
+    }),
+
+    getCommitments: build.query<Commitment[], GetCommitmentsQueryArg | void>({
+      async queryFn(arg, _api, _extraOptions, baseQuery) {
+        const params: Record<string, string> = {}
+        if (arg && typeof arg === "object") {
+          if (arg.direction?.trim()) params.direction = arg.direction.trim()
+          if (arg.status?.trim()) params.status = arg.status.trim()
+        }
+        const res = await baseQuery({
+          url: COMMITMENT_PATHS.root,
+          method: "GET",
+          ...(Object.keys(params).length > 0 ? { params } : {}),
+        })
+        if (res.error) {
+          return { error: normalizeFetchError(res.error) }
+        }
+        const failMsg = parseApiFailureMessage(res.data)
+        if (failMsg) {
+          return { error: { status: 400, data: failMsg } }
+        }
+        const parsed = parseGetCommitmentsSuccess(res.data)
+        if (!parsed.ok) {
+          return { error: { status: 422, data: parsed.error } }
+        }
+        return { data: parsed.commitments }
+      },
+      providesTags: [{ type: "Commitment", id: "LIST" }],
+    }),
+
+    createCommitment: build.mutation<Commitment, CreateCommitmentRequest>({
+      async queryFn(body, _api, _extraOptions, baseQuery) {
+        const res = await baseQuery({
+          url: COMMITMENT_PATHS.root,
+          method: "POST",
+          body,
+        })
+        if (res.error) {
+          return { error: normalizeFetchError(res.error) }
+        }
+        const failMsg = parseApiFailureMessage(res.data)
+        if (failMsg) {
+          return { error: { status: 400, data: failMsg } }
+        }
+        const parsed = parseCreateCommitmentSuccess(res.data)
+        if (!parsed.ok) {
+          return { error: { status: 422, data: parsed.error } }
+        }
+        return { data: parsed.commitment }
+      },
+      invalidatesTags: [{ type: "Commitment", id: "LIST" }],
     }),
 
     /** Deletes any transaction by id; invalidates accounts + recent tx so balances and lists stay consistent. */
@@ -898,6 +1043,7 @@ export const baseApi = createApi({
         { type: "UdharSummary" },
         { type: "People", id: "LIST" },
         { type: "DashboardAnalytics", id: "LIST" },
+        { type: "Dashboard", id: "HOME" },
       ],
     }),
 
@@ -973,6 +1119,7 @@ export const baseApi = createApi({
         { type: "UdharSummary" },
         { type: "PersonLedger" },
         { type: "DashboardAnalytics", id: "LIST" },
+        { type: "Dashboard", id: "HOME" },
       ],
     }),
 
@@ -1025,6 +1172,7 @@ export const baseApi = createApi({
         { type: "UdharSummary" },
         { type: "PersonLedger" },
         { type: "DashboardAnalytics", id: "LIST" },
+        { type: "Dashboard", id: "HOME" },
       ],
     }),
   }),
@@ -1048,10 +1196,13 @@ export const {
   useGetPersonLedgerQuery,
   useCreatePersonMutation,
   useGetRecentTransactionsQuery,
+  useGetDashboardQuery,
   useDeleteTransactionMutation,
   useAddTransactionMutation,
   useCreateUdharEntryMutation,
   useGetDashboardAnalyticsQuery,
+  useGetCommitmentsQuery,
+  useCreateCommitmentMutation,
   useGetMeQuery,
   useUpdateMeMutation,
   useDeleteMeMutation,

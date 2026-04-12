@@ -4,5 +4,6 @@
  * `/api/v1/v1/...` and returns 404.
  */
 export const DASHBOARD_PATHS = {
+  root: "/dashboard",
   analytics: "/dashboard/analytics",
 } as const
