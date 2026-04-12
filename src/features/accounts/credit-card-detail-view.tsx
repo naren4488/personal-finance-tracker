@@ -69,8 +69,6 @@ export function CreditCardDetailView({
   onOpenChange,
   account,
   onCardUpdated,
-  openSheetRequest,
-  onOpenSheetRequestConsumed,
   onPayBill,
   onCardDeleted,
 }: {
@@ -78,9 +76,6 @@ export function CreditCardDetailView({
   onOpenChange: (open: boolean) => void
   account: Account | null
   onCardUpdated?: (account: Account) => void
-  /** When set with detail open, opens Add Spend or Pay Bill sheet (e.g. entries tile actions). */
-  openSheetRequest?: "spend" | "pay_bill" | null
-  onOpenSheetRequestConsumed?: () => void
   /** Pay Bill — opens shared Add Transaction (transfer → credit card bill). */
   onPayBill?: () => void
   onCardDeleted?: () => void
@@ -285,18 +280,6 @@ export function CreditCardDetailView({
     }
     return [...CARD_NETWORKS]
   }, [draft])
-
-  useEffect(() => {
-    if (!open || !account || !openSheetRequest) return
-    /* eslint-disable react-hooks/set-state-in-effect -- open spend or pay bill from parent request when detail opens */
-    if (openSheetRequest === "spend") {
-      setSpendOpen(true)
-    } else {
-      onPayBill?.()
-    }
-    /* eslint-enable react-hooks/set-state-in-effect */
-    onOpenSheetRequestConsumed?.()
-  }, [open, account, openSheetRequest, onOpenSheetRequestConsumed, onPayBill])
 
   if (!open || !account) return null
 

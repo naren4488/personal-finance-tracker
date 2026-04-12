@@ -88,12 +88,12 @@ export default function HomePage() {
   const updating = isFetching && dashboard
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col">
+    <div className="flex min-h-0 w-full flex-1 flex-col overflow-y-auto overscroll-contain [-ms-overflow-style:none] [scrollbar-gutter:stable] [scrollbar-width:thin]">
       <AddCommitmentModal open={commitmentOpen} onOpenChange={setCommitmentOpen} />
 
       <main
         className={cn(
-          "flex min-h-0 flex-1 flex-col pb-24 transition-opacity",
+          "flex w-full flex-1 flex-col gap-4 px-4 pb-28 pt-2 transition-opacity",
           updating && "opacity-[0.97]"
         )}
       >
@@ -106,283 +106,240 @@ export default function HomePage() {
           onConfirm={txDelete.confirmDelete}
         />
 
-        <div className="sticky top-0 z-20 space-y-3 bg-background/95 px-4 pb-3 pt-2 backdrop-blur-md">
-          {!showSkeleton && dashboard ? (
-            <>
-              <Card className="overflow-hidden rounded-2xl border-0 bg-[#1e1b4b] text-white shadow-xl ring-1 ring-white/10">
-                <CardHeader className="space-y-1 px-5 pb-2 pt-5">
-                  <CardTitle className="text-xl font-bold tracking-tight text-white">
-                    Dashboard
-                  </CardTitle>
-                  <p className="text-sm italic text-white/75">
-                    Track balances, dues, and current month activity.
+        {!showSkeleton && dashboard ? (
+          <Card className="overflow-hidden rounded-2xl border-0 bg-[#1e1b4b] text-white shadow-xl ring-1 ring-white/10">
+            <CardHeader className="px-5 pb-2 pt-5">
+              <CardTitle className="text-xl font-bold tracking-tight text-white">
+                Dashboard
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4 px-5 pb-5">
+              <div>
+                <p className="text-[11px] font-medium uppercase tracking-wide text-white/60">
+                  Total balance
+                </p>
+                <p className="text-3xl font-bold tabular-nums text-white">
+                  {formatCurrency(dashboard.summary.totalBalance)}
+                </p>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <MetricCell
+                  icon={TrendingUp}
+                  label="Income"
+                  value={formatCurrency(dashboard.summary.income)}
+                />
+                <MetricCell
+                  icon={TrendingDown}
+                  label="Expenses"
+                  value={formatCurrency(dashboard.summary.expenses)}
+                />
+                <MetricCell
+                  icon={CreditCard}
+                  label="Card dues"
+                  value={formatCurrency(dashboard.summary.cardDues)}
+                />
+                <MetricCell
+                  icon={Users}
+                  label="Person dues"
+                  value={formatCurrency(dashboard.summary.personDues)}
+                />
+              </div>
+              <div className="grid grid-cols-3 gap-2 pt-1">
+                <Link
+                  to="/entries"
+                  className="rounded-xl border border-white/25 bg-white/5 px-2 py-2.5 text-center text-[11px] font-semibold text-white transition-colors hover:bg-white/10"
+                >
+                  + Entry
+                </Link>
+                <Link
+                  to="/accounts"
+                  className="rounded-xl border border-white/25 bg-white/5 px-2 py-2.5 text-center text-[11px] font-semibold text-white transition-colors hover:bg-white/10"
+                >
+                  + Account
+                </Link>
+                <button
+                  type="button"
+                  onClick={() => setCommitmentOpen(true)}
+                  className="rounded-xl border border-white/25 bg-white/5 px-2 py-2.5 text-center text-[11px] font-semibold text-white transition-colors hover:bg-white/10"
+                >
+                  + Commitment
+                </button>
+              </div>
+            </CardContent>
+          </Card>
+        ) : (
+          <Skeleton className="h-72 w-full rounded-2xl bg-muted" />
+        )}
+
+        {isError && !dashboard ? (
+          <Card className="rounded-2xl border-destructive/30 bg-destructive/5">
+            <CardContent className="flex flex-col gap-3 py-6">
+              <p className="text-sm text-destructive">{getErrorMessage(error)}</p>
+              <Button
+                type="button"
+                variant="outline"
+                className="w-fit rounded-xl"
+                onClick={() => refetch()}
+              >
+                Retry
+              </Button>
+            </CardContent>
+          </Card>
+        ) : null}
+
+        {showSkeleton ? <HomeSkeleton /> : null}
+
+        {!showSkeleton && dashboard ? (
+          <>
+            <HorizonSection
+              title="To be paid by"
+              variant="pay"
+              total={dashboard.toBePaid.total}
+              items={dashboard.toBePaid.items}
+              horizonDays={horizonDays}
+              onHorizonDaysChange={setHorizonDays}
+              emptyCopy={`No payments due in the next ${horizonDays} day${horizonDays === 1 ? "" : "s"}.`}
+            />
+
+            <HorizonSection
+              title="Incoming money"
+              variant="receive"
+              total={dashboard.incomingMoney.total}
+              items={dashboard.incomingMoney.items}
+              horizonDays={horizonDays}
+              onHorizonDaysChange={setHorizonDays}
+              emptyCopy={`No expected incoming in the next ${horizonDays} day${horizonDays === 1 ? "" : "s"}.`}
+            />
+
+            <div className="grid grid-cols-3 gap-2">
+              <Card className="rounded-2xl border-border/60 py-3 shadow-sm">
+                <CardContent className="space-y-1 px-3 pt-0">
+                  <Users className="size-5 text-emerald-600" aria-hidden />
+                  <p className="text-[10px] font-medium text-muted-foreground">To receive</p>
+                  <p className="text-sm font-bold tabular-nums text-emerald-600">
+                    {formatCurrency(dashboard.stats.toReceive)}
                   </p>
-                </CardHeader>
-                <CardContent className="space-y-4 px-5 pb-5">
-                  <div>
-                    <p className="text-[11px] font-medium uppercase tracking-wide text-white/60">
-                      Total balance
-                    </p>
-                    <p className="text-3xl font-bold tabular-nums text-white">
-                      {formatCurrency(dashboard.summary.totalBalance)}
-                    </p>
-                  </div>
-                  <div className="grid grid-cols-2 gap-3">
-                    <MetricCell
-                      icon={TrendingUp}
-                      label="Income"
-                      value={formatCurrency(dashboard.summary.income)}
-                    />
-                    <MetricCell
-                      icon={TrendingDown}
-                      label="Expenses"
-                      value={formatCurrency(dashboard.summary.expenses)}
-                    />
-                    <MetricCell
-                      icon={CreditCard}
-                      label="Card dues"
-                      value={formatCurrency(dashboard.summary.cardDues)}
-                    />
-                    <MetricCell
-                      icon={Users}
-                      label="Person dues"
-                      value={formatCurrency(dashboard.summary.personDues)}
-                    />
-                  </div>
-                  <div className="grid grid-cols-3 gap-2 pt-1">
-                    <Link
-                      to="/entries"
-                      className="rounded-xl border border-white/25 bg-white/5 px-2 py-2.5 text-center text-[11px] font-semibold text-white transition-colors hover:bg-white/10"
-                    >
-                      + Entry
-                    </Link>
-                    <Link
-                      to="/accounts"
-                      className="rounded-xl border border-white/25 bg-white/5 px-2 py-2.5 text-center text-[11px] font-semibold text-white transition-colors hover:bg-white/10"
-                    >
-                      + Account
-                    </Link>
-                    <button
-                      type="button"
-                      onClick={() => setCommitmentOpen(true)}
-                      className="rounded-xl border border-white/25 bg-white/5 px-2 py-2.5 text-center text-[11px] font-semibold text-white transition-colors hover:bg-white/10"
-                    >
-                      + Commitment
-                    </button>
-                  </div>
-                  <div
-                    className="flex rounded-full bg-black/20 p-1"
-                    role="tablist"
-                    aria-label="Home sections"
-                  >
-                    <Link
-                      to="/entries"
-                      role="tab"
-                      className="flex-1 rounded-full py-2 text-center text-[11px] font-semibold text-white/70 transition-colors hover:bg-white/10 hover:text-white"
-                    >
-                      Entries
-                    </Link>
-                    <Link
-                      to="/accounts"
-                      role="tab"
-                      className="flex-1 rounded-full py-2 text-center text-[11px] font-semibold text-white/70 transition-colors hover:bg-white/10 hover:text-white"
-                    >
-                      Accounts
-                    </Link>
-                    <button
-                      type="button"
-                      role="tab"
-                      aria-selected={commitmentOpen}
-                      className={cn(
-                        "flex-1 rounded-full py-2 text-center text-[11px] font-semibold transition-colors",
-                        commitmentOpen
-                          ? "bg-white/20 text-white"
-                          : "text-white/70 hover:bg-white/10 hover:text-white"
-                      )}
-                      onClick={() => setCommitmentOpen(true)}
-                    >
-                      Commitments
-                    </button>
-                  </div>
                 </CardContent>
               </Card>
-            </>
-          ) : (
-            <Skeleton className="h-72 w-full rounded-2xl bg-muted" />
-          )}
-        </div>
+              <Card className="rounded-2xl border-border/60 py-3 shadow-sm">
+                <CardContent className="space-y-1 px-3 pt-0">
+                  <CreditCard className="size-5 text-destructive" aria-hidden />
+                  <p className="text-[10px] font-medium text-muted-foreground">CC outstanding</p>
+                  <p className="text-sm font-bold tabular-nums text-destructive">
+                    {formatCurrency(dashboard.stats.cardOutstanding)}
+                  </p>
+                </CardContent>
+              </Card>
+              <Card className="rounded-2xl border-border/60 py-3 shadow-sm">
+                <CardContent className="space-y-1 px-3 pt-0">
+                  <Landmark className="size-5 text-primary" aria-hidden />
+                  <p className="text-[10px] font-medium text-muted-foreground">Active loans</p>
+                  <p className="text-sm font-bold tabular-nums text-foreground">
+                    {dashboard.stats.activeLoans}
+                  </p>
+                </CardContent>
+              </Card>
+            </div>
 
-        <div className="flex-1 space-y-4 px-4 pt-2">
-          {isError && !dashboard ? (
-            <Card className="rounded-2xl border-destructive/30 bg-destructive/5">
-              <CardContent className="flex flex-col gap-3 py-6">
-                <p className="text-sm text-destructive">{getErrorMessage(error)}</p>
-                <Button
-                  type="button"
-                  variant="outline"
-                  className="w-fit rounded-xl"
-                  onClick={() => refetch()}
-                >
-                  Retry
-                </Button>
+            <Card className="rounded-2xl border-border/50 bg-muted/30 py-3">
+              <CardContent className="grid grid-cols-2 gap-2 px-4 text-[11px]">
+                <div>
+                  <p className="text-muted-foreground">Surplus</p>
+                  <p className="font-semibold tabular-nums text-foreground">
+                    {formatCurrency(dashboard.coverage.surplus)}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-muted-foreground">Available</p>
+                  <p className="font-semibold tabular-nums text-foreground">
+                    {formatCurrency(dashboard.coverage.availableBalance)}
+                  </p>
+                </div>
               </CardContent>
             </Card>
-          ) : null}
 
-          {showSkeleton ? <HomeSkeleton /> : null}
-
-          {!showSkeleton && dashboard ? (
-            <>
-              <HorizonSection
-                title="To be paid by"
-                variant="pay"
-                total={dashboard.toBePaid.total}
-                items={dashboard.toBePaid.items}
-                horizonDays={horizonDays}
-                onHorizonDaysChange={setHorizonDays}
-                emptyCopy={`No payments due in the next ${horizonDays} day${horizonDays === 1 ? "" : "s"}.`}
-              />
-
-              <HorizonSection
-                title="Incoming money"
-                variant="receive"
-                total={dashboard.incomingMoney.total}
-                items={dashboard.incomingMoney.items}
-                horizonDays={horizonDays}
-                onHorizonDaysChange={setHorizonDays}
-                emptyCopy={`No expected incoming in the next ${horizonDays} day${horizonDays === 1 ? "" : "s"}.`}
-              />
-
-              <div className="grid grid-cols-3 gap-2">
-                <Card className="rounded-2xl border-border/60 py-3 shadow-sm">
-                  <CardContent className="space-y-1 px-3 pt-0">
-                    <Users className="size-5 text-emerald-600" aria-hidden />
-                    <p className="text-[10px] font-medium text-muted-foreground">To receive</p>
-                    <p className="text-sm font-bold tabular-nums text-emerald-600">
-                      {formatCurrency(dashboard.stats.toReceive)}
-                    </p>
-                  </CardContent>
-                </Card>
-                <Card className="rounded-2xl border-border/60 py-3 shadow-sm">
-                  <CardContent className="space-y-1 px-3 pt-0">
-                    <CreditCard className="size-5 text-destructive" aria-hidden />
-                    <p className="text-[10px] font-medium text-muted-foreground">CC outstanding</p>
-                    <p className="text-sm font-bold tabular-nums text-destructive">
-                      {formatCurrency(dashboard.stats.cardOutstanding)}
-                    </p>
-                  </CardContent>
-                </Card>
-                <Card className="rounded-2xl border-border/60 py-3 shadow-sm">
-                  <CardContent className="space-y-1 px-3 pt-0">
-                    <Landmark className="size-5 text-primary" aria-hidden />
-                    <p className="text-[10px] font-medium text-muted-foreground">Active loans</p>
-                    <p className="text-sm font-bold tabular-nums text-foreground">
-                      {dashboard.stats.activeLoans}
-                    </p>
-                  </CardContent>
-                </Card>
+            <section className="space-y-2">
+              <div className="flex items-center justify-between gap-2">
+                <h2 className="text-sm font-semibold">Your accounts</h2>
+                <Link
+                  to="/accounts"
+                  className="flex items-center gap-0.5 text-xs font-semibold text-primary"
+                >
+                  View all
+                  <ArrowRight className="size-3.5" />
+                </Link>
               </div>
-
-              <Card className="rounded-2xl border-border/50 bg-muted/30 py-3">
-                <CardContent className="grid grid-cols-2 gap-2 px-4 text-[11px]">
-                  <div>
-                    <p className="text-muted-foreground">Surplus</p>
-                    <p className="font-semibold tabular-nums text-foreground">
-                      {formatCurrency(dashboard.coverage.surplus)}
-                    </p>
-                  </div>
-                  <div>
-                    <p className="text-muted-foreground">Available</p>
-                    <p className="font-semibold tabular-nums text-foreground">
-                      {formatCurrency(dashboard.coverage.availableBalance)}
-                    </p>
-                  </div>
-                </CardContent>
-              </Card>
-
-              <section className="space-y-2">
-                <div className="flex items-center justify-between gap-2">
-                  <h2 className="text-sm font-semibold">Your accounts</h2>
-                  <Link
-                    to="/accounts"
-                    className="flex items-center gap-0.5 text-xs font-semibold text-primary"
-                  >
-                    View all
-                    <ArrowRight className="size-3.5" />
-                  </Link>
-                </div>
-                {dashboard.accounts.length === 0 ? (
-                  <p className="text-sm text-muted-foreground">No accounts yet.</p>
-                ) : (
-                  <div className="grid grid-cols-2 gap-2">
-                    {dashboard.accounts.map((a) => (
-                      <AccountPreviewCard key={a.id} account={a} />
-                    ))}
-                  </div>
-                )}
-              </section>
-
-              <section className="space-y-2">
-                <div className="flex items-center justify-between gap-2">
-                  <h2 className="text-sm font-semibold">Recent transactions</h2>
-                  <Link
-                    to="/entries"
-                    className="flex items-center gap-0.5 text-xs font-semibold text-primary"
-                  >
-                    View all
-                    <ArrowRight className="size-3.5" />
-                  </Link>
-                </div>
-                <div className="flex flex-wrap items-center gap-2">
-                  <span className="text-[10px] font-medium text-muted-foreground">Show</span>
-                  {RECENT_LIMIT_PRESETS.map((n) => (
-                    <button
-                      key={n}
-                      type="button"
-                      onClick={() => setRecentLimit(n)}
-                      className={cn(
-                        "rounded-full px-2.5 py-0.5 text-[10px] font-semibold transition-colors",
-                        recentLimit === n
-                          ? "bg-primary text-primary-foreground"
-                          : "bg-muted text-muted-foreground hover:bg-muted/80"
-                      )}
-                    >
-                      {n}
-                    </button>
+              {dashboard.accounts.length === 0 ? (
+                <p className="text-sm text-muted-foreground">No accounts yet.</p>
+              ) : (
+                <div className="grid grid-cols-2 gap-2">
+                  {dashboard.accounts.map((a) => (
+                    <AccountPreviewCard key={a.id} account={a} />
                   ))}
-                  <div className="flex items-center gap-1">
-                    <Input
-                      type="number"
-                      min={1}
-                      max={100}
-                      className="h-7 w-12 rounded-md px-1 text-center text-[10px] tabular-nums"
-                      value={recentLimit}
-                      onChange={(e) => {
-                        const raw = e.target.value
-                        if (raw === "") return
-                        const v = parseInt(raw, 10)
-                        if (Number.isFinite(v) && v >= 1 && v <= 100) setRecentLimit(v)
-                      }}
-                      aria-label="Recent transactions count"
-                    />
-                  </div>
                 </div>
-                {homeRecentRows.length === 0 ? (
-                  <p className="text-sm text-muted-foreground">No recent transactions yet.</p>
-                ) : (
-                  homeRecentRows.map((tx) => (
-                    <RecentTransactionRow
-                      key={tx.id}
-                      tx={tx}
-                      accounts={accounts}
-                      onDelete={txDelete.requestDelete}
-                    />
-                  ))
-                )}
-              </section>
-            </>
-          ) : null}
-        </div>
+              )}
+            </section>
+
+            <section className="space-y-2">
+              <div className="flex items-center justify-between gap-2">
+                <h2 className="text-sm font-semibold">Recent transactions</h2>
+                <Link
+                  to="/entries"
+                  className="flex items-center gap-0.5 text-xs font-semibold text-primary"
+                >
+                  View all
+                  <ArrowRight className="size-3.5" />
+                </Link>
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="text-[10px] font-medium text-muted-foreground">Show</span>
+                {RECENT_LIMIT_PRESETS.map((n) => (
+                  <button
+                    key={n}
+                    type="button"
+                    onClick={() => setRecentLimit(n)}
+                    className={cn(
+                      "rounded-full px-2.5 py-0.5 text-[10px] font-semibold transition-colors",
+                      recentLimit === n
+                        ? "bg-primary text-primary-foreground"
+                        : "bg-muted text-muted-foreground hover:bg-muted/80"
+                    )}
+                  >
+                    {n}
+                  </button>
+                ))}
+                <div className="flex items-center gap-1">
+                  <Input
+                    type="number"
+                    min={1}
+                    max={100}
+                    className="h-7 w-12 rounded-md px-1 text-center text-[10px] tabular-nums"
+                    value={recentLimit}
+                    onChange={(e) => {
+                      const raw = e.target.value
+                      if (raw === "") return
+                      const v = parseInt(raw, 10)
+                      if (Number.isFinite(v) && v >= 1 && v <= 100) setRecentLimit(v)
+                    }}
+                    aria-label="Recent transactions count"
+                  />
+                </div>
+              </div>
+              {homeRecentRows.length === 0 ? (
+                <p className="text-sm text-muted-foreground">No recent transactions yet.</p>
+              ) : (
+                homeRecentRows.map((tx) => (
+                  <RecentTransactionRow
+                    key={tx.id}
+                    tx={tx}
+                    accounts={accounts}
+                    onDelete={txDelete.requestDelete}
+                  />
+                ))
+              )}
+            </section>
+          </>
+        ) : null}
       </main>
     </div>
   )

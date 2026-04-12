@@ -397,7 +397,7 @@ function ProfileContent({ user }: { user: AuthUser }) {
       : loadProfileDraft(user.id)
 
   return (
-    <main className="space-y-4 px-4 py-4 pb-28">
+    <main className="min-h-0 flex-1 space-y-4 overflow-y-auto overscroll-contain px-4 py-4 pb-28 [-ms-overflow-style:none] [scrollbar-gutter:stable] [scrollbar-width:thin]">
       <Link
         to="/"
         className="inline-flex items-center gap-1 text-sm font-medium text-muted-foreground hover:text-foreground"
@@ -464,7 +464,7 @@ export default function ProfilePage() {
 
   if (!user) {
     return (
-      <main className="px-4 py-4 pb-24">
+      <main className="min-h-0 flex-1 overflow-y-auto px-4 py-4 pb-24">
         <p className="text-sm text-muted-foreground">
           You need to be signed in to view your profile.
         </p>

@@ -1,5 +1,5 @@
 import { Suspense } from "react"
-import { Link, NavLink, Outlet, useLocation } from "react-router-dom"
+import { Link, NavLink, Outlet, useLocation, useNavigate } from "react-router-dom"
 import { BarChart3, Home, LayoutGrid, Plus, Wallet } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { HeaderProfileMenu } from "@/components/header-profile-menu"
@@ -7,6 +7,11 @@ import { ThemeToggle } from "@/components/theme-toggle"
 import { ErrorBoundary } from "@/components/error-boundary"
 import { PageLoader } from "@/components/page-loader"
 import { cn } from "@/lib/utils"
+import {
+  ENTRIES_ADD_SEARCH_PARAM,
+  ENTRIES_FAB_OPEN_EVENT,
+  getLastEntriesSegmentForFab,
+} from "@/features/entries/entries-fab"
 
 const tabs = [
   { to: "/", label: "Home", icon: Home, end: true },
@@ -17,11 +22,21 @@ const tabs = [
 
 export function AppShell() {
   const { pathname } = useLocation()
+  const navigate = useNavigate()
   const showFab = pathname !== "/analytics" && pathname !== "/accounts" && pathname !== "/profile"
 
+  function handleFabClick() {
+    if (pathname === "/entries") {
+      window.dispatchEvent(new CustomEvent(ENTRIES_FAB_OPEN_EVENT))
+      return
+    }
+    const tab = getLastEntriesSegmentForFab()
+    navigate(`/entries?${ENTRIES_ADD_SEARCH_PARAM}=${encodeURIComponent(tab)}`)
+  }
+
   return (
-    <div className="relative mx-auto flex min-h-dvh max-w-lg flex-col bg-background">
-      <header className="sticky top-0 z-40 rounded-b-2xl bg-primary px-4 py-3 text-primary-foreground transition-transform duration-300">
+    <div className="relative mx-auto flex h-dvh min-h-0 max-w-lg flex-col overflow-hidden bg-background">
+      <header className="shrink-0 z-40 rounded-b-2xl bg-primary px-4 py-3 text-primary-foreground">
         <div className="flex items-center justify-between gap-3">
           <Link
             to="/"
@@ -38,19 +53,21 @@ export function AppShell() {
 
       <ErrorBoundary>
         <Suspense fallback={<PageLoader />}>
-          <Outlet />
+          <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+            <Outlet />
+          </div>
         </Suspense>
       </ErrorBoundary>
 
       {showFab && (
         <Button
+          type="button"
           size="icon"
           className="fixed bottom-20 right-4 z-50 size-14 rounded-full shadow-lg transition-transform hover:scale-105 active:scale-95"
-          asChild
+          aria-label="Add entry"
+          onClick={handleFabClick}
         >
-          <Link to="/entries" aria-label="Add transaction">
-            <Plus className="size-6" strokeWidth={2} />
-          </Link>
+          <Plus className="size-6" strokeWidth={2} />
         </Button>
       )}
 

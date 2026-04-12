@@ -160,9 +160,11 @@
   }
   html {
     @apply font-sans antialiased;
+    scrollbar-gutter: stable;
   }
   body {
     @apply bg-background text-foreground min-h-dvh;
+    overflow-x: hidden;
   }
 }
 

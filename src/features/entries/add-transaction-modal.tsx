@@ -165,6 +165,11 @@ export type AddTransactionModalProps = {
    * Parent should set `initialType="transfer"` and clear when modal closes.
    */
   transferPaymentPreset?: TransferPaymentPreset | null
+  /**
+   * When there are no accounts, “Add Account” dismisses the modal and navigates here instead of bare `/accounts`
+   * (e.g. return to the same loan/card detail query after adding a bank account).
+   */
+  accountsReturnPath?: string
 }
 
 type MountedProps = {
@@ -173,6 +178,7 @@ type MountedProps = {
   initialType: TransactionType
   onOpenAddAccount?: () => void
   transferPaymentPreset: TransferPaymentPreset | null
+  accountsReturnPath?: string
 }
 
 function AddTransactionModalMounted({
@@ -181,6 +187,7 @@ function AddTransactionModalMounted({
   initialType,
   onOpenAddAccount,
   transferPaymentPreset,
+  accountsReturnPath,
 }: MountedProps) {
   const lockTransferPayment = transferPaymentPreset != null
   const titleId = useId()
@@ -670,7 +677,7 @@ function AddTransactionModalMounted({
                 onAddAccount={() => {
                   dismiss()
                   if (onOpenAddAccount) onOpenAddAccount()
-                  else navigate("/accounts")
+                  else navigate(accountsReturnPath ?? "/accounts")
                 }}
               />
             </div>
@@ -1486,6 +1493,7 @@ export function AddTransactionModal({
   initialType = "expense",
   onOpenAddAccount,
   transferPaymentPreset = null,
+  accountsReturnPath,
 }: AddTransactionModalProps) {
   if (!open) return null
   const typeKey = expenseFlow ? "expense" : initialType
@@ -1504,6 +1512,7 @@ export function AddTransactionModal({
       onOpenChange={onOpenChange}
       onOpenAddAccount={onOpenAddAccount}
       transferPaymentPreset={transferPaymentPreset}
+      accountsReturnPath={accountsReturnPath}
     />
   )
 }

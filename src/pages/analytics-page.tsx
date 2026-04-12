@@ -107,7 +107,7 @@ export default function AnalyticsFullPage() {
   return (
     <div
       className={cn(
-        "flex flex-col min-h-screen bg-slate-50 font-sans pb-20 transition-opacity",
+        "flex min-h-0 flex-1 flex-col overflow-y-auto overscroll-contain bg-slate-50 pb-20 font-sans transition-opacity [-ms-overflow-style:none] [scrollbar-gutter:stable] [scrollbar-width:thin]",
         analyticsUpdating && dashboardData && "opacity-95"
       )}
     >

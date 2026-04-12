@@ -75,8 +75,6 @@ export function LoanDetailView({
   onOpenChange,
   account,
   onLoanUpdated,
-  openPaymentRequest,
-  onOpenPaymentRequestConsumed,
   onPayEmi,
   onLoanDeleted,
 }: {
@@ -85,9 +83,6 @@ export function LoanDetailView({
   account: Account | null
   /** Optimistic local save until PATCH /accounts exists */
   onLoanUpdated?: (account: Account) => void
-  /** When set with detail open, opens Record Loan Payment with this mode (e.g. list → Pay EMI). */
-  openPaymentRequest?: { mode: LoanPaymentMode } | null
-  onOpenPaymentRequestConsumed?: () => void
   /** Pay EMI — opens shared Add Transaction (transfer → loan EMI). */
   onPayEmi?: () => void
   onLoanDeleted?: () => void
@@ -310,19 +305,6 @@ export function LoanDetailView({
       document.body.style.overflow = prev
     }
   }, [open])
-
-  useEffect(() => {
-    if (!open || !account || !openPaymentRequest) return
-    /* eslint-disable react-hooks/set-state-in-effect -- open payment from parent request when detail opens */
-    if (openPaymentRequest.mode === "pay_emi") {
-      onPayEmi?.()
-    } else {
-      setPaymentMode(openPaymentRequest.mode)
-      setPaymentOpen(true)
-    }
-    /* eslint-enable react-hooks/set-state-in-effect */
-    onOpenPaymentRequestConsumed?.()
-  }, [open, account, openPaymentRequest, onOpenPaymentRequestConsumed, onPayEmi])
 
   if (!open || !account) return null
 

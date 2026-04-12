@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useMemo, useState } from "react"
-import { useNavigate } from "react-router-dom"
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react"
+import { useNavigate, useSearchParams } from "react-router-dom"
 import { toast } from "sonner"
 import { CreditCard, Landmark, Users, Wallet } from "lucide-react"
 import { ConfirmDeleteDialog } from "@/components/confirm-delete-dialog"
@@ -8,6 +8,7 @@ import { Label } from "@/components/ui/label"
 import { Card, CardContent } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
 import { AddAccountSheet } from "@/features/accounts/add-account-sheet"
+import { AddCardSpendSheet } from "@/features/accounts/add-card-spend-sheet"
 import { AddCreditCardSheet } from "@/features/accounts/add-credit-card-sheet"
 import { AddLoanSheet } from "@/features/accounts/add-loan-sheet"
 import { AddUdharEntrySheet } from "@/features/accounts/add-udhar-entry-sheet"
@@ -17,6 +18,12 @@ import {
   ACCOUNTS_SEGMENT_META,
   type AccountsSegmentId,
 } from "@/features/accounts/accounts-mock-data"
+import {
+  ACCOUNTS_URL_CARD,
+  ACCOUNTS_URL_LOAN,
+  applyAccountsDetailSearch,
+  buildAccountsDetailPath,
+} from "@/features/accounts/accounts-route"
 import { CreditCardDetailView } from "@/features/accounts/credit-card-detail-view"
 import { CreditCardList } from "@/features/accounts/credit-card-list"
 import { LoanDetailView } from "@/features/accounts/loan-detail-view"
@@ -32,7 +39,6 @@ import {
   AddTransactionModal,
   type TransferPaymentPreset,
 } from "@/features/entries/add-transaction-modal"
-import type { LoanPaymentMode } from "@/features/accounts/record-loan-payment-sheet"
 import type { Account } from "@/lib/api/account-schemas"
 import { getAccountDeleteWarning } from "@/lib/accounts/account-delete"
 import { accountSelectLabel, filterNormalAccounts } from "@/lib/api/account-schemas"
@@ -68,6 +74,11 @@ const EMPTY_LEDGER_ERR_MAP = new Map<string, string>()
 
 export default function AccountsPage() {
   const navigate = useNavigate()
+  const [searchParams, setSearchParams] = useSearchParams()
+  const loanQ = searchParams.get(ACCOUNTS_URL_LOAN)
+  const cardQ = searchParams.get(ACCOUNTS_URL_CARD)
+  const prevDetailLoanRef = useRef<string | null>(null)
+  const prevDetailCardRef = useRef<string | null>(null)
   const [segment, setSegment] = useState<AccountsSegmentId>("accounts")
   const [udharOpen, setUdharOpen] = useState(false)
   const [addAccountOpen, setAddAccountOpen] = useState(false)
@@ -81,10 +92,15 @@ export default function AccountsPage() {
   const [selectedCreditCard, setSelectedCreditCard] = useState<Account | null>(null)
   const [selectedLoan, setSelectedLoan] = useState<Account | null>(null)
   const [selectedAccount, setSelectedAccount] = useState<Account | null>(null)
-  const [loanPaymentRequest, setLoanPaymentRequest] = useState<{ mode: LoanPaymentMode } | null>(
-    null
-  )
-  const [cardSheetRequest, setCardSheetRequest] = useState<"spend" | "pay_bill" | null>(null)
+  /**
+   * When true, the full-screen loan sheet is shown. False = list-only flows (e.g. Pay EMI) keep
+   * `selectedLoan` for the transfer modal without showing the sheet behind it.
+   */
+  const [loanDetailVisible, setLoanDetailVisible] = useState(false)
+  /** Same pattern for card: list actions can open modals/sheets without the card detail overlay. */
+  const [cardDetailVisible, setCardDetailVisible] = useState(false)
+  /** Add spend from card list (detail hidden) — sheet rendered on accounts page. */
+  const [cardInlineSpendOpen, setCardInlineSpendOpen] = useState(false)
   const [transferModalOpen, setTransferModalOpen] = useState(false)
   const [transferPreset, setTransferPreset] = useState<TransferPaymentPreset | null>(null)
   const [accountDetailStartInEdit, setAccountDetailStartInEdit] = useState(false)
@@ -109,14 +125,6 @@ export default function AccountsPage() {
     setTransferPreset({ kind: "loan_emi", loanAccountId: String(a.id) })
     setTransferModalOpen(true)
   }, [selectedLoan])
-
-  const consumeLoanPaymentRequest = useCallback(() => {
-    setLoanPaymentRequest(null)
-  }, [])
-
-  const consumeCardSheetRequest = useCallback(() => {
-    setCardSheetRequest(null)
-  }, [])
 
   const confirmDeleteFromList = useCallback(async () => {
     if (!pendingListDeleteAccount) return
@@ -169,18 +177,20 @@ export default function AccountsPage() {
   const {
     data: creditCards = [],
     isLoading: creditCardsLoading,
+    isFetching: creditCardsFetching,
     isError: creditCardsError,
     error: creditCardsQueryError,
     refetch: refetchCreditCards,
-  } = useGetCreditCardsQuery(undefined, { skip: !user || segment !== "cards" })
+  } = useGetCreditCardsQuery(undefined, { skip: !user || (segment !== "cards" && !cardQ) })
 
   const {
     data: loans = [],
     isLoading: loansLoading,
+    isFetching: loansFetching,
     isError: loansError,
     error: loansQueryError,
     refetch: refetchLoans,
-  } = useGetLoansQuery(undefined, { skip: !user || segment !== "loans" })
+  } = useGetLoansQuery(undefined, { skip: !user || (segment !== "loans" && !loanQ) })
 
   useEffect(() => {
     if (!creditCardsError || !creditCardsQueryError) return
@@ -199,6 +209,66 @@ export default function AccountsPage() {
       navigate("/login", { replace: true })
     }
   }, [loansError, loansQueryError, navigate])
+
+  /** Deep link: `/accounts?loan=` / `?card=` → correct tab before paint. */
+  useLayoutEffect(() => {
+    if (loanQ) setSegment("loans")
+    else if (cardQ) setSegment("cards")
+  }, [loanQ, cardQ])
+
+  /** Keep loan/card detail selection aligned with URL (back/forward, bookmarks, invalid id cleanup). */
+  useEffect(() => {
+    if (loanQ) {
+      prevDetailLoanRef.current = loanQ
+      prevDetailCardRef.current = null
+      if (loansLoading || loansFetching) return
+      const acc = loans.find((a) => String(a.id) === loanQ)
+      if (acc) {
+        setSelectedLoan((prev) => (prev && String(prev.id) === loanQ ? prev : acc))
+        setLoanDetailVisible(true)
+      } else {
+        setSelectedLoan(null)
+        setLoanDetailVisible(false)
+        applyAccountsDetailSearch(setSearchParams, null)
+      }
+      return
+    }
+    if (cardQ) {
+      prevDetailCardRef.current = cardQ
+      prevDetailLoanRef.current = null
+      if (creditCardsLoading || creditCardsFetching) return
+      const acc = creditCards.find((a) => String(a.id) === cardQ)
+      if (acc) {
+        setSelectedCreditCard((prev) => (prev && String(prev.id) === cardQ ? prev : acc))
+        setCardDetailVisible(true)
+      } else {
+        setSelectedCreditCard(null)
+        setCardDetailVisible(false)
+        applyAccountsDetailSearch(setSearchParams, null)
+      }
+      return
+    }
+    const hadDetailInUrl = prevDetailLoanRef.current || prevDetailCardRef.current
+    prevDetailLoanRef.current = null
+    prevDetailCardRef.current = null
+    if (hadDetailInUrl) {
+      setSelectedLoan(null)
+      setSelectedCreditCard(null)
+      setLoanDetailVisible(false)
+      setCardDetailVisible(false)
+      setCardInlineSpendOpen(false)
+    }
+  }, [
+    loanQ,
+    cardQ,
+    loans,
+    creditCards,
+    loansLoading,
+    loansFetching,
+    creditCardsLoading,
+    creditCardsFetching,
+    setSearchParams,
+  ])
 
   const normalAccounts = useMemo(() => filterNormalAccounts(apiAccounts ?? []), [apiAccounts])
 
@@ -275,6 +345,16 @@ export default function AccountsPage() {
     [resolveAccountFromCache, selectedLoan]
   )
 
+  const accountsReturnPath = useMemo(
+    () =>
+      selectedLoan
+        ? buildAccountsDetailPath({ kind: "loan", id: String(selectedLoan.id) })
+        : selectedCreditCard
+          ? buildAccountsDetailPath({ kind: "card", id: String(selectedCreditCard.id) })
+          : undefined,
+    [selectedLoan, selectedCreditCard]
+  )
+
   const showAccountsLoading = segment === "accounts" && accountsLoading
   const showAccountsError = segment === "accounts" && accountsError
   const showAccountsEmpty =
@@ -314,7 +394,7 @@ export default function AccountsPage() {
     (segment === "cards" && !creditCardsLoading && !creditCardsError && creditCards.length > 0)
 
   return (
-    <main className="flex min-h-0 flex-1 flex-col overflow-hidden bg-background px-4 py-4 pb-28">
+    <main className="flex min-h-0 flex-1 flex-col overflow-hidden bg-background px-4 pb-28 pt-4">
       <ConfirmDeleteDialog
         open={!!pendingListDeleteAccount}
         onOpenChange={(v) => {
@@ -348,44 +428,70 @@ export default function AccountsPage() {
       <AddUdharEntrySheet open={udharOpen} onOpenChange={setUdharOpen} />
       <AddLoanSheet open={loanOpen} onOpenChange={setLoanOpen} />
       <AddCreditCardSheet open={cardOpen} onOpenChange={setCardOpen} />
+      <AddCardSpendSheet
+        open={cardInlineSpendOpen && !!selectedCreditCard && !cardDetailVisible}
+        onOpenChange={(v) => {
+          setCardInlineSpendOpen(v)
+          if (!v && !cardDetailVisible) {
+            setSelectedCreditCard(null)
+            applyAccountsDetailSearch(setSearchParams, null)
+          }
+        }}
+        account={resolvedSelectedCreditCard}
+      />
       <CreditCardDetailView
-        open={!!selectedCreditCard}
+        open={!!selectedCreditCard && cardDetailVisible}
         onOpenChange={(v) => {
           if (!v) {
             setSelectedCreditCard(null)
-            setCardSheetRequest(null)
+            setCardDetailVisible(false)
+            applyAccountsDetailSearch(setSearchParams, null)
           }
         }}
         account={resolvedSelectedCreditCard}
         onCardUpdated={(a) => setSelectedCreditCard(a)}
-        openSheetRequest={cardSheetRequest}
-        onOpenSheetRequestConsumed={consumeCardSheetRequest}
         onPayBill={openPayBillFromCardDetail}
-        onCardDeleted={() => setSelectedCreditCard(null)}
+        onCardDeleted={() => {
+          setSelectedCreditCard(null)
+          setCardDetailVisible(false)
+        }}
       />
       <LoanDetailView
-        open={!!selectedLoan}
+        open={!!selectedLoan && loanDetailVisible}
         onOpenChange={(v) => {
           if (!v) {
             setSelectedLoan(null)
-            setLoanPaymentRequest(null)
+            setLoanDetailVisible(false)
+            applyAccountsDetailSearch(setSearchParams, null)
           }
         }}
         account={resolvedSelectedLoan}
         onLoanUpdated={(a) => setSelectedLoan(a)}
-        openPaymentRequest={loanPaymentRequest}
-        onOpenPaymentRequestConsumed={consumeLoanPaymentRequest}
         onPayEmi={openPayEmiFromLoanDetail}
-        onLoanDeleted={() => setSelectedLoan(null)}
+        onLoanDeleted={() => {
+          setSelectedLoan(null)
+          setLoanDetailVisible(false)
+        }}
       />
       <AddTransactionModal
         open={transferModalOpen}
         onOpenChange={(v) => {
           setTransferModalOpen(v)
-          if (!v) setTransferPreset(null)
+          if (!v) {
+            const kind = transferPreset?.kind
+            setTransferPreset(null)
+            if (kind === "loan_emi" && !loanDetailVisible) {
+              setSelectedLoan(null)
+              applyAccountsDetailSearch(setSearchParams, null)
+            } else if (kind === "credit_card_bill" && !cardDetailVisible && !cardInlineSpendOpen) {
+              setSelectedCreditCard(null)
+              applyAccountsDetailSearch(setSearchParams, null)
+            }
+          }
         }}
         initialType="transfer"
         transferPaymentPreset={transferPreset}
+        accountsReturnPath={accountsReturnPath}
       />
       {selectedAccount ? (
         <AccountDetailView
@@ -420,7 +526,7 @@ export default function AccountsPage() {
       />
 
       <div
-        className="mb-3 grid grid-cols-4 gap-1 sm:mb-4"
+        className="mb-3 grid shrink-0 grid-cols-4 gap-1 sm:mb-4"
         role="tablist"
         aria-label="Accounts categories"
       >
@@ -443,6 +549,26 @@ export default function AccountsPage() {
               )}
               onClick={() => {
                 if (id !== "accounts") setSelectedAccount(null)
+                if (id !== "loans") setSelectedLoan(null)
+                if (id !== "cards") setSelectedCreditCard(null)
+                setLoanDetailVisible(false)
+                setCardDetailVisible(false)
+                setCardInlineSpendOpen(false)
+                setSearchParams(
+                  (prev) => {
+                    const p = new URLSearchParams(prev)
+                    if (id === "loans") {
+                      p.delete(ACCOUNTS_URL_CARD)
+                    } else if (id === "cards") {
+                      p.delete(ACCOUNTS_URL_LOAN)
+                    } else {
+                      p.delete(ACCOUNTS_URL_LOAN)
+                      p.delete(ACCOUNTS_URL_CARD)
+                    }
+                    return p
+                  },
+                  { replace: true }
+                )
                 setSegment(id)
               }}
             >
@@ -457,112 +583,116 @@ export default function AccountsPage() {
         })}
       </div>
 
-      <div className="mb-3 flex min-h-0 flex-1 flex-col">
-        <div className="mb-3 flex shrink-0 items-center justify-between gap-3">
+      <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+        <div className="mb-3 flex min-h-[2.75rem] shrink-0 items-center justify-between gap-3">
           <h1
             className={cn(
-              "text-lg font-bold tracking-tight",
+              "min-w-0 flex-1 text-lg font-bold leading-tight tracking-tight",
               segment === "loans" || segment === "cards" ? "text-primary" : "text-foreground"
             )}
           >
             {meta.listTitle}
           </h1>
-          {showHeaderAdd ? (
-            <Button
-              type="button"
-              variant="link"
-              className="h-auto shrink-0 p-0 text-sm font-semibold text-primary"
-              onClick={openHeaderAdd}
-              aria-label={headerAddAriaLabel[segment]}
-            >
-              + Add
-            </Button>
-          ) : null}
+          <div className="flex h-9 min-w-[3.25rem] shrink-0 items-center justify-end">
+            {showHeaderAdd ? (
+              <Button
+                type="button"
+                variant="link"
+                className="h-9 shrink-0 px-0 text-sm font-semibold text-primary"
+                onClick={openHeaderAdd}
+                aria-label={headerAddAriaLabel[segment]}
+              >
+                + Add
+              </Button>
+            ) : (
+              <span className="inline-block h-9 w-[3.25rem] shrink-0" aria-hidden />
+            )}
+          </div>
         </div>
 
-        {showAccountsLoading ? (
-          <div className="flex flex-col gap-3">
-            <AccountCardSkeleton />
-            <AccountCardSkeleton />
-            <AccountCardSkeleton />
-          </div>
-        ) : showAccountsError ? (
-          <div className="space-y-3 rounded-2xl border border-destructive/30 bg-destructive/5 px-4 py-4">
-            <p className="text-sm text-destructive">{getErrorMessage(accountsQueryError)}</p>
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              className="rounded-xl"
-              onClick={() => refetchAccounts()}
-            >
-              Retry
-            </Button>
-          </div>
-        ) : showAccountsEmpty ? (
-          <Card className="flex min-h-0 flex-1 flex-col border-2 border-dashed border-border/90 bg-card py-0 shadow-none">
-            <CardContent className="flex flex-1 flex-col items-center justify-center px-6 py-12 text-center">
-              <div className="mb-4 flex size-14 items-center justify-center rounded-2xl bg-muted/80">
-                <Landmark className="size-7 text-primary" strokeWidth={2} aria-hidden />
-              </div>
-              <p className="text-base font-bold text-primary">No accounts</p>
-              <p className="mt-1 max-w-xs text-sm text-muted-foreground">
-                Add your bank accounts and wallets
-              </p>
+        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain [-ms-overflow-style:none] [scrollbar-gutter:stable] [scrollbar-width:thin]">
+          {showAccountsLoading ? (
+            <div className="flex flex-col gap-3">
+              <AccountCardSkeleton />
+              <AccountCardSkeleton />
+              <AccountCardSkeleton />
+            </div>
+          ) : showAccountsError ? (
+            <div className="space-y-3 rounded-2xl border border-destructive/30 bg-destructive/5 px-4 py-4">
+              <p className="text-sm text-destructive">{getErrorMessage(accountsQueryError)}</p>
               <Button
                 type="button"
-                className="mt-6 h-11 rounded-xl px-8 text-base font-semibold"
-                onClick={() => setAddAccountOpen(true)}
+                variant="outline"
+                size="sm"
+                className="rounded-xl"
+                onClick={() => refetchAccounts()}
               >
-                Add Account
+                Retry
               </Button>
-            </CardContent>
-          </Card>
-        ) : segment === "people" && accountsLoading ? (
-          <PeopleList
-            people={[]}
-            loading
-            error={null}
-            onRetry={() => void refetchAccounts()}
-            onPersonClick={() => {}}
-            balanceByPersonId={EMPTY_LEDGER_BALANCE_MAP}
-            pendingPersonIds={EMPTY_PENDING_IDS}
-            balanceErrorByPersonId={EMPTY_LEDGER_ERR_MAP}
-          />
-        ) : segment === "people" && accountsError ? (
-          <div className="space-y-3 rounded-2xl border border-destructive/30 bg-destructive/5 px-4 py-4">
-            <p className="text-sm text-destructive">{getErrorMessage(accountsQueryError)}</p>
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              className="rounded-xl"
-              onClick={() => void refetchAccounts()}
-            >
-              Retry
-            </Button>
-          </div>
-        ) : segment === "people" && normalAccounts.length === 0 ? (
-          <Card className="flex min-h-0 flex-1 flex-col border-2 border-dashed border-border/90 bg-card py-0 shadow-none">
-            <CardContent className="flex flex-1 flex-col items-center justify-center px-6 py-12 text-center">
-              <div className="mb-4 flex size-14 items-center justify-center rounded-2xl bg-muted/80">
-                <Users className="size-7 text-primary" strokeWidth={2} aria-hidden />
-              </div>
-              <p className="text-base font-bold text-primary">No accounts for people</p>
-              <p className="mt-1 max-w-xs text-sm text-muted-foreground">
-                Add a bank account or wallet to list people linked to it.
-              </p>
+            </div>
+          ) : showAccountsEmpty ? (
+            <Card className="flex min-h-0 flex-1 flex-col border-2 border-dashed border-border/90 bg-card py-0 shadow-none">
+              <CardContent className="flex flex-1 flex-col items-center justify-center px-6 py-12 text-center">
+                <div className="mb-4 flex size-14 items-center justify-center rounded-2xl bg-muted/80">
+                  <Landmark className="size-7 text-primary" strokeWidth={2} aria-hidden />
+                </div>
+                <p className="text-base font-bold text-primary">No accounts</p>
+                <p className="mt-1 max-w-xs text-sm text-muted-foreground">
+                  Add your bank accounts and wallets
+                </p>
+                <Button
+                  type="button"
+                  className="mt-6 h-11 rounded-xl px-8 text-base font-semibold"
+                  onClick={() => setAddAccountOpen(true)}
+                >
+                  Add Account
+                </Button>
+              </CardContent>
+            </Card>
+          ) : segment === "people" && accountsLoading ? (
+            <PeopleList
+              people={[]}
+              loading
+              error={null}
+              onRetry={() => void refetchAccounts()}
+              onPersonClick={() => {}}
+              balanceByPersonId={EMPTY_LEDGER_BALANCE_MAP}
+              pendingPersonIds={EMPTY_PENDING_IDS}
+              balanceErrorByPersonId={EMPTY_LEDGER_ERR_MAP}
+            />
+          ) : segment === "people" && accountsError ? (
+            <div className="space-y-3 rounded-2xl border border-destructive/30 bg-destructive/5 px-4 py-4">
+              <p className="text-sm text-destructive">{getErrorMessage(accountsQueryError)}</p>
               <Button
                 type="button"
-                className="mt-6 h-11 rounded-xl px-8 text-base font-semibold"
-                onClick={() => setAddAccountOpen(true)}
+                variant="outline"
+                size="sm"
+                className="rounded-xl"
+                onClick={() => void refetchAccounts()}
               >
-                Add Account
+                Retry
               </Button>
-            </CardContent>
-          </Card>
-        ) : segment === "people" ? (
-          <div className="min-h-0 flex-1 overflow-y-auto [-ms-overflow-style:none] [scrollbar-width:thin]">
+            </div>
+          ) : segment === "people" && normalAccounts.length === 0 ? (
+            <Card className="flex min-h-0 flex-1 flex-col border-2 border-dashed border-border/90 bg-card py-0 shadow-none">
+              <CardContent className="flex flex-1 flex-col items-center justify-center px-6 py-12 text-center">
+                <div className="mb-4 flex size-14 items-center justify-center rounded-2xl bg-muted/80">
+                  <Users className="size-7 text-primary" strokeWidth={2} aria-hidden />
+                </div>
+                <p className="text-base font-bold text-primary">No accounts for people</p>
+                <p className="mt-1 max-w-xs text-sm text-muted-foreground">
+                  Add a bank account or wallet to list people linked to it.
+                </p>
+                <Button
+                  type="button"
+                  className="mt-6 h-11 rounded-xl px-8 text-base font-semibold"
+                  onClick={() => setAddAccountOpen(true)}
+                >
+                  Add Account
+                </Button>
+              </CardContent>
+            </Card>
+          ) : segment === "people" ? (
             <div className="space-y-3">
               {normalAccounts.length > 1 ? (
                 <div className="space-y-1">
@@ -598,131 +728,153 @@ export default function AccountsPage() {
                 balanceErrorByPersonId={balanceErrorByPersonId}
               />
             </div>
-          </div>
-        ) : segment === "cards" && creditCardsLoading ? (
-          <div className="flex flex-col gap-2">
-            <Skeleton className="h-18 w-full rounded-2xl" />
-            <Skeleton className="h-18 w-full rounded-2xl" />
-          </div>
-        ) : segment === "cards" && creditCardsError ? (
-          <div className="space-y-3 rounded-2xl border border-destructive/30 bg-destructive/5 px-4 py-4">
-            <p className="text-sm text-destructive">{getErrorMessage(creditCardsQueryError)}</p>
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              className="rounded-xl"
-              onClick={() => refetchCreditCards()}
-            >
-              Retry
-            </Button>
-          </div>
-        ) : showLoansLoading ? (
-          <div className="flex flex-col gap-2">
-            <Skeleton className="h-18 w-full rounded-2xl" />
-            <Skeleton className="h-18 w-full rounded-2xl" />
-          </div>
-        ) : showLoansError ? (
-          <div className="space-y-3 rounded-2xl border border-destructive/30 bg-destructive/5 px-4 py-4">
-            <p className="text-sm text-destructive">{getErrorMessage(loansQueryError)}</p>
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              className="rounded-xl"
-              onClick={() => refetchLoans()}
-            >
-              Retry
-            </Button>
-          </div>
-        ) : showLoansEmpty ? (
-          <Card className="flex min-h-0 flex-1 flex-col border-2 border-dashed border-border/90 bg-card py-0 shadow-none">
-            <CardContent className="flex flex-1 flex-col items-center justify-center px-6 py-12 text-center">
-              <div className="mb-4 flex size-14 items-center justify-center rounded-2xl bg-muted/80">
-                <Landmark className="size-7 text-primary" strokeWidth={2} aria-hidden />
-              </div>
-              <p className="text-base font-bold text-primary">No loans found</p>
-              <p className="mt-1 max-w-xs text-sm text-muted-foreground">
-                Add a loan to track EMIs
-              </p>
+          ) : segment === "cards" && creditCardsLoading ? (
+            <div className="flex flex-col gap-2">
+              <Skeleton className="h-18 w-full rounded-2xl" />
+              <Skeleton className="h-18 w-full rounded-2xl" />
+            </div>
+          ) : segment === "cards" && creditCardsError ? (
+            <div className="space-y-3 rounded-2xl border border-destructive/30 bg-destructive/5 px-4 py-4">
+              <p className="text-sm text-destructive">{getErrorMessage(creditCardsQueryError)}</p>
               <Button
                 type="button"
-                className="mt-6 h-11 rounded-xl px-8 text-base font-semibold"
-                onClick={() => setLoanOpen(true)}
+                variant="outline"
+                size="sm"
+                className="rounded-xl"
+                onClick={() => refetchCreditCards()}
               >
-                Add Loan
+                Retry
               </Button>
-            </CardContent>
-          </Card>
-        ) : showCardsEmpty ? (
-          <Card className="flex min-h-0 flex-1 flex-col border-2 border-dashed border-border/90 bg-card py-0 shadow-none">
-            <CardContent className="flex flex-1 flex-col items-center justify-center px-6 py-12 text-center">
-              <div className="mb-4 flex size-14 items-center justify-center rounded-2xl bg-muted/80">
-                <CreditCard className="size-7 text-primary" strokeWidth={2} aria-hidden />
-              </div>
-              <p className="text-base font-bold text-primary">No credit cards</p>
-              <p className="mt-1 max-w-xs text-sm text-muted-foreground">
-                Add your credit card to track spending
-              </p>
+            </div>
+          ) : showLoansLoading ? (
+            <div className="flex flex-col gap-2">
+              <Skeleton className="h-18 w-full rounded-2xl" />
+              <Skeleton className="h-18 w-full rounded-2xl" />
+            </div>
+          ) : showLoansError ? (
+            <div className="space-y-3 rounded-2xl border border-destructive/30 bg-destructive/5 px-4 py-4">
+              <p className="text-sm text-destructive">{getErrorMessage(loansQueryError)}</p>
               <Button
                 type="button"
-                className="mt-6 h-11 rounded-xl px-8 text-base font-semibold"
-                onClick={() => setCardOpen(true)}
+                variant="outline"
+                size="sm"
+                className="rounded-xl"
+                onClick={() => refetchLoans()}
               >
-                Add Card
+                Retry
               </Button>
-            </CardContent>
-          </Card>
-        ) : (
-          <div className="min-h-0 flex-1 overflow-y-auto [-ms-overflow-style:none] [scrollbar-width:thin]">
-            {segment === "cards" ? (
-              <CreditCardList
-                accounts={creditCards}
-                variant="entries"
-                onSelectCard={setSelectedCreditCard}
-                onAddSpend={(a) => {
-                  setSelectedCreditCard(a)
-                  setCardSheetRequest("spend")
-                }}
-                onPayBill={(a) => {
-                  setSelectedCreditCard(a)
-                  setCardSheetRequest("pay_bill")
-                }}
-              />
-            ) : segment === "loans" ? (
-              <LoanList
-                accounts={loans}
-                variant="entries"
-                onSelectLoan={(a) => setSelectedLoan(a)}
-                onPayEmi={(a) => {
-                  setSelectedLoan(a)
-                  setLoanPaymentRequest({ mode: "pay_emi" })
-                }}
-              />
-            ) : (
-              <ul className="flex list-none flex-col gap-2.5" aria-label={`${meta.listTitle} list`}>
-                {normalAccounts.map((a) => (
-                  <li key={a.id}>
-                    <AccountCard
-                      account={a}
-                      onOpen={() => {
-                        setAccountDetailStartInEdit(false)
-                        setAccountDetailOpenNonce((n) => n + 1)
-                        setSelectedAccount(a)
-                      }}
-                      onEdit={() => {
-                        setAccountDetailStartInEdit(true)
-                        setAccountDetailOpenNonce((n) => n + 1)
-                        setSelectedAccount(a)
-                      }}
-                      onDelete={() => setPendingListDeleteAccount(a)}
-                    />
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
-        )}
+            </div>
+          ) : showLoansEmpty ? (
+            <Card className="flex min-h-0 flex-1 flex-col border-2 border-dashed border-border/90 bg-card py-0 shadow-none">
+              <CardContent className="flex flex-1 flex-col items-center justify-center px-6 py-12 text-center">
+                <div className="mb-4 flex size-14 items-center justify-center rounded-2xl bg-muted/80">
+                  <Landmark className="size-7 text-primary" strokeWidth={2} aria-hidden />
+                </div>
+                <p className="text-base font-bold text-primary">No loans found</p>
+                <p className="mt-1 max-w-xs text-sm text-muted-foreground">
+                  Add a loan to track EMIs
+                </p>
+                <Button
+                  type="button"
+                  className="mt-6 h-11 rounded-xl px-8 text-base font-semibold"
+                  onClick={() => setLoanOpen(true)}
+                >
+                  Add Loan
+                </Button>
+              </CardContent>
+            </Card>
+          ) : showCardsEmpty ? (
+            <Card className="flex min-h-0 flex-1 flex-col border-2 border-dashed border-border/90 bg-card py-0 shadow-none">
+              <CardContent className="flex flex-1 flex-col items-center justify-center px-6 py-12 text-center">
+                <div className="mb-4 flex size-14 items-center justify-center rounded-2xl bg-muted/80">
+                  <CreditCard className="size-7 text-primary" strokeWidth={2} aria-hidden />
+                </div>
+                <p className="text-base font-bold text-primary">No credit cards</p>
+                <p className="mt-1 max-w-xs text-sm text-muted-foreground">
+                  Add your credit card to track spending
+                </p>
+                <Button
+                  type="button"
+                  className="mt-6 h-11 rounded-xl px-8 text-base font-semibold"
+                  onClick={() => setCardOpen(true)}
+                >
+                  Add Card
+                </Button>
+              </CardContent>
+            </Card>
+          ) : (
+            <>
+              {segment === "cards" ? (
+                <CreditCardList
+                  accounts={creditCards}
+                  variant="entries"
+                  onSelectCard={(a) => {
+                    setCardDetailVisible(true)
+                    setSelectedCreditCard(a)
+                    applyAccountsDetailSearch(setSearchParams, { kind: "card", id: String(a.id) })
+                  }}
+                  onAddSpend={(a) => {
+                    setCardDetailVisible(false)
+                    setCardInlineSpendOpen(true)
+                    setSelectedCreditCard(a)
+                    applyAccountsDetailSearch(setSearchParams, { kind: "card", id: String(a.id) })
+                  }}
+                  onPayBill={(a) => {
+                    setCardDetailVisible(false)
+                    setSelectedCreditCard(a)
+                    applyAccountsDetailSearch(setSearchParams, { kind: "card", id: String(a.id) })
+                    setTransferPreset({
+                      kind: "credit_card_bill",
+                      creditCardAccountId: String(a.id),
+                    })
+                    setTransferModalOpen(true)
+                  }}
+                />
+              ) : segment === "loans" ? (
+                <LoanList
+                  accounts={loans}
+                  variant="entries"
+                  onSelectLoan={(a) => {
+                    setLoanDetailVisible(true)
+                    setSelectedLoan(a)
+                    applyAccountsDetailSearch(setSearchParams, { kind: "loan", id: String(a.id) })
+                  }}
+                  onPayEmi={(a) => {
+                    setLoanDetailVisible(false)
+                    setSelectedLoan(a)
+                    applyAccountsDetailSearch(setSearchParams, { kind: "loan", id: String(a.id) })
+                    setTransferPreset({ kind: "loan_emi", loanAccountId: String(a.id) })
+                    setTransferModalOpen(true)
+                  }}
+                />
+              ) : (
+                <ul
+                  className="flex list-none flex-col gap-2.5"
+                  aria-label={`${meta.listTitle} list`}
+                >
+                  {normalAccounts.map((a) => (
+                    <li key={a.id}>
+                      <AccountCard
+                        account={a}
+                        onOpen={() => {
+                          setAccountDetailStartInEdit(false)
+                          setAccountDetailOpenNonce((n) => n + 1)
+                          setSelectedAccount(a)
+                        }}
+                        onEdit={() => {
+                          setAccountDetailStartInEdit(true)
+                          setAccountDetailOpenNonce((n) => n + 1)
+                          setSelectedAccount(a)
+                        }}
+                        onDelete={() => setPendingListDeleteAccount(a)}
+                      />
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </>
+          )}
+        </div>
       </div>
     </main>
   )
