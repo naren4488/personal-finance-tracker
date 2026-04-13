@@ -13,7 +13,7 @@ export default defineConfig({
     proxy: {
       // Dev: same-origin `/api/*` → backend `http://localhost:8080/api/v1/*` (avoids CORS)
       "/api": {
-        target: "http://localhost:8080",
+        target: "https://expensetracker-api.lazycoderz.com",
         changeOrigin: true,
         rewrite: (path) => path.replace(/^\/api/, "/api/v1"),
       },
