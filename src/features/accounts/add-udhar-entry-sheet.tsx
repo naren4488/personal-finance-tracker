@@ -1,14 +1,6 @@
 import { useCallback, useEffect, useId, useMemo, useState } from "react"
 import { useNavigate } from "react-router-dom"
-import {
-  ArrowDown,
-  ArrowLeft,
-  ArrowRight,
-  ArrowUp,
-  CalendarDays,
-  ChevronDown,
-  X,
-} from "lucide-react"
+import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, ChevronDown, X } from "lucide-react"
 import { toast } from "sonner"
 import { ToggleTile } from "@/components/toggle-tile"
 import { Button } from "@/components/ui/button"
@@ -424,19 +416,13 @@ function AddUdharEntrySheetMounted({ onOpenChange }: MountedProps) {
                 <Label htmlFor="udhar-date" className="mb-0.5 block text-xs font-bold text-primary">
                   Date
                 </Label>
-                <div className="relative">
-                  <Input
-                    id="udhar-date"
-                    type="date"
-                    value={form.date}
-                    onChange={(e) => setForm((f) => ({ ...f, date: e.target.value }))}
-                    className={cn(fieldClass, "pr-9 scheme-light dark:scheme-dark")}
-                  />
-                  <CalendarDays
-                    className="pointer-events-none absolute right-2 top-1/2 size-4 -translate-y-1/2 text-muted-foreground"
-                    aria-hidden
-                  />
-                </div>
+                <Input
+                  id="udhar-date"
+                  type="date"
+                  value={form.date}
+                  onChange={(e) => setForm((f) => ({ ...f, date: e.target.value }))}
+                  className={cn(fieldClass, "scheme-light dark:scheme-dark")}
+                />
               </section>
               <section>
                 <Label
@@ -445,19 +431,13 @@ function AddUdharEntrySheetMounted({ onOpenChange }: MountedProps) {
                 >
                   Due date
                 </Label>
-                <div className="relative">
-                  <Input
-                    id="udhar-due-date"
-                    type="date"
-                    value={form.dueDate}
-                    onChange={(e) => setForm((f) => ({ ...f, dueDate: e.target.value }))}
-                    className={cn(fieldClass, "pr-9 scheme-light dark:scheme-dark")}
-                  />
-                  <CalendarDays
-                    className="pointer-events-none absolute right-2 top-1/2 size-4 -translate-y-1/2 text-muted-foreground"
-                    aria-hidden
-                  />
-                </div>
+                <Input
+                  id="udhar-due-date"
+                  type="date"
+                  value={form.dueDate}
+                  onChange={(e) => setForm((f) => ({ ...f, dueDate: e.target.value }))}
+                  className={cn(fieldClass, "scheme-light dark:scheme-dark")}
+                />
               </section>
             </div>
 

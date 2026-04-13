@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useId, useMemo, useState } from "react"
 import { useNavigate } from "react-router-dom"
-import { CalendarDays, ChevronDown, X } from "lucide-react"
+import { ChevronDown, X } from "lucide-react"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -292,16 +292,13 @@ function AddCommitmentModalMounted({ onOpenChange }: MountedProps) {
                 <Label htmlFor="commitment-due" className="text-xs font-medium text-slate-600">
                   Due Date
                 </Label>
-                <div className="relative">
-                  <Input
-                    id="commitment-due"
-                    type="date"
-                    value={form.dueDate}
-                    onChange={(e) => setForm((f) => ({ ...f, dueDate: e.target.value }))}
-                    className={cn(fieldClass, "pr-10 scheme-light")}
-                  />
-                  <CalendarDays className="pointer-events-none absolute right-2.5 top-1/2 size-4 -translate-y-1/2 text-slate-400" />
-                </div>
+                <Input
+                  id="commitment-due"
+                  type="date"
+                  value={form.dueDate}
+                  onChange={(e) => setForm((f) => ({ ...f, dueDate: e.target.value }))}
+                  className={cn(fieldClass, "scheme-light")}
+                />
               </div>
 
               <div className="space-y-1.5">

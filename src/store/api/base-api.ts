@@ -5,7 +5,7 @@ import type {
   FetchArgs,
   FetchBaseQueryError,
 } from "@reduxjs/toolkit/query"
-import { ACCOUNT_PATHS } from "@/api/account-paths"
+import { ACCOUNT_PATHS, accountAdjustmentsPath } from "@/api/account-paths"
 import { TRANSACTION_PATHS } from "@/api/transaction-paths"
 import { AUTH_PATHS } from "@/api/auth-paths"
 import { PEOPLE_PATHS } from "@/api/people-paths"
@@ -30,6 +30,13 @@ import {
   type ProfileUser,
   type UpdateProfileRequest,
 } from "@/lib/api/profile-schemas"
+import {
+  buildAccountBalanceAdjustmentPostBody,
+  createAccountBalanceAdjustmentRequestSchema,
+  parseCreateAccountBalanceAdjustmentSuccess,
+  type AccountBalanceAdjustment,
+  type CreateAccountBalanceAdjustmentRequest,
+} from "@/lib/api/account-adjustment-schemas"
 import {
   buildCreateAccountPostBody,
   parseCreateAccountSuccess,
@@ -549,6 +556,52 @@ export const baseApi = createApi({
         { type: "People", id: "LIST" },
         { type: "UdharSummary" },
         { type: "PersonLedger" },
+        { type: "Dashboard", id: "HOME" },
+      ],
+    }),
+
+    createAccountBalanceAdjustment: build.mutation<
+      { message?: string; adjustment?: AccountBalanceAdjustment },
+      { accountId: string; body: CreateAccountBalanceAdjustmentRequest }
+    >({
+      async queryFn({ accountId, body }, _api, _extraOptions, baseQuery) {
+        const id = accountId.trim()
+        if (!id) {
+          return { error: { status: 422, data: "Account id is required" } }
+        }
+        const validated = createAccountBalanceAdjustmentRequestSchema.safeParse(body)
+        if (!validated.success) {
+          const first = validated.error.flatten().formErrors[0]
+          return { error: { status: 422, data: first ?? "Invalid adjustment data" } }
+        }
+        const postBody = buildAccountBalanceAdjustmentPostBody(validated.data)
+        const res = await baseQuery({
+          url: accountAdjustmentsPath(id),
+          method: "POST",
+          body: postBody,
+        })
+        if (res.error) {
+          return { error: normalizeFetchError(res.error) }
+        }
+        const failMsg = parseApiFailureMessage(res.data)
+        if (failMsg) {
+          return { error: { status: 400, data: failMsg } }
+        }
+        const parsed = parseCreateAccountBalanceAdjustmentSuccess(res.data)
+        if (!parsed.ok) {
+          return { error: { status: 422, data: parsed.error } }
+        }
+        return {
+          data: {
+            ...(parsed.message ? { message: parsed.message } : {}),
+            ...(parsed.adjustment ? { adjustment: parsed.adjustment } : {}),
+          },
+        }
+      },
+      invalidatesTags: [
+        { type: "Account", id: "LIST" },
+        { type: "Transaction", id: "LIST" },
+        { type: "Transaction", id: "RECENT" },
         { type: "Dashboard", id: "HOME" },
       ],
     }),
@@ -1189,6 +1242,7 @@ export const {
   useCreateAccountMutation,
   useUpdateAccountMutation,
   useDeleteAccountMutation,
+  useCreateAccountBalanceAdjustmentMutation,
   useDeletePersonMutation,
   useGetPeopleQuery,
   useGetUdharAccountBalancesQuery,

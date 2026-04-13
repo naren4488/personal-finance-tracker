@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useId, useState } from "react"
 import { useNavigate } from "react-router-dom"
-import { CalendarDays, ChevronDown, X } from "lucide-react"
+import { ChevronDown, X } from "lucide-react"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -317,20 +317,13 @@ function AddCardSpendSheetInner({
               <Label htmlFor={dateId} className={lb}>
                 Date
               </Label>
-              <div className="relative">
-                <Input
-                  id={dateId}
-                  type="date"
-                  value={date}
-                  onChange={(e) => setDate(e.target.value)}
-                  className={cn(fieldBase, "pr-10")}
-                />
-                <CalendarDays
-                  className="pointer-events-none absolute right-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground"
-                  strokeWidth={2}
-                  aria-hidden
-                />
-              </div>
+              <Input
+                id={dateId}
+                type="date"
+                value={date}
+                onChange={(e) => setDate(e.target.value)}
+                className={fieldBase}
+              />
             </section>
 
             <section>

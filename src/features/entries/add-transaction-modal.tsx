@@ -1,6 +1,6 @@
 import { useEffect, useId, useMemo, useState } from "react"
 import { useNavigate } from "react-router-dom"
-import { CalendarDays, ChevronDown, CreditCard, Gem, Landmark, Tag, X } from "lucide-react"
+import { ChevronDown, CreditCard, Gem, Landmark, Tag, X } from "lucide-react"
 import { toast } from "sonner"
 import { ToggleTile } from "@/components/toggle-tile"
 import { Button } from "@/components/ui/button"
@@ -1133,19 +1133,13 @@ function AddTransactionModalMounted({
                         >
                           Date
                         </Label>
-                        <div className="relative">
-                          <Input
-                            id="at-date-transfer"
-                            type="date"
-                            value={date}
-                            onChange={(e) => setDate(e.target.value)}
-                            className="h-8 rounded-xl border-border bg-card px-2.5 pr-8 text-xs shadow-sm scheme-light dark:scheme-dark sm:h-9 sm:px-3 sm:pr-9 sm:text-sm"
-                          />
-                          <CalendarDays
-                            className="pointer-events-none absolute right-2 top-1/2 size-4 -translate-y-1/2 text-muted-foreground"
-                            aria-hidden
-                          />
-                        </div>
+                        <Input
+                          id="at-date-transfer"
+                          type="date"
+                          value={date}
+                          onChange={(e) => setDate(e.target.value)}
+                          className="h-8 rounded-xl border-border bg-card px-2.5 text-xs shadow-sm scheme-light dark:scheme-dark sm:h-9 sm:px-3 sm:text-sm"
+                        />
                       </section>
                       <section>
                         <Label
@@ -1246,19 +1240,13 @@ function AddTransactionModalMounted({
                         >
                           Date
                         </Label>
-                        <div className="relative">
-                          <Input
-                            id="at-date"
-                            type="date"
-                            value={date}
-                            onChange={(e) => setDate(e.target.value)}
-                            className="h-8 rounded-xl border-border bg-card px-2.5 pr-8 text-xs shadow-sm scheme-light dark:scheme-dark sm:h-9 sm:px-3 sm:pr-9 sm:text-sm"
-                          />
-                          <CalendarDays
-                            className="pointer-events-none absolute right-2 top-1/2 size-4 -translate-y-1/2 text-muted-foreground"
-                            aria-hidden
-                          />
-                        </div>
+                        <Input
+                          id="at-date"
+                          type="date"
+                          value={date}
+                          onChange={(e) => setDate(e.target.value)}
+                          className="h-8 rounded-xl border-border bg-card px-2.5 text-xs shadow-sm scheme-light dark:scheme-dark sm:h-9 sm:px-3 sm:text-sm"
+                        />
                       </section>
                     </div>
 

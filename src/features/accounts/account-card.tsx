@@ -35,11 +35,13 @@ export type AccountCardProps = {
   onOpen: () => void
   /** Opens account detail with name field focused for editing. */
   onEdit: () => void
+  /** Reconcile balance with bank (POST /accounts/:id/adjustments). */
+  onAdjust: () => void
   /** When set, Delete opens confirmation in parent (do not delete inline). */
   onDelete?: () => void
 }
 
-export function AccountCard({ account, onOpen, onEdit, onDelete }: AccountCardProps) {
+export function AccountCard({ account, onOpen, onEdit, onAdjust, onDelete }: AccountCardProps) {
   const name = account.name?.trim() || "Account"
   const typeLabel = accountTypeDisplayLabel(account)
   const balance = accountAvailableBalanceInrFromApi(account)
@@ -99,7 +101,7 @@ export function AccountCard({ account, onOpen, onEdit, onDelete }: AccountCardPr
           className={cn(pillBase, "bg-muted text-foreground")}
           onClick={(e) => {
             e.stopPropagation()
-            comingSoon("Adjust balance")
+            onAdjust()
           }}
         >
           Adjust

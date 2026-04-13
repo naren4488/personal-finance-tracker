@@ -118,15 +118,13 @@ export function LoanEmiFormFields({
           <Label htmlFor="emi-start" className={labelClass}>
             Start Date
           </Label>
-          <div className="relative">
-            <Input
-              id="emi-start"
-              type="date"
-              value={value.startDate}
-              onChange={(e) => onChange({ startDate: e.target.value })}
-              className={cn(fieldBase, "pr-9")}
-            />
-          </div>
+          <Input
+            id="emi-start"
+            type="date"
+            value={value.startDate}
+            onChange={(e) => onChange({ startDate: e.target.value })}
+            className={fieldBase}
+          />
         </section>
         <section>
           <Label htmlFor="emi-due-day" className={labelClass}>

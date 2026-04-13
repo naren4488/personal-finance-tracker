@@ -12,6 +12,7 @@ import { AddCardSpendSheet } from "@/features/accounts/add-card-spend-sheet"
 import { AddCreditCardSheet } from "@/features/accounts/add-credit-card-sheet"
 import { AddLoanSheet } from "@/features/accounts/add-loan-sheet"
 import { AddUdharEntrySheet } from "@/features/accounts/add-udhar-entry-sheet"
+import { AdjustBalanceSheet } from "@/features/accounts/adjust-balance-sheet"
 import { AccountCard, AccountCardSkeleton } from "@/features/accounts/account-card"
 import { AccountDetailView } from "@/features/accounts/account-detail-view"
 import {
@@ -106,6 +107,7 @@ export default function AccountsPage() {
   const [accountDetailStartInEdit, setAccountDetailStartInEdit] = useState(false)
   const [accountDetailOpenNonce, setAccountDetailOpenNonce] = useState(0)
   const [pendingListDeleteAccount, setPendingListDeleteAccount] = useState<Account | null>(null)
+  const [adjustBalanceAccount, setAdjustBalanceAccount] = useState<Account | null>(null)
   const [pendingDeletePerson, setPendingDeletePerson] = useState<Person | null>(null)
   const [isConfirmingPersonDelete, setIsConfirmingPersonDelete] = useState(false)
   const [deleteAccount, { isLoading: isDeletingFromList }] = useDeleteAccountMutation()
@@ -336,6 +338,10 @@ export default function AccountsPage() {
     () => resolveAccountFromCache(selectedAccount),
     [resolveAccountFromCache, selectedAccount]
   )
+  const resolvedAdjustBalanceAccount = useMemo(
+    () => resolveAccountFromCache(adjustBalanceAccount),
+    [resolveAccountFromCache, adjustBalanceAccount]
+  )
   const resolvedSelectedCreditCard = useMemo(
     () => resolveAccountFromCache(selectedCreditCard),
     [resolveAccountFromCache, selectedCreditCard]
@@ -424,6 +430,13 @@ export default function AccountsPage() {
         isDeleting={txDelete.isDeleting}
         onConfirm={txDelete.confirmDelete}
       />
+      <AdjustBalanceSheet
+        open={!!adjustBalanceAccount}
+        onOpenChange={(v) => {
+          if (!v) setAdjustBalanceAccount(null)
+        }}
+        account={resolvedAdjustBalanceAccount}
+      />
       <AddAccountSheet open={addAccountOpen} onOpenChange={setAddAccountOpen} />
       <AddUdharEntrySheet open={udharOpen} onOpenChange={setUdharOpen} />
       <AddLoanSheet open={loanOpen} onOpenChange={setLoanOpen} />
@@ -506,6 +519,9 @@ export default function AccountsPage() {
           account={resolvedSelectedAccount}
           onAccountUpdated={(a) => setSelectedAccount(a)}
           initialEditing={accountDetailStartInEdit}
+          onAdjustBalance={() => {
+            if (resolvedSelectedAccount) setAdjustBalanceAccount(resolvedSelectedAccount)
+          }}
           onAccountDeleted={() => {
             setSelectedAccount(null)
             setAccountDetailStartInEdit(false)
@@ -866,6 +882,7 @@ export default function AccountsPage() {
                           setAccountDetailOpenNonce((n) => n + 1)
                           setSelectedAccount(a)
                         }}
+                        onAdjust={() => setAdjustBalanceAccount(a)}
                         onDelete={() => setPendingListDeleteAccount(a)}
                       />
                     </li>

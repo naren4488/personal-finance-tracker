@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react"
 import { useNavigate } from "react-router-dom"
-import { Archive, ArrowLeft, Banknote, Check, Pencil, Trash2, X } from "lucide-react"
+import { Archive, ArrowLeft, Banknote, Check, Pencil, Scale, Trash2, X } from "lucide-react"
 import { toast } from "sonner"
 import { ConfirmDeleteDialog } from "@/components/confirm-delete-dialog"
 import { Button } from "@/components/ui/button"
@@ -81,6 +81,7 @@ export function AccountDetailView({
   onAccountUpdated,
   initialEditing = false,
   onAccountDeleted,
+  onAdjustBalance,
 }: {
   open: boolean
   onOpenChange: (open: boolean) => void
@@ -90,6 +91,8 @@ export function AccountDetailView({
   initialEditing?: boolean
   /** Called after successful DELETE /accounts/:id so parent can clear selection. */
   onAccountDeleted?: () => void
+  /** Opens adjust-balance sheet (POST /accounts/:id/adjustments). */
+  onAdjustBalance?: () => void
 }) {
   const navigate = useNavigate()
   const user = useAppSelector((s) => s.auth.user)
@@ -410,6 +413,18 @@ export function AccountDetailView({
               >
                 Add Transaction
               </Button>
+
+              {onAdjustBalance ? (
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="mt-3 h-11 w-full rounded-xl border-border font-semibold"
+                  onClick={onAdjustBalance}
+                >
+                  <Scale className="mr-2 size-4 shrink-0" strokeWidth={2} aria-hidden />
+                  Adjust balance
+                </Button>
+              ) : null}
 
               <div className="mt-3 grid grid-cols-2 gap-2">
                 <Button
