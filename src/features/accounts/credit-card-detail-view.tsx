@@ -568,7 +568,7 @@ export function CreditCardDetailView({
                     </div>
                   </div>
                 </div>
-                <div className="mt-4 flex gap-2">
+                <div className="mt-4 flex flex-wrap items-center justify-center gap-2">
                   <Button
                     type="button"
                     className="h-11 min-h-11 min-w-0 flex-3 rounded-xl bg-primary text-sm font-bold text-primary-foreground hover:bg-primary/90 sm:text-base"

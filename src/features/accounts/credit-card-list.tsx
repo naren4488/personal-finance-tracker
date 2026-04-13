@@ -72,7 +72,7 @@ function CreditCardTileEntries({
         className="w-full bg-primary px-3 py-3 text-left text-primary-foreground transition-colors hover:bg-primary/95 sm:px-4 sm:py-3.5"
         onClick={onOpenDetail}
       >
-        <div className="flex items-start justify-between gap-2">
+        <div className="flex items-center justify-between gap-2">
           <div className="min-w-0 flex-1">
             <p className="truncate text-base font-bold sm:text-lg">{model.name}</p>
             {model.bankName ? (
@@ -118,7 +118,7 @@ function CreditCardTileEntries({
           />
         </div>
 
-        <div className="grid grid-cols-2 gap-2 pt-1">
+        <div className="grid w-full grid-cols-2 gap-2 pt-1">
           <Button
             type="button"
             variant="outline"

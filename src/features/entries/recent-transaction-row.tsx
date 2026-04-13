@@ -5,6 +5,7 @@ import { buildRecentTxSubtitleLine } from "@/features/entries/transaction-list-u
 import type { Account } from "@/lib/api/account-schemas"
 import { formatCurrency, formatDate } from "@/lib/format"
 import { parseSignedAmountString, type RecentTransaction } from "@/lib/api/transaction-schemas"
+import { ACTION_GROUP_ROW } from "@/lib/ui/action-group-classes"
 import { cn } from "@/lib/utils"
 
 function formatSignedInrDisplay(signedAmount: string): string {
@@ -39,7 +40,7 @@ export const RecentTransactionRow = memo(function RecentTransactionRow({
   const showDelete = Boolean(onDelete && String(tx.id ?? "").trim())
 
   return (
-    <div className="flex items-start justify-between gap-3 rounded-2xl border border-border/80 bg-card px-4 py-3.5 shadow-sm">
+    <div className="flex items-center justify-between gap-3 rounded-2xl border border-border/80 bg-card px-4 py-3.5 shadow-sm">
       <div className="min-w-0 flex-1">
         <p className="truncate text-[15px] font-bold leading-tight text-[#111827] dark:text-foreground">
           {tx.title}
@@ -48,7 +49,7 @@ export const RecentTransactionRow = memo(function RecentTransactionRow({
           {secondary}
         </p>
       </div>
-      <div className="flex shrink-0 items-center gap-2">
+      <div className={cn(ACTION_GROUP_ROW, "shrink-0")}>
         {showDelete ? <TransactionEntryDeleteButton onClick={() => onDelete?.(tx)} /> : null}
         <span
           className={cn(

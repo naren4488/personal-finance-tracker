@@ -157,7 +157,8 @@ export type PersonUdharListSummary = {
 }
 
 /**
- * List + detail copy from batch/ledger totals — net = totalLent − totalBorrowed (same as ledger modal).
+ * List + detail copy from ledger totals. `totalLent` / `totalBorrowed` are receivable vs payable
+ * magnitudes from summed positive vs negative `signedAmount` values; `net === totalLent − totalBorrowed`.
  */
 export function getPersonUdharListSummaryFromTotals(
   totalLent: number,
@@ -175,8 +176,8 @@ export function getPersonUdharListSummaryFromTotals(
       netBalanceFormatted: amtStr,
       amount: net,
       amountFormatted: amtStr,
-      amountChipLabel: `You lent ${amtStr}`,
-      directionLabel: "You lent — you will get this back",
+      amountChipLabel: `Receivable ${amtStr}`,
+      directionLabel: "Receivable — positive signed amounts",
       summary: `You will get ${amtStr} from this person.`,
       badgeClassName: "bg-emerald-500/15 text-emerald-700 dark:text-emerald-400",
       amountTextClassName: "text-emerald-600 dark:text-emerald-400",
@@ -190,8 +191,8 @@ export function getPersonUdharListSummaryFromTotals(
       netBalanceFormatted: amtStr,
       amount: absAmount,
       amountFormatted: amtStr,
-      amountChipLabel: `You borrow ${amtStr}`,
-      directionLabel: "You borrow — repay when due",
+      amountChipLabel: `Payable ${amtStr}`,
+      directionLabel: "Payable — negative signed amounts",
       summary: `You owe ${amtStr} to this person.`,
       badgeClassName: "bg-red-500/15 text-red-700 dark:text-red-400",
       amountTextClassName: "text-red-600 dark:text-red-400",

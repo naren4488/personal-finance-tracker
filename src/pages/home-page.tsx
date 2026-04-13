@@ -404,7 +404,7 @@ function HorizonSection({
         isPay ? "border-destructive/20 bg-white" : "border-emerald-200/60 bg-white"
       )}
     >
-      <CardHeader className="flex flex-row items-start justify-between gap-2 space-y-0 pb-2">
+      <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0 pb-2">
         <CardTitle
           className={cn("text-sm font-bold", isPay ? "text-destructive" : "text-emerald-700")}
         >
@@ -415,7 +415,7 @@ function HorizonSection({
         </span>
       </CardHeader>
       <CardContent className="space-y-3 pt-0">
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="flex flex-wrap items-center justify-center gap-2">
           {DAY_PRESETS.map((p) => (
             <button
               key={p.days}
@@ -456,7 +456,7 @@ function HorizonSection({
             {items.map((it) => (
               <li
                 key={it.id}
-                className="flex items-start justify-between gap-2 rounded-xl border border-border/50 bg-muted/20 px-3 py-2"
+                className="flex items-center justify-between gap-2 rounded-xl border border-border/50 bg-muted/20 px-3 py-2"
               >
                 <div className="min-w-0">
                   <p className="truncate text-xs font-semibold">{it.title}</p>

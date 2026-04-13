@@ -28,15 +28,18 @@ import { getErrorMessage } from "@/lib/api/errors"
 import type { TransactionType } from "@/lib/api/schemas"
 import type { RecentTransactionsQueryArg } from "@/store/api/base-api"
 import {
-  inferUdharPersonName,
   isUdharRecentTransaction,
   parseSignedAmountString,
+  resolveUdharPersonDisplayName,
   type RecentTransaction,
-  udharDirectionLabel,
 } from "@/lib/api/transaction-schemas"
 import { formatCurrency } from "@/lib/format"
 import { cn } from "@/lib/utils"
-import { useGetAccountsQuery, useGetRecentTransactionsQuery } from "@/store/api/base-api"
+import {
+  useGetAccountsQuery,
+  useGetCommitmentsQuery,
+  useGetRecentTransactionsQuery,
+} from "@/store/api/base-api"
 import { useAppSelector } from "@/store/hooks"
 import {
   ENTRIES_ADD_SEARCH_PARAM,
@@ -72,7 +75,7 @@ const DAY_WINDOW_CHIPS: { days: number; label: string }[] = [
 ]
 
 /** Fixed list size for GET /transactions/recent (limit control removed from UI). */
-const ENTRIES_RECENT_DEFAULT_LIMIT = 500
+const ENTRIES_RECENT_DEFAULT_LIMIT = 200
 
 /** "All" range: `fromDate` fixed far past, `toDate` = today — still valid YYYY-MM-DD pair for API. */
 const ALL_DAYS_FROM = "2000-01-01"
@@ -207,6 +210,10 @@ export default function EntriesPage() {
     error: accountsError,
   } = useGetAccountsQuery(undefined, { skip: !user })
 
+  const { data: commitments = [] } = useGetCommitmentsQuery(undefined, {
+    skip: !user,
+  })
+
   useEffect(() => {
     if (!isError || !error) return
     const msg = getErrorMessage(error)
@@ -308,9 +315,11 @@ export default function EntriesPage() {
 
   const selectedUdharPersonEntries = useMemo(() => {
     if (!selectedUdharTx) return []
-    const selectedName = inferUdharPersonName(selectedUdharTx).toLowerCase()
-    return udharTransactions.filter((tx) => inferUdharPersonName(tx).toLowerCase() === selectedName)
-  }, [selectedUdharTx, udharTransactions])
+    const selectedName = resolveUdharPersonDisplayName(selectedUdharTx, commitments).toLowerCase()
+    return udharTransactions.filter(
+      (tx) => resolveUdharPersonDisplayName(tx, commitments).toLowerCase() === selectedName
+    )
+  }, [selectedUdharTx, udharTransactions, commitments])
 
   const sortedServerList = useMemo(
     () => [...recentTransactions].sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0)),
@@ -402,7 +411,9 @@ export default function EntriesPage() {
         onOpenChange={(v) => {
           if (!v) setSelectedUdharTx(null)
         }}
-        personName={selectedUdharTx ? inferUdharPersonName(selectedUdharTx) : ""}
+        personName={
+          selectedUdharTx ? resolveUdharPersonDisplayName(selectedUdharTx, commitments) : ""
+        }
         entries={selectedUdharPersonEntries}
         onDeleteEntry={txDelete.requestDelete}
       />
@@ -731,9 +742,9 @@ export default function EntriesPage() {
             {displayList.map((tx) => (
               <li key={tx.id}>
                 <UdharEntryRow
-                  personName={inferUdharPersonName(tx)}
-                  amountInr={Math.abs(parseSignedAmountString(tx.signedAmount))}
-                  direction={udharDirectionLabel(tx)}
+                  date={tx.date}
+                  personName={resolveUdharPersonDisplayName(tx, commitments)}
+                  signedAmountInr={parseSignedAmountString(tx.signedAmount)}
                   onClick={() => setSelectedUdharTx(tx)}
                   onDelete={() => txDelete.requestDelete(tx)}
                 />

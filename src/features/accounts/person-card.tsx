@@ -8,6 +8,7 @@ import {
   type PersonUdharListSummary,
 } from "@/lib/api/people-schemas"
 import { transactionEntryDeleteChipClass } from "@/features/entries/transaction-entry-delete-button"
+import { ACTION_GROUP_ROW } from "@/lib/ui/action-group-classes"
 import { cn } from "@/lib/utils"
 
 const chipActive =
@@ -67,7 +68,7 @@ export function PersonCard({
   return (
     <div
       className={cn(
-        "flex w-full items-start justify-between gap-3 rounded-xl border border-[#E5E7EB] bg-card px-4 py-3 shadow-sm",
+        "flex w-full items-center justify-between gap-3 rounded-xl border border-[#E5E7EB] bg-card px-4 py-3 shadow-sm",
         "dark:border-border"
       )}
     >
@@ -88,7 +89,7 @@ export function PersonCard({
       </button>
 
       <div
-        className="flex shrink-0 flex-wrap items-center justify-end gap-2"
+        className={cn(ACTION_GROUP_ROW, "shrink-0")}
         onClick={(e) => e.stopPropagation()}
         role="presentation"
       >

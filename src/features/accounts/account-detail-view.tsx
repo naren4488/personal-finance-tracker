@@ -26,6 +26,7 @@ import {
   useUpdateAccountMutation,
 } from "@/store/api/base-api"
 import { useAppSelector } from "@/store/hooks"
+import { ACTION_GROUP_ROW } from "@/lib/ui/action-group-classes"
 import { cn } from "@/lib/utils"
 
 function comingSoon(label: string) {
@@ -299,7 +300,7 @@ export function AccountDetailView({
             <div className="overflow-hidden rounded-2xl bg-primary text-primary-foreground shadow-md">
               <div className="px-4 pb-5 pt-4 sm:px-5 sm:pb-6 sm:pt-5">
                 {!isEditing ? (
-                  <div className="flex items-start justify-between gap-3">
+                  <div className="flex items-center justify-between gap-3">
                     <div className="min-w-0 flex-1">
                       <p
                         id="account-detail-name"
@@ -308,7 +309,7 @@ export function AccountDetailView({
                         {workingName}
                       </p>
                     </div>
-                    <div className="flex shrink-0 items-center gap-1">
+                    <div className="flex shrink-0 items-center justify-center gap-1">
                       <Button
                         type="button"
                         variant="ghost"
@@ -325,7 +326,7 @@ export function AccountDetailView({
                     </div>
                   </div>
                 ) : (
-                  <div className="flex flex-wrap items-center gap-2">
+                  <div className={cn(ACTION_GROUP_ROW)}>
                     <Input
                       id="account-detail-name"
                       value={draftName}

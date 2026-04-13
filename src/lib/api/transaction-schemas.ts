@@ -1,4 +1,5 @@
 import { z } from "zod"
+import type { Commitment } from "./commitment-schemas"
 import type { Account } from "@/lib/api/account-schemas"
 import { accountSelectLabel } from "@/lib/api/account-schemas"
 import type { CreateTransactionPayload, Transaction } from "@/lib/api/schemas"
@@ -330,6 +331,17 @@ export function buildTransactionPostBody(body: CreateTransactionPayload): Create
 
 const recentTransactionDirectionSchema = z.enum(["debit", "credit"])
 
+/** Backend sometimes sends `title` as a kind slug (e.g. `person_borrow`) instead of a display name. */
+export function isTransactionKindSlugTitle(value: string): boolean {
+  const t = value.trim().toLowerCase()
+  if (!t) return false
+  if (t === "transaction") return false
+  if (/^person_[a-z0-9_]+$/.test(t)) return true
+  if (t === "udhar" || t === "borrow" || t === "lent" || t === "payable" || t === "receivable")
+    return true
+  return false
+}
+
 /** GET /transactions/recent — each row in `data.transactions` */
 export const recentTransactionItemSchema = z
   .object({
@@ -345,6 +357,14 @@ export const recentTransactionItemSchema = z
     sourceName: z.string().optional(),
     accountId: z.string().optional(),
     toAccountId: z.string().optional(),
+    /** Links Udhar tx row to people / commitments on the backend. */
+    personId: z.string().optional(),
+    commitmentId: z.string().optional(),
+    /** Human person label when `title` is a kind slug (`person_borrow`, etc.). */
+    personName: z.string().optional(),
+    /** Counterparty label for person transfers (preferred over `title` for Udhar UI). */
+    destinationName: z.string().optional(),
+    destinationType: z.string().optional(),
   })
   .passthrough()
 
@@ -427,6 +447,40 @@ function normalizeRecentTitle(rec: Record<string, unknown>): string {
   return "Transaction"
 }
 
+const PERSON_NAME_KEYS = [
+  "personName",
+  "person_name",
+  "borrowerName",
+  "lenderName",
+  "counterpartyName",
+  "contactName",
+] as const
+
+function firstStringFromRecord(
+  rec: Record<string, unknown>,
+  keys: readonly string[]
+): string | undefined {
+  for (const k of keys) {
+    const v = rec[k]
+    if (typeof v === "string" && v.trim()) return v.trim()
+  }
+  return undefined
+}
+
+/** Prefer a human name when the primary title is a backend kind slug. */
+function pickDisplayTitleForRecentRow(rec: Record<string, unknown>): string {
+  const dest =
+    typeof rec.destinationName === "string" && rec.destinationName.trim()
+      ? rec.destinationName.trim()
+      : ""
+  if (dest) return dest
+  const primary = normalizeRecentTitle(rec)
+  if (!isTransactionKindSlugTitle(primary)) return primary
+  const fromPerson = firstStringFromRecord(rec, PERSON_NAME_KEYS)
+  if (fromPerson) return fromPerson
+  return primary
+}
+
 function normalizeRecentDate(rec: Record<string, unknown>): string | null {
   const d = rec.date
   if (typeof d === "string" && d.trim()) {
@@ -449,7 +503,7 @@ function normalizeRawToRecentTransaction(rec: Record<string, unknown>): RecentTr
   if (!date) return null
 
   const id = rec.id !== undefined && rec.id !== null ? String(rec.id).trim() : crypto.randomUUID()
-  const title = normalizeRecentTitle(rec)
+  const title = pickDisplayTitleForRecentRow(rec)
   const subtitle =
     typeof rec.subtitle === "string"
       ? rec.subtitle
@@ -483,6 +537,16 @@ function normalizeRawToRecentTransaction(rec: Record<string, unknown>): RecentTr
       ? rec.toAccountId.trim()
       : undefined
 
+  const personId = firstStringFromRecord(rec, ["personId", "person_id"])
+  const commitmentId = firstStringFromRecord(rec, ["commitmentId", "commitment_id"])
+  const personName = firstStringFromRecord(rec, PERSON_NAME_KEYS)
+  const destinationName = firstStringFromRecord(rec, [
+    "destinationName",
+    "destination_name",
+    "counterpartyName",
+  ])
+  const destinationType = firstStringFromRecord(rec, ["destinationType", "destination_type"])
+
   return {
     id,
     title,
@@ -496,6 +560,11 @@ function normalizeRawToRecentTransaction(rec: Record<string, unknown>): RecentTr
     sourceName,
     accountId,
     toAccountId,
+    ...(personId ? { personId } : {}),
+    ...(commitmentId ? { commitmentId } : {}),
+    ...(personName ? { personName } : {}),
+    ...(destinationName ? { destinationName } : {}),
+    ...(destinationType ? { destinationType } : {}),
   } as RecentTransaction
 }
 
@@ -553,18 +622,56 @@ export function parseSignedAmountString(s: string): number {
   return Number.isFinite(n) ? n : 0
 }
 
-/** Heuristic Udhar detection from recent row text until backend adds explicit tags. */
+/** Person id from normalized or raw recent-tx payloads (camelCase or snake_case). */
+function recentRowPersonId(rec: Record<string, unknown>): string {
+  const a = rec.personId
+  const b = rec.person_id
+  if (typeof a === "string" && a.trim()) return a.trim()
+  if (typeof b === "string" && b.trim()) return b.trim()
+  return ""
+}
+
+/**
+ * Udhar row on GET /transactions/recent — prefer backend tags (`destinationType`, `person_*` title).
+ * After normalization, `title` may become a person name only; keep checking `destinationType` / `personId`.
+ */
 export function isUdharRecentTransaction(tx: RecentTransaction): boolean {
-  const hay = `${tx.title} ${tx.subtitle} ${tx.sourceName ?? ""}`.toLowerCase()
-  return (
+  const rec = tx as unknown as Record<string, unknown>
+
+  const destType = String(rec.destinationType ?? rec.destination_type ?? "").toLowerCase()
+  if (destType.includes("person")) return true
+
+  const kind = String(rec.kind ?? "").toLowerCase()
+  if (kind.startsWith("person_") || (kind.includes("person") && kind.includes("udhar"))) return true
+
+  const rawTitle = String(rec.title ?? "")
+    .trim()
+    .toLowerCase()
+  if (/^person_[a-z0-9_]+$/.test(rawTitle)) return true
+
+  const displayTitle = tx.title.trim().toLowerCase()
+  if (/^person_[a-z0-9_]+$/.test(displayTitle)) return true
+
+  const hay = `${tx.title} ${tx.subtitle} ${tx.sourceName ?? ""} ${rec.note ?? ""}`.toLowerCase()
+  if (
     hay.includes("udhar") ||
+    hay.includes("person lend") ||
+    hay.includes("person borrow") ||
     hay.includes("borrow") ||
     hay.includes("lent") ||
     hay.includes("money given") ||
     hay.includes("money taken") ||
     hay.includes("payment received") ||
     hay.includes("payment made")
-  )
+  ) {
+    return true
+  }
+
+  // Udhar API rows (`payment_received`, `money_taken`, etc.) often carry `personId` without
+  // `personName` / `destinationName`, and may be `income` / `expense` — not only `transfer`.
+  if (recentRowPersonId(rec)) return true
+
+  return false
 }
 
 export function udharDirectionLabel(tx: RecentTransaction): "given" | "taken" {
@@ -576,21 +683,73 @@ export function udharDirectionLabel(tx: RecentTransaction): "given" | "taken" {
 }
 
 export function inferUdharPersonKey(tx: RecentTransaction): string {
-  const sub = tx.subtitle.trim()
-  if (sub) return sub.toLowerCase()
-  const title = tx.title.trim()
-  if (title) return title.toLowerCase()
+  const name = inferUdharPersonName(tx)
+  if (name !== "Unknown") return name.toLowerCase()
   return tx.id
 }
 
+/**
+ * Person label for Udhar UI. Prefer `destinationName`, then `personName`, then human `title` (skip
+ * kind slugs like `person_lend`); `subtitle` is often account/bank label — use only if not a slug.
+ */
 export function inferUdharPersonName(tx: RecentTransaction): string {
   const rec = tx as unknown as Record<string, unknown>
+  if (typeof rec.destinationName === "string" && rec.destinationName.trim()) {
+    return rec.destinationName.trim()
+  }
   if (typeof rec.personName === "string" && rec.personName.trim()) {
     return rec.personName.trim()
   }
-  if (tx.subtitle.trim()) return tx.subtitle.trim()
-  if (tx.title.trim()) return tx.title.trim()
+  const title = tx.title.trim()
+  if (title && title !== "Transaction" && !isTransactionKindSlugTitle(title)) {
+    return title
+  }
+  const sub = tx.subtitle.trim()
+  if (sub && !isTransactionKindSlugTitle(sub)) return sub
   return "Unknown"
+}
+
+/**
+ * Prefer `GET /commitments` rows (`kind: person_due`, `title` = person) when the recent tx row
+ * still shows the account — match by `personId`, `commitmentId`, or shared `id` with a commitment.
+ */
+export function resolveUdharPersonDisplayName(
+  tx: RecentTransaction,
+  commitments: readonly Commitment[] | undefined | null
+): string {
+  const rec = tx as unknown as Record<string, unknown>
+  if (typeof rec.destinationName === "string" && rec.destinationName.trim()) {
+    return rec.destinationName.trim()
+  }
+  if (typeof rec.personName === "string" && rec.personName.trim()) {
+    const n = rec.personName.trim()
+    if (!isTransactionKindSlugTitle(n)) return n
+  }
+
+  const list = commitments?.length ? commitments : null
+  if (!list?.length) return inferUdharPersonName(tx)
+
+  const txPersonId = typeof rec.personId === "string" ? rec.personId.trim() : ""
+  const txCommitmentId = typeof rec.commitmentId === "string" ? rec.commitmentId.trim() : ""
+  const txId = String(tx.id ?? "").trim()
+
+  const personCommitments = list.filter((c) => {
+    const k = String(c.kind ?? "").toLowerCase()
+    return k === "person_due" || k === "person_borrow" || k.startsWith("person_")
+  })
+
+  for (const c of personCommitments) {
+    const label = String(c.title ?? "").trim()
+    if (!label || isTransactionKindSlugTitle(label)) continue
+    const cid = String(c.id ?? "").trim()
+    const pid = c.personId ? String(c.personId).trim() : ""
+
+    if (txPersonId && pid && txPersonId === pid) return label
+    if (txCommitmentId && cid && txCommitmentId === cid) return label
+    if (txId && cid && txId === cid) return label
+  }
+
+  return inferUdharPersonName(tx)
 }
 
 function accountKindIsLoanOrCard(account: Account | undefined): boolean {

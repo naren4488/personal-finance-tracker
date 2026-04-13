@@ -4,6 +4,7 @@ import { Skeleton } from "@/components/ui/skeleton"
 import type { Account } from "@/lib/api/account-schemas"
 import { accountAvailableBalanceInrFromApi } from "@/lib/api/account-schemas"
 import { formatCurrency } from "@/lib/format"
+import { ACTION_GROUP_ROW } from "@/lib/ui/action-group-classes"
 import { cn } from "@/lib/utils"
 
 function avatarLetter(name: string): string {
@@ -76,7 +77,7 @@ export function AccountCard({ account, onOpen, onEdit, onDelete }: AccountCardPr
       </button>
 
       <div
-        className="flex flex-wrap gap-2 px-4 pb-4 pt-1 sm:px-5 sm:pb-5"
+        className={cn(ACTION_GROUP_ROW, "px-4 pb-4 pt-1 sm:px-5 sm:pb-5")}
         onClick={(e) => e.stopPropagation()}
         role="presentation"
       >
@@ -148,7 +149,7 @@ export function AccountCardSkeleton({ className }: { className?: string }) {
         </div>
       </div>
       <Skeleton className="mt-5 h-8 w-36 rounded-md" />
-      <div className="mt-4 flex flex-wrap gap-2">
+      <div className={cn("mt-4", ACTION_GROUP_ROW)}>
         <Skeleton className="h-7 w-14 rounded-full" />
         <Skeleton className="h-7 w-16 rounded-full" />
         <Skeleton className="h-7 w-16 rounded-full" />

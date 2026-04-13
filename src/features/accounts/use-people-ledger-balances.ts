@@ -26,6 +26,18 @@ function toBalanceRow(
 ) {
   const { totalLent, totalBorrowed, net } = aggregateUdharLedgerEntries(entries)
   const row: UdharAccountPersonBalance = { personId, totalLent, totalBorrowed, net }
+  if (import.meta.env.DEV) {
+    console.log("[People ledger balance]", personId, {
+      transactionCount: entries.length,
+      signedAmountSum: net,
+      receivableTotal: totalLent,
+      payableTotal: totalBorrowed,
+      sample: entries.slice(0, 5).map((t) => ({
+        id: t.id,
+        signedAmount: t.signedAmount,
+      })),
+    })
+  }
   return row
 }
 
