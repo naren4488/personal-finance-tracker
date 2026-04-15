@@ -22,13 +22,10 @@ const CARD_NETWORKS = [
   { value: "other", label: "Other" },
 ] as const
 
-function SelectChevron({ compact }: { compact?: boolean }) {
+function SelectChevron() {
   return (
     <ChevronDown
-      className={cn(
-        "pointer-events-none absolute top-1/2 -translate-y-1/2 text-muted-foreground",
-        compact ? "right-2 size-3.5" : "right-2.5 size-4"
-      )}
+      className="pointer-events-none absolute right-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground"
       aria-hidden
     />
   )
@@ -66,19 +63,6 @@ function AddCreditCardSheetMounted({ onOpenChange }: MountedProps) {
     onOpenChange(false)
   }, [onOpenChange])
 
-  function resetForm() {
-    setCardName("")
-    setBankName("")
-    setCardNetwork("")
-    setLast4("")
-    setCreditLimit("")
-    setOutstanding("")
-    setBillDay("1")
-    setDueDay("5")
-    setInterestRate("3.5")
-    setMinDuePercent("5")
-  }
-
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
       if (e.key === "Escape") dismiss()
@@ -94,40 +78,34 @@ function AddCreditCardSheetMounted({ onOpenChange }: MountedProps) {
     }
   }, [])
 
+  function resetForm() {
+    setCardName("")
+    setBankName("")
+    setCardNetwork("")
+    setLast4("")
+    setCreditLimit("")
+    setOutstanding("")
+    setBillDay("1")
+    setDueDay("5")
+    setInterestRate("3.5")
+    setMinDuePercent("5")
+  }
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     const name = cardName.trim()
-    if (!name) {
-      toast.error("Enter card name")
-      return
-    }
+    if (!name) return toast.error("Enter card name")
+
     const bank = bankName.trim()
-    if (!bank) {
-      toast.error("Enter bank name")
-      return
-    }
-    if (!cardNetwork) {
-      toast.error("Select card network")
-      return
-    }
+    if (!bank) return toast.error("Enter bank name")
+
+    if (!cardNetwork) return toast.error("Select card network")
+
     const l4 = last4.replace(/\D/g, "")
-    if (l4.length !== 4) {
-      toast.error("Enter last 4 digits")
-      return
-    }
+    if (l4.length !== 4) return toast.error("Enter last 4 digits")
+
     const limitDigits = creditLimit.replace(/\D/g, "")
-    if (!limitDigits || Number(limitDigits) <= 0) {
-      toast.error("Enter valid credit limit")
-      return
-    }
-    if (!billDay) {
-      toast.error("Select bill generation day")
-      return
-    }
-    if (!dueDay) {
-      toast.error("Select payment due day")
-      return
-    }
+    if (!limitDigits || Number(limitDigits) <= 0) return toast.error("Enter valid credit limit")
 
     const payload: CreateAccountRequest = {
       name,
@@ -160,12 +138,11 @@ function AddCreditCardSheetMounted({ onOpenChange }: MountedProps) {
     }
   }
 
-  const lb = "mb-0.5 block text-[10px] font-bold text-primary sm:text-xs"
+  // Matching reference Loan component styles
+  const labelClass = "mb-1.5 block text-xs font-semibold text-foreground/80"
 
-  const fieldBase = cn(
-    "w-full rounded-xl border border-border bg-muted/50 text-foreground shadow-sm outline-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/50",
-    "h-7 px-2 text-xs sm:h-8 sm:px-2.5 sm:text-sm"
-  )
+  const fieldBase =
+    "flex h-10 w-full rounded-xl border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-0 disabled:cursor-not-allowed disabled:opacity-50"
 
   return (
     <div className="fixed inset-0 z-50 flex min-h-0 max-h-dvh items-center justify-center overflow-hidden p-2 pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:p-4">
@@ -180,35 +157,30 @@ function AddCreditCardSheetMounted({ onOpenChange }: MountedProps) {
         aria-modal="true"
         aria-labelledby={titleId}
         className={cn(
-          "relative flex min-h-0 max-h-[min(calc(100dvh-1.25rem-env(safe-area-inset-bottom)),92dvh)] w-full max-w-xl flex-col overflow-hidden rounded-2xl border border-border bg-card shadow-2xl sm:max-h-[min(92dvh,calc(100dvh-2rem))]",
+          "relative flex mb-8 min-h-0 max-h-[min(calc(100dvh-1.25rem-env(safe-area-inset-bottom)),92dvh)] w-full max-w-lg flex-col overflow-hidden rounded-2xl border border-border bg-card shadow-2xl sm:max-h-[min(92dvh,calc(100dvh-2rem))]",
           "animate-in fade-in zoom-in-95 duration-200"
         )}
       >
-        <header className="flex shrink-0 items-start justify-between gap-2 border-b border-border px-3 py-2 sm:px-4 sm:py-2.5">
+        <header className="flex shrink-0 items-center justify-between gap-2 border-b border-border px-5 py-4">
           <h2 id={titleId} className="text-base font-bold text-primary sm:text-lg">
             Add Credit Card
           </h2>
           <Button
             type="button"
             variant="ghost"
-            size="icon-sm"
-            className="shrink-0 rounded-full text-muted-foreground hover:text-foreground"
+            size="icon"
+            className="h-8 w-8 shrink-0 rounded-full text-muted-foreground hover:bg-muted hover:text-foreground"
             aria-label="Close"
             onClick={dismiss}
           >
-            <X className="size-5" strokeWidth={2} />
+            <X className="size-4" strokeWidth={2.5} />
           </Button>
         </header>
 
         <form onSubmit={handleSubmit} className="flex min-h-0 flex-1 flex-col overflow-hidden">
-          <div
-            className={cn(
-              FORM_OVERLAY_SCROLL_BODY,
-              "space-y-1 px-3 py-1.5 sm:space-y-1.5 sm:px-4 sm:py-2"
-            )}
-          >
+          <div className={cn(FORM_OVERLAY_SCROLL_BODY, "space-y-4 px-5 py-5")}>
             <section>
-              <Label htmlFor="cc-name" className={lb}>
+              <Label htmlFor="cc-name" className={labelClass}>
                 Card Name
               </Label>
               <Input
@@ -216,13 +188,13 @@ function AddCreditCardSheetMounted({ onOpenChange }: MountedProps) {
                 value={cardName}
                 onChange={(e) => setCardName(e.target.value)}
                 placeholder="e.g. HDFC Regalia"
-                className={cn(fieldBase)}
+                className={fieldBase}
               />
             </section>
 
-            <div className="grid grid-cols-2 gap-1.5 sm:gap-2">
+            <div className="grid grid-cols-2 gap-4">
               <section>
-                <Label htmlFor="cc-bank" className={lb}>
+                <Label htmlFor="cc-bank" className={labelClass}>
                   Bank Name
                 </Label>
                 <Input
@@ -230,11 +202,11 @@ function AddCreditCardSheetMounted({ onOpenChange }: MountedProps) {
                   value={bankName}
                   onChange={(e) => setBankName(e.target.value)}
                   placeholder="e.g. HDFC"
-                  className={cn(fieldBase)}
+                  className={fieldBase}
                 />
               </section>
               <section>
-                <Label htmlFor={networkId} className={lb}>
+                <Label htmlFor={networkId} className={labelClass}>
                   Card Network
                 </Label>
                 <div className="relative">
@@ -242,11 +214,7 @@ function AddCreditCardSheetMounted({ onOpenChange }: MountedProps) {
                     id={networkId}
                     value={cardNetwork}
                     onChange={(e) => setCardNetwork(e.target.value)}
-                    className={cn(
-                      fieldBase,
-                      "appearance-none pr-7 sm:pr-9",
-                      !cardNetwork && "text-muted-foreground"
-                    )}
+                    className={cn(fieldBase, "appearance-none pr-9 border-primary")}
                   >
                     <option value="">Select</option>
                     {CARD_NETWORKS.map((n) => (
@@ -255,14 +223,14 @@ function AddCreditCardSheetMounted({ onOpenChange }: MountedProps) {
                       </option>
                     ))}
                   </select>
-                  <SelectChevron compact />
+                  <SelectChevron />
                 </div>
               </section>
             </div>
 
-            <div className="grid grid-cols-2 gap-1.5 sm:gap-2">
+            <div className="grid grid-cols-2 gap-4">
               <section>
-                <Label htmlFor="cc-last4" className={lb}>
+                <Label htmlFor="cc-last4" className={labelClass}>
                   Last 4 Digits
                 </Label>
                 <Input
@@ -270,13 +238,13 @@ function AddCreditCardSheetMounted({ onOpenChange }: MountedProps) {
                   inputMode="numeric"
                   maxLength={4}
                   value={last4}
-                  onChange={(e) => setLast4(e.target.value.replace(/\D/g, "").slice(0, 4))}
+                  onChange={(e) => setLast4(e.target.value.replace(/\D/g, ""))}
                   placeholder="1234"
-                  className={cn(fieldBase)}
+                  className={fieldBase}
                 />
               </section>
               <section>
-                <Label htmlFor="cc-limit" className={lb}>
+                <Label htmlFor="cc-limit" className={labelClass}>
                   Credit Limit (₹)
                 </Label>
                 <Input
@@ -285,39 +253,36 @@ function AddCreditCardSheetMounted({ onOpenChange }: MountedProps) {
                   placeholder="0"
                   value={creditLimit}
                   onChange={(e) => setCreditLimit(e.target.value.replace(/[^\d]/g, ""))}
-                  className={cn(fieldBase)}
+                  className={fieldBase}
                 />
               </section>
             </div>
 
             <section>
-              <Label htmlFor="cc-out" className={lb}>
+              <Label htmlFor="cc-out" className={labelClass}>
                 Current Outstanding (₹)
               </Label>
               <Input
                 id="cc-out"
                 inputMode="numeric"
-                placeholder="0 (if card already has usage)"
+                placeholder="0"
                 value={outstanding}
                 onChange={(e) => setOutstanding(e.target.value.replace(/[^\d]/g, ""))}
-                className={cn(fieldBase)}
+                className={fieldBase}
               />
-              <p className="mt-0.5 text-[9px] leading-tight text-muted-foreground sm:text-[10px]">
-                Enter existing unpaid amount if any. Leave 0 for new cards.
-              </p>
             </section>
 
-            <div className="grid grid-cols-2 gap-1.5 sm:gap-2">
+            <div className="grid grid-cols-2 gap-4">
               <section>
-                <Label htmlFor="cc-bill" className={lb}>
-                  Bill Generation Date
+                <Label htmlFor="cc-bill" className={labelClass}>
+                  Bill Generation Day
                 </Label>
                 <div className="relative">
                   <select
                     id="cc-bill"
                     value={billDay}
                     onChange={(e) => setBillDay(e.target.value)}
-                    className={cn(fieldBase, "appearance-none pr-7 sm:pr-9")}
+                    className={cn(fieldBase, "appearance-none pr-9")}
                   >
                     {BILLING_DAY_OPTIONS.map(({ value, label }) => (
                       <option key={value} value={value}>
@@ -325,22 +290,19 @@ function AddCreditCardSheetMounted({ onOpenChange }: MountedProps) {
                       </option>
                     ))}
                   </select>
-                  <SelectChevron compact />
+                  <SelectChevron />
                 </div>
-                <p className="mt-0.5 text-[9px] text-muted-foreground sm:text-[10px]">
-                  Day your bill is generated
-                </p>
               </section>
               <section>
-                <Label htmlFor="cc-due" className={lb}>
-                  Payment Due Date
+                <Label htmlFor="cc-due" className={labelClass}>
+                  Payment Due Day
                 </Label>
                 <div className="relative">
                   <select
                     id="cc-due"
                     value={dueDay}
                     onChange={(e) => setDueDay(e.target.value)}
-                    className={cn(fieldBase, "appearance-none pr-7 sm:pr-9")}
+                    className={cn(fieldBase, "appearance-none pr-9")}
                   >
                     {BILLING_DAY_OPTIONS.map(({ value, label }) => (
                       <option key={value} value={value}>
@@ -348,17 +310,14 @@ function AddCreditCardSheetMounted({ onOpenChange }: MountedProps) {
                       </option>
                     ))}
                   </select>
-                  <SelectChevron compact />
+                  <SelectChevron />
                 </div>
-                <p className="mt-0.5 text-[9px] text-muted-foreground sm:text-[10px]">
-                  Day your payment is due
-                </p>
               </section>
             </div>
 
-            <div className="grid grid-cols-2 gap-1.5 sm:gap-2">
+            <div className="grid grid-cols-2 gap-4">
               <section>
-                <Label htmlFor="cc-rate" className={lb}>
+                <Label htmlFor="cc-rate" className={labelClass}>
                   Interest Rate (%)
                 </Label>
                 <Input
@@ -367,11 +326,11 @@ function AddCreditCardSheetMounted({ onOpenChange }: MountedProps) {
                   value={interestRate}
                   onChange={(e) => setInterestRate(e.target.value.replace(/[^\d.]/g, ""))}
                   placeholder="3.5"
-                  className={cn(fieldBase)}
+                  className={fieldBase}
                 />
               </section>
               <section>
-                <Label htmlFor="cc-min" className={lb}>
+                <Label htmlFor="cc-min" className={labelClass}>
                   Min Due (%)
                 </Label>
                 <Input
@@ -380,19 +339,19 @@ function AddCreditCardSheetMounted({ onOpenChange }: MountedProps) {
                   value={minDuePercent}
                   onChange={(e) => setMinDuePercent(e.target.value.replace(/[^\d.]/g, ""))}
                   placeholder="5"
-                  className={cn(fieldBase)}
+                  className={fieldBase}
                 />
               </section>
             </div>
           </div>
 
-          <div className={FORM_OVERLAY_FOOTER}>
+          <div className={cn(FORM_OVERLAY_FOOTER, "px-5")}>
             <Button
               type="submit"
               disabled={isSubmitting}
-              className="h-9 w-full rounded-xl bg-[hsl(230_22%_62%)] text-sm font-bold text-white hover:bg-[hsl(230_22%_56%)] sm:h-10 sm:text-base"
+              className="h-10 w-full rounded-xl bg-[hsl(230_22%_62%)] text-sm font-bold text-white hover:bg-[hsl(230_22%_56%)] disabled:opacity-60 sm:h-11 sm:text-base"
             >
-              {isSubmitting ? "Saving..." : "Add Card"}
+              {isSubmitting ? "Saving..." : "Add Credit Card"}
             </Button>
           </div>
         </form>

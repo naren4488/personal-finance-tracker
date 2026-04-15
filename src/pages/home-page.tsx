@@ -107,7 +107,7 @@ export default function HomePage() {
         />
 
         {!showSkeleton && dashboard ? (
-          <Card className="overflow-hidden rounded-2xl border-0 bg-[#1e1b4b] text-white shadow-xl ring-1 ring-white/10">
+          <Card className="overflow-hidden rounded-2xl border-0 bg-primary text-white shadow-xl ring-1 ring-white/10">
             <CardHeader className="px-5 pb-2 pt-5">
               <CardTitle className="text-xl font-bold tracking-tight text-white">
                 Dashboard
