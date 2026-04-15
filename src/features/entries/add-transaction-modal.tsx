@@ -79,7 +79,6 @@ function formatInr2(n: number): string {
   return n.toFixed(2)
 }
 
-/** en-IN ₹ with up to 2 decimals (EMI / split lines). */
 function formatLoanRupee(n: number): string {
   return new Intl.NumberFormat("en-IN", {
     style: "currency",
@@ -89,7 +88,6 @@ function formatLoanRupee(n: number): string {
   }).format(n)
 }
 
-/** Pure prefill from loan account API fields (no setState — used in useMemo + optional overrides). */
 function computeLoanPrefillStrings(loan: Account): { principal: string; interest: string } {
   const int = loanNextEmiInterestInr(loan)
   const pr = loanNextEmiPrincipalInr(loan)
@@ -116,7 +114,7 @@ function computeLoanPrefillStrings(loan: Account): { principal: string; interest
 function SelectChevron() {
   return (
     <ChevronDown
-      className="pointer-events-none absolute right-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground"
+      className="pointer-events-none absolute right-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground"
       aria-hidden
     />
   )
@@ -143,7 +141,6 @@ function NoAccountsEmptyState({ onAddAccount }: { onAddAccount: () => void }) {
   )
 }
 
-/** Pay Bill / Pay EMI from account detail — same UI as Transfer with target locked. */
 export type TransferPaymentPreset =
   | { kind: "credit_card_bill"; creditCardAccountId: string }
   | { kind: "loan_emi"; loanAccountId: string }
@@ -151,24 +148,10 @@ export type TransferPaymentPreset =
 export type AddTransactionModalProps = {
   open: boolean
   onOpenChange: (open: boolean) => void
-  /** Expenses tab flow: locked expense type, “Add Expense”, note-first title. */
   expenseFlow?: boolean
-  /**
-   * Initial type when the modal opens (same shell as Add Transaction).
-   * Use `"transfer"` when opening from “Add Transfer”.
-   */
   initialType?: TransactionType
-  /** When set, “Add Account” opens the shared Accounts sheet instead of navigating away. */
   onOpenAddAccount?: () => void
-  /**
-   * Lock to transfer + card bill or loan EMI with target account pre-filled (Accounts Pay Bill / Pay EMI).
-   * Parent should set `initialType="transfer"` and clear when modal closes.
-   */
   transferPaymentPreset?: TransferPaymentPreset | null
-  /**
-   * When there are no accounts, “Add Account” dismisses the modal and navigates here instead of bare `/accounts`
-   * (e.g. return to the same loan/card detail query after adding a bank account).
-   */
   accountsReturnPath?: string
 }
 
@@ -202,6 +185,12 @@ function AddTransactionModalMounted({
   const loanInterestFieldId = useId()
   const navigate = useNavigate()
   const user = useAppSelector((s) => s.auth.user)
+
+  // Shared Styles mapping to your AddCreditCard requirements
+  const labelClass = "mb-1.5 block text-xs font-semibold text-foreground/80"
+  const fieldBase =
+    "flex h-10 w-full rounded-xl border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-0 disabled:cursor-not-allowed disabled:opacity-50"
+  const selectFieldClass = cn(fieldBase, "appearance-none pr-9")
 
   const {
     data: accountsRaw = [],
@@ -247,7 +236,6 @@ function AddTransactionModalMounted({
   const [tags, setTags] = useState<string[]>([])
   const [tagPreset, setTagPreset] = useState("")
   const [newTag, setNewTag] = useState("")
-  /** Transfer only — drives which destination field is shown. */
   const [transferDestinationType, setTransferDestinationType] = useState<TransferDestinationType>(
     () =>
       transferPaymentPreset?.kind === "credit_card_bill"
@@ -257,7 +245,6 @@ function AddTransactionModalMounted({
           : "account"
   )
   const [payMinimum, setPayMinimum] = useState(false)
-  /** User edits to principal/interest; `undefined` field = use derived prefill from selected loan. */
   const [loanFieldOverride, setLoanFieldOverride] = useState<{
     principal?: string
     interest?: string
@@ -604,11 +591,6 @@ function AddTransactionModalMounted({
         ? "From account"
         : "Paying from"
 
-  const selectFieldClass = cn(
-    "h-8 w-full appearance-none rounded-xl border border-border bg-card px-2.5 pr-8 text-xs text-foreground shadow-sm outline-none sm:h-9 sm:px-3 sm:pr-9 sm:text-sm",
-    "focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/50"
-  )
-
   return (
     <div className="fixed inset-0 z-60 flex min-h-0 max-h-dvh items-center justify-center overflow-hidden p-2 pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:p-4">
       <button
@@ -622,32 +604,32 @@ function AddTransactionModalMounted({
         aria-modal="true"
         aria-labelledby={titleId}
         className={cn(
-          "relative flex min-h-0 max-h-[min(calc(100dvh-1.25rem-env(safe-area-inset-bottom)),92dvh)] w-full max-w-xl flex-col overflow-hidden rounded-2xl border border-border bg-card shadow-2xl sm:max-h-[min(92dvh,calc(100dvh-2rem))]",
+          "relative flex min-h-0 max-h-[min(calc(100dvh-1.25rem-env(safe-area-inset-bottom)),92dvh)] w-full max-w-lg flex-col overflow-hidden rounded-2xl border border-border bg-card shadow-2xl sm:max-h-[min(92dvh,calc(100dvh-2rem))]",
           "animate-in fade-in zoom-in-95 duration-200"
         )}
       >
-        <header className="flex shrink-0 items-start justify-between gap-2 border-b border-border px-4 py-2.5">
+        <header className="flex shrink-0 items-center justify-between gap-2 border-b border-border px-5 py-4">
           <h2 id={titleId} className="text-base font-bold text-primary sm:text-lg">
             {modalTitle}
           </h2>
           <Button
             type="button"
             variant="ghost"
-            size="icon-sm"
-            className="shrink-0 rounded-full text-muted-foreground hover:text-foreground"
+            size="icon"
+            className="h-8 w-8 shrink-0 rounded-full text-muted-foreground hover:bg-muted hover:text-foreground"
             aria-label="Close"
             onClick={dismiss}
           >
-            <X className="size-5" strokeWidth={2} />
+            <X className="size-4" strokeWidth={2.5} />
           </Button>
         </header>
 
         <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
           {isLoading && (
-            <div className={cn(FORM_OVERLAY_SCROLL_BODY, "space-y-2 px-4 py-3")}>
+            <div className={cn(FORM_OVERLAY_SCROLL_BODY, "space-y-4 px-5 py-5")}>
               <Skeleton className="h-14 w-full rounded-xl" />
-              <Skeleton className="h-9 w-full rounded-xl" />
-              <Skeleton className="h-9 w-full rounded-xl" />
+              <Skeleton className="h-10 w-full rounded-xl" />
+              <Skeleton className="h-10 w-full rounded-xl" />
             </div>
           )}
 
@@ -655,15 +637,14 @@ function AddTransactionModalMounted({
             <div
               className={cn(
                 FORM_OVERLAY_SCROLL_BODY,
-                "flex flex-col items-center justify-center gap-2 px-4 py-4 text-center"
+                "flex flex-col items-center justify-center gap-4 px-5 py-5 text-center"
               )}
             >
-              <p className="text-xs text-destructive">{getErrorMessage(error)}</p>
+              <p className="text-sm font-medium text-destructive">{getErrorMessage(error)}</p>
               <Button
                 type="button"
                 variant="outline"
-                size="sm"
-                className="rounded-xl"
+                className="h-10 rounded-xl px-6"
                 onClick={() => refetch()}
               >
                 Retry
@@ -672,7 +653,7 @@ function AddTransactionModalMounted({
           )}
 
           {!isLoading && !isError && accounts.length === 0 && (
-            <div className={cn(FORM_OVERLAY_SCROLL_BODY, "flex flex-col justify-center px-2 py-2")}>
+            <div className={cn(FORM_OVERLAY_SCROLL_BODY, "flex flex-col justify-center px-5 py-5")}>
               <NoAccountsEmptyState
                 onAddAccount={() => {
                   dismiss()
@@ -689,15 +670,11 @@ function AddTransactionModalMounted({
               onSubmit={handleSubmit}
               className="flex min-h-0 flex-1 flex-col overflow-hidden"
             >
-              <div
-                className={cn(FORM_OVERLAY_SCROLL_BODY, "space-y-1 px-3 py-1.5 sm:px-4 sm:py-2")}
-              >
+              <div className={cn(FORM_OVERLAY_SCROLL_BODY, "space-y-4 px-5 py-5")}>
                 {!expenseFlow && !lockTransferPayment && (
                   <section>
-                    <Label className="mb-0.5 block text-[11px] font-bold text-primary sm:text-xs">
-                      Type
-                    </Label>
-                    <div className="grid grid-cols-3 gap-1">
+                    <Label className={labelClass}>Type</Label>
+                    <div className="grid grid-cols-3 gap-3">
                       {(
                         [
                           { id: "expense" as const, label: "Expense" },
@@ -712,6 +689,7 @@ function AddTransactionModalMounted({
                             setTxType(id)
                           }}
                           className={cn(
+                            "h-10",
                             txType === id &&
                               id === "expense" &&
                               "border-primary bg-sky-50 text-destructive dark:bg-primary/10 dark:text-destructive",
@@ -723,7 +701,7 @@ function AddTransactionModalMounted({
                               "border-primary bg-sky-50 text-primary dark:bg-primary/15"
                           )}
                         >
-                          <span>{label}</span>
+                          <span className="font-medium">{label}</span>
                         </ToggleTile>
                       ))}
                     </div>
@@ -732,12 +710,9 @@ function AddTransactionModalMounted({
 
                 {effectiveType === "transfer" ? (
                   <>
-                    <div className="grid grid-cols-2 gap-1.5 sm:gap-2">
+                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                       <section>
-                        <Label
-                          htmlFor={accountIdField}
-                          className="mb-0.5 block text-[11px] font-bold text-primary sm:text-xs"
-                        >
+                        <Label htmlFor={accountIdField} className={labelClass}>
                           {fromAccountLabel}
                         </Label>
                         <div className="relative">
@@ -762,10 +737,7 @@ function AddTransactionModalMounted({
                         </div>
                       </section>
                       <section>
-                        <Label
-                          htmlFor={transferDestinationTypeId}
-                          className="mb-0.5 block text-[11px] font-bold text-primary sm:text-xs"
-                        >
+                        <Label htmlFor={transferDestinationTypeId} className={labelClass}>
                           Destination type
                         </Label>
                         <div className="relative">
@@ -795,10 +767,7 @@ function AddTransactionModalMounted({
 
                     {transferDestinationType === "account" ? (
                       <section>
-                        <Label
-                          htmlFor={toAccountIdField}
-                          className="mb-0.5 block text-[11px] font-bold text-primary sm:text-xs"
-                        >
+                        <Label htmlFor={toAccountIdField} className={labelClass}>
                           To account
                         </Label>
                         <div className="relative">
@@ -826,10 +795,7 @@ function AddTransactionModalMounted({
                     ) : transferDestinationType === "credit_card_bill" ? (
                       <>
                         <section>
-                          <Label
-                            htmlFor={creditCardAccountFieldId}
-                            className="mb-0.5 block text-[11px] font-bold text-primary sm:text-xs"
-                          >
+                          <Label htmlFor={creditCardAccountFieldId} className={labelClass}>
                             Credit card
                           </Label>
                           <div className="relative">
@@ -863,50 +829,49 @@ function AddTransactionModalMounted({
                             <SelectChevron />
                           </div>
                         </section>
-                        <div className="flex items-center justify-between gap-2 rounded-xl border border-border/80 bg-muted/20 px-2.5 py-2 sm:px-3">
-                          <span className="text-[11px] font-bold text-primary sm:text-xs">
-                            Pay minimum?
-                          </span>
-                          <div className="flex items-center gap-2">
-                            <span className="text-[10px] text-muted-foreground sm:text-xs">
-                              {payMinimum ? "Yes" : "No"}
+                        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2  items-center ">
+                          <div className="flex h-10 mt-6 items-center justify-between gap-2  rounded-xl border border-input bg-muted/20 px-3">
+                            <span className="text-sm font-semibold text-primary ">
+                              Pay minimum?
                             </span>
-                            <Switch
-                              checked={payMinimum}
-                              onCheckedChange={(on) => {
-                                setPayMinimum(on)
-                                if (on) setAmount("")
-                              }}
-                              aria-label="Pay minimum amount"
-                            />
+                            <div className="flex items-center gap-2">
+                              <span className="text-xs font-medium text-muted-foreground">
+                                {payMinimum ? "Yes" : "No"}
+                              </span>
+                              <Switch
+                                checked={payMinimum}
+                                onCheckedChange={(on) => {
+                                  setPayMinimum(on)
+                                  if (on) setAmount("")
+                                }}
+                                aria-label="Pay minimum amount"
+                              />
+                            </div>
                           </div>
+                          <section>
+                            <Label htmlFor="at-minimum-due-transfer" className={labelClass}>
+                              Minimum amount
+                            </Label>
+                            <Input
+                              id="at-minimum-due-transfer"
+                              readOnly
+                              value={
+                                minimumDueInr != null && minimumDueInr > 0
+                                  ? formatInr2(minimumDueInr)
+                                  : "0.00"
+                              }
+                              className={cn(
+                                fieldBase,
+                                "bg-muted/40 font-medium tabular-nums text-muted-foreground"
+                              )}
+                            />
+                          </section>
                         </div>
-                        <section>
-                          <Label
-                            htmlFor="at-minimum-due-transfer"
-                            className="mb-0.5 block text-[11px] font-bold text-primary sm:text-xs"
-                          >
-                            Minimum amount
-                          </Label>
-                          <Input
-                            id="at-minimum-due-transfer"
-                            readOnly
-                            value={
-                              minimumDueInr != null && minimumDueInr > 0
-                                ? formatInr2(minimumDueInr)
-                                : "0.00"
-                            }
-                            className="h-8 rounded-xl border-border bg-muted/60 px-2.5 text-xs tabular-nums text-muted-foreground shadow-sm sm:h-9 sm:px-3 sm:text-sm"
-                          />
-                        </section>
                       </>
                     ) : (
                       <>
                         <section>
-                          <Label
-                            htmlFor={loanAccountFieldId}
-                            className="mb-0.5 block text-[11px] font-bold text-primary sm:text-xs"
-                          >
+                          <Label htmlFor={loanAccountFieldId} className={labelClass}>
                             Loan account
                           </Label>
                           <div className="relative">
@@ -952,7 +917,7 @@ function AddTransactionModalMounted({
                         </section>
 
                         {loanScheduleSummary && loanBreakdownVisible ? (
-                          <div className="space-y-1 rounded-xl border border-border/80 bg-muted/40 px-3 py-2.5 text-[11px] sm:text-xs">
+                          <div className="space-y-1.5 rounded-xl border border-input bg-muted/20 p-4 text-xs">
                             {loanScheduleSummary.emi != null && loanScheduleSummary.emi > 0 ? (
                               <div className="flex items-center justify-between gap-2">
                                 <span className="text-muted-foreground">Monthly EMI</span>
@@ -967,7 +932,7 @@ function AddTransactionModalMounted({
                                 className={cn(
                                   "flex items-center justify-between gap-2",
                                   loanScheduleSummary.emi != null && loanScheduleSummary.emi > 0
-                                    ? "border-t border-border/50 pt-1"
+                                    ? "border-t border-border/50 pt-2 mt-1.5"
                                     : ""
                                 )}
                               >
@@ -983,8 +948,8 @@ function AddTransactionModalMounted({
                               loanScheduleSummary.principalThisMonth > 0) ||
                             (loanScheduleSummary.interestThisMonth != null &&
                               loanScheduleSummary.interestThisMonth > 0) ? (
-                              <div className="border-t border-border/50 pt-1">
-                                <p className="mb-1 text-[10px] font-semibold text-primary sm:text-[11px]">
+                              <div className="border-t border-border/50 pt-2 mt-1.5">
+                                <p className="mb-1.5 font-semibold text-primary">
                                   This month&apos;s installment split
                                 </p>
                                 <div className="flex items-center justify-between gap-2">
@@ -996,7 +961,7 @@ function AddTransactionModalMounted({
                                       : "—"}
                                   </span>
                                 </div>
-                                <div className="mt-0.5 flex items-center justify-between gap-2">
+                                <div className="mt-1 flex items-center justify-between gap-2">
                                   <span className="text-muted-foreground">Interest</span>
                                   <span className="font-semibold tabular-nums text-foreground">
                                     {loanScheduleSummary.interestThisMonth != null &&
@@ -1010,7 +975,7 @@ function AddTransactionModalMounted({
                             {loanScheduleSummary.installmentTotal != null &&
                             loanScheduleSummary.installmentTotal > 0 &&
                             (loanScheduleSummary.emi == null || loanScheduleSummary.emi <= 0) ? (
-                              <div className="flex items-center justify-between gap-2 border-t border-border/50 pt-1">
+                              <div className="flex items-center justify-between gap-2 border-t border-border/50 pt-2 mt-1.5">
                                 <span className="text-muted-foreground">Installment total</span>
                                 <span className="font-semibold tabular-nums text-foreground">
                                   {formatLoanRupee(loanScheduleSummary.installmentTotal)}
@@ -1021,7 +986,7 @@ function AddTransactionModalMounted({
                               <div
                                 className={cn(
                                   "flex items-center justify-between gap-2",
-                                  "border-t border-border/50 pt-1"
+                                  "border-t border-border/50 pt-2 mt-1.5"
                                 )}
                               >
                                 <span className="text-muted-foreground">Total loan amount</span>
@@ -1041,12 +1006,9 @@ function AddTransactionModalMounted({
                           </div>
                         ) : null}
 
-                        <div className="grid grid-cols-2 gap-1.5 sm:gap-2">
+                        <div className="grid grid-cols-2 gap-4">
                           <section>
-                            <Label
-                              htmlFor={loanPrincipalFieldId}
-                              className="mb-0.5 block text-[11px] font-bold text-primary sm:text-xs"
-                            >
+                            <Label htmlFor={loanPrincipalFieldId} className={labelClass}>
                               Principal (payment)
                             </Label>
                             <Input
@@ -1060,14 +1022,11 @@ function AddTransactionModalMounted({
                                   principal: sanitizeDecimalInput(e.target.value),
                                 }))
                               }
-                              className="h-8 rounded-xl border-border bg-card px-2.5 text-xs tabular-nums shadow-sm sm:h-9 sm:px-3 sm:text-sm"
+                              className={cn(fieldBase, "tabular-nums")}
                             />
                           </section>
                           <section>
-                            <Label
-                              htmlFor={loanInterestFieldId}
-                              className="mb-0.5 block text-[11px] font-bold text-primary sm:text-xs"
-                            >
+                            <Label htmlFor={loanInterestFieldId} className={labelClass}>
                               Interest (payment)
                             </Label>
                             <Input
@@ -1081,19 +1040,16 @@ function AddTransactionModalMounted({
                                   interest: sanitizeDecimalInput(e.target.value),
                                 }))
                               }
-                              className="h-8 rounded-xl border-border bg-card px-2.5 text-xs tabular-nums shadow-sm sm:h-9 sm:px-3 sm:text-sm"
+                              className={cn(fieldBase, "tabular-nums")}
                             />
                           </section>
                         </div>
                       </>
                     )}
 
-                    <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-3 sm:gap-2">
+                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
                       <section>
-                        <Label
-                          htmlFor="at-amount-transfer"
-                          className="mb-0.5 block text-[11px] font-bold text-primary sm:text-xs"
-                        >
+                        <Label htmlFor="at-amount-transfer" className={labelClass}>
                           Amount (₹)
                         </Label>
                         {transferDestinationType === "loan_emi" ? (
@@ -1101,7 +1057,10 @@ function AddTransactionModalMounted({
                             id="at-amount-transfer"
                             readOnly
                             value={formatInr2(loanTotalInr)}
-                            className="h-8 rounded-xl border-border bg-muted/60 px-2.5 text-center text-xs font-semibold tabular-nums text-muted-foreground shadow-sm sm:h-9 sm:text-sm"
+                            className={cn(
+                              fieldBase,
+                              "bg-muted/40 text-center font-semibold tabular-nums text-muted-foreground"
+                            )}
                           />
                         ) : transferDestinationType === "credit_card_bill" && payMinimum ? (
                           <Input
@@ -1113,7 +1072,10 @@ function AddTransactionModalMounted({
                                 : ""
                             }
                             placeholder="—"
-                            className="h-8 rounded-xl border-border bg-muted/60 px-2.5 text-center text-xs font-semibold tabular-nums text-muted-foreground placeholder:text-muted-foreground/60 sm:h-9 sm:text-sm"
+                            className={cn(
+                              fieldBase,
+                              "bg-muted/40 text-center font-semibold tabular-nums text-muted-foreground placeholder:text-muted-foreground/60"
+                            )}
                           />
                         ) : (
                           <Input
@@ -1122,15 +1084,15 @@ function AddTransactionModalMounted({
                             placeholder="0"
                             value={amount}
                             onChange={(e) => setAmount(e.target.value.replace(/[^\d]/g, ""))}
-                            className="h-8 rounded-xl border-border bg-muted/60 px-2.5 text-center text-xs font-semibold tabular-nums text-primary/80 placeholder:text-primary/40 sm:h-9 sm:text-sm"
+                            className={cn(
+                              fieldBase,
+                              "bg-muted/20 text-center font-semibold tabular-nums text-primary/80 placeholder:text-primary/40"
+                            )}
                           />
                         )}
                       </section>
                       <section>
-                        <Label
-                          htmlFor="at-date-transfer"
-                          className="mb-0.5 block text-[11px] font-bold text-primary sm:text-xs"
-                        >
+                        <Label htmlFor="at-date-transfer" className={labelClass}>
                           Date
                         </Label>
                         <Input
@@ -1138,14 +1100,11 @@ function AddTransactionModalMounted({
                           type="date"
                           value={date}
                           onChange={(e) => setDate(e.target.value)}
-                          className="h-8 rounded-xl border-border bg-card px-2.5 text-xs shadow-sm scheme-light dark:scheme-dark sm:h-9 sm:px-3 sm:text-sm"
+                          className={cn(fieldBase, "scheme-light dark:scheme-dark")}
                         />
                       </section>
                       <section>
-                        <Label
-                          htmlFor="at-transfer-note-grid"
-                          className="mb-0.5 block text-[11px] font-bold text-primary sm:text-xs"
-                        >
+                        <Label htmlFor="at-transfer-note-grid" className={labelClass}>
                           Note
                         </Label>
                         <Input
@@ -1153,7 +1112,7 @@ function AddTransactionModalMounted({
                           placeholder="Optional note"
                           value={note}
                           onChange={(e) => setNote(e.target.value)}
-                          className="h-8 rounded-xl border-border bg-card px-2.5 text-xs shadow-sm sm:h-9 sm:px-3 sm:text-sm"
+                          className={fieldBase}
                         />
                       </section>
                     </div>
@@ -1161,10 +1120,7 @@ function AddTransactionModalMounted({
                 ) : (
                   <>
                     <section>
-                      <Label
-                        htmlFor="at-amount"
-                        className="mb-0.5 block text-[11px] font-bold text-primary sm:text-xs"
-                      >
+                      <Label htmlFor="at-amount" className={cn(labelClass, "text-center")}>
                         Amount (₹)
                       </Label>
                       <Input
@@ -1173,18 +1129,18 @@ function AddTransactionModalMounted({
                         placeholder="0"
                         value={amount}
                         onChange={(e) => setAmount(e.target.value.replace(/[^\d]/g, ""))}
-                        className="h-10 rounded-xl border-border bg-muted/60 text-center text-xl font-semibold tabular-nums text-primary/80 placeholder:text-primary/40 sm:text-2xl"
+                        className={cn(
+                          fieldBase,
+                          "h-14 bg-muted/20 text-center text-2xl font-bold tabular-nums text-primary/80 placeholder:text-primary/40"
+                        )}
                       />
                     </section>
 
-                    <div className="grid grid-cols-2 gap-1.5 sm:gap-2">
+                    <div className="grid grid-cols-2 gap-4">
                       <section>
                         {effectiveType === "income" ? (
                           <>
-                            <Label
-                              htmlFor={incomeSourceId}
-                              className="mb-0.5 block text-[11px] font-bold text-primary sm:text-xs"
-                            >
+                            <Label htmlFor={incomeSourceId} className={labelClass}>
                               Income source
                             </Label>
                             <div className="relative">
@@ -1205,10 +1161,7 @@ function AddTransactionModalMounted({
                           </>
                         ) : (
                           <>
-                            <Label
-                              htmlFor={categoryId}
-                              className="mb-0.5 block text-[11px] font-bold text-primary sm:text-xs"
-                            >
+                            <Label htmlFor={categoryId} className={labelClass}>
                               Category
                             </Label>
                             <div className="relative">
@@ -1234,10 +1187,7 @@ function AddTransactionModalMounted({
                         )}
                       </section>
                       <section>
-                        <Label
-                          htmlFor="at-date"
-                          className="mb-0.5 block text-[11px] font-bold text-primary sm:text-xs"
-                        >
+                        <Label htmlFor="at-date" className={labelClass}>
                           Date
                         </Label>
                         <Input
@@ -1245,46 +1195,43 @@ function AddTransactionModalMounted({
                           type="date"
                           value={date}
                           onChange={(e) => setDate(e.target.value)}
-                          className="h-8 rounded-xl border-border bg-card px-2.5 text-xs shadow-sm scheme-light dark:scheme-dark sm:h-9 sm:px-3 sm:text-sm"
+                          className={cn(fieldBase, "scheme-light dark:scheme-dark")}
                         />
                       </section>
                     </div>
 
                     <section>
-                      <Label className="mb-0.5 block text-[11px] font-bold text-primary sm:text-xs">
-                        Payment Method
-                      </Label>
-                      <div className="grid grid-cols-2 gap-1">
+                      <Label className={labelClass}>Payment Method</Label>
+                      <div className="grid grid-cols-2 gap-2">
                         <ToggleTile
                           selected={paymentMethod === "account"}
                           onClick={() => setPaymentMethod("account")}
+                          className="h-10"
                         >
                           <CreditCard
-                            className="size-3.5 shrink-0 text-primary sm:size-4"
+                            className="size-4 shrink-0 text-primary"
                             strokeWidth={2}
                             aria-hidden
                           />
-                          <span>Account / Cash / UPI</span>
+                          <span className="font-medium">Account / UPI</span>
                         </ToggleTile>
                         <ToggleTile
                           selected={paymentMethod === "card"}
                           onClick={() => setPaymentMethod("card")}
+                          className="h-10"
                         >
                           <Gem
-                            className="size-3.5 shrink-0 text-primary sm:size-4"
+                            className="size-4 shrink-0 text-primary"
                             strokeWidth={2}
                             aria-hidden
                           />
-                          <span>Credit Card</span>
+                          <span className="font-medium">Credit Card</span>
                         </ToggleTile>
                       </div>
                     </section>
 
                     <section>
-                      <Label
-                        htmlFor={accountIdField}
-                        className="mb-0.5 block text-[11px] font-bold text-primary sm:text-xs"
-                      >
+                      <Label htmlFor={accountIdField} className={labelClass}>
                         {fromAccountLabel}
                       </Label>
                       <div className="relative">
@@ -1308,25 +1255,25 @@ function AddTransactionModalMounted({
                 )}
 
                 {effectiveType !== "transfer" ? (
-                  <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-2">
-                    <label className="flex cursor-pointer items-start gap-1.5 rounded-lg border border-transparent py-0.5">
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                    <label className="flex cursor-pointer items-start gap-2.5 rounded-xl border border-input bg-muted/5 px-3 py-2.5">
                       <input
                         type="checkbox"
                         checked={paidOnBehalf}
                         onChange={(e) => setPaidOnBehalf(e.target.checked)}
-                        className="mt-0.5 size-3.5 shrink-0 rounded border-border"
+                        className="mt-0.5 size-4 shrink-0 rounded border-input"
                       />
-                      <span className="text-[10px] leading-tight text-foreground sm:text-[11px]">
+                      <span className="text-xs font-medium leading-tight text-foreground/90">
                         Paid on behalf of someone (add to their dues)
                       </span>
                     </label>
-                    <div className="rounded-xl border border-border/80 bg-muted/30 p-1.5">
-                      <label className="flex cursor-pointer items-start justify-between gap-1.5">
+                    <div className="rounded-xl border border-input bg-muted/10 p-2.5">
+                      <label className="flex cursor-pointer items-start justify-between gap-2">
                         <div className="min-w-0">
-                          <span className="text-[11px] font-semibold text-foreground">
+                          <span className="text-sm font-semibold text-foreground">
                             Schedule upcoming
                           </span>
-                          <p className="text-[9px] leading-tight text-muted-foreground sm:text-[10px]">
+                          <p className="mt-0.5 text-xs text-muted-foreground">
                             Planned only; no balance change yet.
                           </p>
                         </div>
@@ -1334,7 +1281,7 @@ function AddTransactionModalMounted({
                           type="checkbox"
                           checked={scheduleUpcoming}
                           onChange={(e) => setScheduleUpcoming(e.target.checked)}
-                          className="mt-0.5 size-3.5 shrink-0 rounded border-border"
+                          className="mt-0.5 size-4 shrink-0 rounded border-input"
                         />
                       </label>
                     </div>
@@ -1343,32 +1290,22 @@ function AddTransactionModalMounted({
 
                 {expenseFlow ? (
                   <section>
-                    <Label
-                      htmlFor="at-note"
-                      className="mb-0.5 block text-[11px] font-bold text-primary sm:text-xs"
-                    >
+                    <Label htmlFor="at-note" className={labelClass}>
                       Note
                     </Label>
                     <textarea
                       id="at-note"
-                      rows={1}
+                      rows={2}
                       placeholder="What was this for?"
                       value={note}
                       onChange={(e) => setNote(e.target.value)}
-                      className={cn(
-                        "min-h-9 w-full resize-none rounded-xl border border-border bg-card px-3 py-1.5 text-sm text-foreground shadow-sm outline-none",
-                        "placeholder:text-muted-foreground/80",
-                        "focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/50"
-                      )}
+                      className={cn(fieldBase, "min-h-[3.5rem] resize-none py-2")}
                     />
                   </section>
                 ) : effectiveType === "transfer" ? null : (
-                  <div className="grid grid-cols-2 gap-1.5 sm:gap-2">
+                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                     <section>
-                      <Label
-                        htmlFor="at-desc"
-                        className="mb-0.5 block text-[11px] font-bold text-primary sm:text-xs"
-                      >
+                      <Label htmlFor="at-desc" className={labelClass}>
                         Description
                       </Label>
                       <Input
@@ -1376,14 +1313,11 @@ function AddTransactionModalMounted({
                         value={description}
                         onChange={(e) => setDescription(e.target.value)}
                         placeholder="Short description"
-                        className="h-8 rounded-xl border-border bg-card px-2.5 text-xs shadow-sm sm:h-9 sm:px-3 sm:text-sm"
+                        className={fieldBase}
                       />
                     </section>
                     <section>
-                      <Label
-                        htmlFor="at-note"
-                        className="mb-0.5 block text-[11px] font-bold text-primary sm:text-xs"
-                      >
+                      <Label htmlFor="at-note" className={labelClass}>
                         Note
                       </Label>
                       <textarea
@@ -1392,22 +1326,18 @@ function AddTransactionModalMounted({
                         placeholder="Optional details…"
                         value={note}
                         onChange={(e) => setNote(e.target.value)}
-                        className={cn(
-                          "min-h-8 w-full resize-none rounded-xl border border-border bg-card px-2.5 py-1 text-xs text-foreground shadow-sm outline-none sm:min-h-9 sm:px-3 sm:py-1.5 sm:text-sm",
-                          "placeholder:text-muted-foreground/80",
-                          "focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/50"
-                        )}
+                        className={cn(fieldBase, "min-h-[2.5rem] resize-none py-2")}
                       />
                     </section>
                   </div>
                 )}
 
                 <section>
-                  <Label className="mb-0.5 flex items-center gap-1 text-[11px] font-bold text-primary sm:text-xs">
-                    <Tag className="size-3 sm:size-3.5" strokeWidth={2} aria-hidden />
+                  <Label className={cn(labelClass, "flex items-center gap-1.5")}>
+                    <Tag className="size-3.5" strokeWidth={2.5} aria-hidden />
                     Tags
                   </Label>
-                  <div className="flex flex-wrap gap-1">
+                  <div className="flex flex-wrap gap-2">
                     <div className="relative min-w-0 flex-1 basis-[38%]">
                       <select
                         value={tagPreset}
@@ -1424,13 +1354,13 @@ function AddTransactionModalMounted({
                           </option>
                         ))}
                       </select>
-                      <ChevronDown className="pointer-events-none absolute right-2 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
+                      <SelectChevron />
                     </div>
                     <Input
                       value={newTag}
                       onChange={(e) => setNewTag(e.target.value)}
                       placeholder={effectiveType === "transfer" ? "Add new tag" : "New tag"}
-                      className="h-8 min-w-20 flex-1 rounded-xl border-border bg-card px-2 text-xs shadow-sm sm:h-9"
+                      className={cn(fieldBase, "min-w-24 flex-1")}
                       onKeyDown={(e) => {
                         if (e.key === "Enter") {
                           e.preventDefault()
@@ -1441,8 +1371,7 @@ function AddTransactionModalMounted({
                     <Button
                       type="button"
                       variant="secondary"
-                      size="sm"
-                      className="h-8 shrink-0 rounded-xl px-2.5 text-[10px] font-semibold sm:h-9 sm:px-3 sm:text-xs"
+                      className="h-10 shrink-0 rounded-xl px-4 text-xs font-bold sm:px-5 sm:text-sm"
                       aria-label="Add tag"
                       onClick={addTagFromInputs}
                     >
@@ -1450,18 +1379,18 @@ function AddTransactionModalMounted({
                     </Button>
                   </div>
                   {tags.length > 0 && (
-                    <p className="mt-0.5 truncate text-[10px] text-muted-foreground sm:text-[11px]">
+                    <p className="mt-2 truncate text-xs font-medium text-muted-foreground">
                       {tags.join(" · ")}
                     </p>
                   )}
                 </section>
               </div>
 
-              <div className={FORM_OVERLAY_FOOTER}>
+              <div className={cn(FORM_OVERLAY_FOOTER, "px-5")}>
                 <Button
                   type="submit"
                   disabled={isSubmitting}
-                  className="h-9 w-full rounded-xl bg-[hsl(230_22%_62%)] text-sm font-bold text-white hover:bg-[hsl(230_22%_56%)] disabled:opacity-60 sm:h-11 sm:text-base"
+                  className="h-10 w-full rounded-xl bg-[hsl(230_22%_62%)] text-sm font-bold text-white hover:bg-[hsl(230_22%_56%)] disabled:opacity-60 sm:h-11 sm:text-base"
                 >
                   {isSubmitting ? "Saving…" : submitLabel}
                 </Button>
