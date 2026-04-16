@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import { useNavigate } from "react-router-dom"
 import { toast } from "sonner"
 import {
@@ -11,18 +11,7 @@ import {
   BarChart2,
   CreditCard,
 } from "lucide-react"
-import {
-  PieChart,
-  Pie,
-  Cell,
-  ResponsiveContainer,
-  XAxis,
-  YAxis,
-  Tooltip,
-  BarChart,
-  Bar,
-  Legend,
-} from "recharts"
+import { PieChart, Pie, Cell, XAxis, YAxis, Tooltip, BarChart, Bar, Legend } from "recharts"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -247,6 +236,46 @@ type AnalyticsContentProps = {
   commitmentsErrorMessage?: string
 }
 
+function MeasuredChart({
+  className,
+  children,
+}: {
+  className: string
+  children: (size: { width: number; height: number }) => React.ReactNode
+}) {
+  const containerRef = useRef<HTMLDivElement | null>(null)
+  const [size, setSize] = useState<{ width: number; height: number } | null>(null)
+
+  useEffect(() => {
+    const el = containerRef.current
+    if (!el) return
+
+    const obs = new ResizeObserver((entries) => {
+      const entry = entries[0]
+      if (!entry) return
+      const { width, height } = entry.contentRect
+      if (width <= 0 || height <= 0) {
+        setSize(null)
+        return
+      }
+      const w = Math.floor(width)
+      const h = Math.floor(height)
+      setSize((prev) =>
+        prev && prev.width === w && prev.height === h ? prev : { width: w, height: h }
+      )
+    })
+
+    obs.observe(el)
+    return () => obs.disconnect()
+  }, [])
+
+  return (
+    <div ref={containerRef} className={className}>
+      {size ? children(size) : null}
+    </div>
+  )
+}
+
 function AnalyticsContent({
   dashboardData,
   searchInput,
@@ -339,24 +368,26 @@ function AnalyticsContent({
             </p>
           ) : (
             <div className="flex items-center gap-2">
-              <div className="h-28 w-1/4">
-                <ResponsiveContainer width="100%" height="100%">
-                  <PieChart>
-                    <Pie
-                      data={dashboardData.categoryBreakdown}
-                      innerRadius={35}
-                      outerRadius={55}
-                      paddingAngle={2}
-                      dataKey="value"
-                      nameKey="name"
-                      stroke="none"
-                    >
-                      {dashboardData.categoryBreakdown.map((entry, index) => (
-                        <Cell key={`cell-${index}`} fill={entry.color} />
-                      ))}
-                    </Pie>
-                  </PieChart>
-                </ResponsiveContainer>
+              <div className="w-1/4 min-w-[96px]">
+                <MeasuredChart className="w-full h-[300px] min-h-[300px]">
+                  {(size) => (
+                    <PieChart width={size.width} height={size.height}>
+                      <Pie
+                        data={dashboardData.categoryBreakdown}
+                        innerRadius={35}
+                        outerRadius={55}
+                        paddingAngle={2}
+                        dataKey="value"
+                        nameKey="name"
+                        stroke="none"
+                      >
+                        {dashboardData.categoryBreakdown.map((entry, index) => (
+                          <Cell key={`cell-${index}`} fill={entry.color} />
+                        ))}
+                      </Pie>
+                    </PieChart>
+                  )}
+                </MeasuredChart>
               </div>
               <div className="w-3/4 space-y-2">
                 {dashboardData.categoryBreakdown.map((item) => (
@@ -449,72 +480,78 @@ function AnalyticsContent({
             Income, expenses, and optional loan / credit-card series from the dashboard API.
           </p>
         </CardHeader>
-        <CardContent className={cn("pt-4", showExtendedMonthly ? "h-[280px]" : "h-[200px]")}>
+        <CardContent className="min-w-0 pt-4">
           {dashboardData.monthlyTrends.length === 0 ? (
-            <p className="flex h-full items-center justify-center text-sm text-muted-foreground">
+            <p className="flex h-[300px] items-center justify-center text-sm text-muted-foreground">
               No monthly trend data.
             </p>
           ) : (
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart
-                data={dashboardData.monthlyTrends}
-                barSize={showExtendedMonthly ? 10 : 14}
-                margin={{ top: 4, right: 4, left: 0, bottom: 0 }}
-              >
-                <XAxis
-                  dataKey="month"
-                  fontSize={10}
-                  tickLine={false}
-                  axisLine={{ stroke: "hsl(var(--border))" }}
-                  tick={{ fill: "hsl(var(--muted-foreground))" }}
-                  dy={10}
-                />
-                <YAxis
-                  fontSize={10}
-                  tickLine={false}
-                  axisLine={{ stroke: "hsl(var(--border))" }}
-                  tick={{ fill: "hsl(var(--muted-foreground))" }}
-                  tickFormatter={(val) => `₹${val / 1000}k`}
-                  dx={-10}
-                />
-                <Tooltip
-                  contentStyle={{
-                    backgroundColor: "hsl(var(--card))",
-                    borderColor: "hsl(var(--border))",
-                    color: "hsl(var(--foreground))",
-                  }}
-                  labelStyle={{ color: "hsl(var(--foreground))" }}
-                />
-                <Legend
-                  iconType="square"
-                  wrapperStyle={{ fontSize: "9px", color: "hsl(var(--muted-foreground))" }}
-                />
-                <Bar dataKey="income" name="Income" fill="#22c55e" radius={[2, 2, 0, 0]} />
-                <Bar dataKey="expense" name="Expense" fill="#ef4444" radius={[2, 2, 0, 0]} />
-                {showExtendedMonthly ? (
-                  <>
-                    <Bar
-                      dataKey="loanPayment"
-                      name="Loan payment"
-                      fill="#8b5cf6"
-                      radius={[2, 2, 0, 0]}
+            <div className="min-w-0">
+              <MeasuredChart className="w-full h-[300px] min-h-[300px]">
+                {(size) => (
+                  <BarChart
+                    width={size.width}
+                    height={size.height}
+                    data={dashboardData.monthlyTrends}
+                    barSize={showExtendedMonthly ? 10 : 14}
+                    margin={{ top: 4, right: 4, left: 0, bottom: 0 }}
+                  >
+                    <XAxis
+                      dataKey="month"
+                      fontSize={10}
+                      tickLine={false}
+                      axisLine={{ stroke: "hsl(var(--border))" }}
+                      tick={{ fill: "hsl(var(--muted-foreground))" }}
+                      dy={10}
                     />
-                    <Bar
-                      dataKey="creditCardBillPayment"
-                      name="CC bill pay"
-                      fill="#3b82f6"
-                      radius={[2, 2, 0, 0]}
+                    <YAxis
+                      fontSize={10}
+                      tickLine={false}
+                      axisLine={{ stroke: "hsl(var(--border))" }}
+                      tick={{ fill: "hsl(var(--muted-foreground))" }}
+                      tickFormatter={(val) => `₹${val / 1000}k`}
+                      dx={-10}
                     />
-                    <Bar
-                      dataKey="creditCardSpend"
-                      name="CC spend"
-                      fill="#06b6d4"
-                      radius={[2, 2, 0, 0]}
+                    <Tooltip
+                      contentStyle={{
+                        backgroundColor: "hsl(var(--card))",
+                        borderColor: "hsl(var(--border))",
+                        color: "hsl(var(--foreground))",
+                      }}
+                      labelStyle={{ color: "hsl(var(--foreground))" }}
                     />
-                  </>
-                ) : null}
-              </BarChart>
-            </ResponsiveContainer>
+                    <Legend
+                      iconType="square"
+                      wrapperStyle={{ fontSize: "9px", color: "hsl(var(--muted-foreground))" }}
+                    />
+                    <Bar dataKey="income" name="Income" fill="#22c55e" radius={[2, 2, 0, 0]} />
+                    <Bar dataKey="expense" name="Expense" fill="#ef4444" radius={[2, 2, 0, 0]} />
+                    {showExtendedMonthly ? (
+                      <>
+                        <Bar
+                          dataKey="loanPayment"
+                          name="Loan payment"
+                          fill="#8b5cf6"
+                          radius={[2, 2, 0, 0]}
+                        />
+                        <Bar
+                          dataKey="creditCardBillPayment"
+                          name="CC bill pay"
+                          fill="#3b82f6"
+                          radius={[2, 2, 0, 0]}
+                        />
+                        <Bar
+                          dataKey="creditCardSpend"
+                          name="CC spend"
+                          fill="#06b6d4"
+                          radius={[2, 2, 0, 0]}
+                        />
+                      </>
+                    ) : null}
+                  </BarChart>
+                )}
+              </MeasuredChart>
+            </div>
           )}
         </CardContent>
       </Card>
@@ -523,41 +560,50 @@ function AnalyticsContent({
         <CardHeader className="pb-0">
           <CardTitle className="text-sm font-bold">Spending by Day of Week</CardTitle>
         </CardHeader>
-        <CardContent className="h-[200px] pt-4">
+        <CardContent className="min-w-0 pt-4">
           {dashboardData.dayOfWeek.length === 0 ? (
-            <p className="flex h-full items-center justify-center text-sm text-muted-foreground">
+            <p className="flex h-[300px] items-center justify-center text-sm text-muted-foreground">
               No day-of-week data.
             </p>
           ) : (
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={dashboardData.dayOfWeek} barSize={25}>
-                <XAxis
-                  dataKey="day"
-                  fontSize={10}
-                  tickLine={false}
-                  axisLine={{ stroke: "hsl(var(--border))" }}
-                  tick={{ fill: "hsl(var(--muted-foreground))" }}
-                  dy={10}
-                />
-                <YAxis
-                  fontSize={10}
-                  tickLine={false}
-                  axisLine={{ stroke: "hsl(var(--border))" }}
-                  tick={{ fill: "hsl(var(--muted-foreground))" }}
-                  tickFormatter={(val) => `₹${val / 1000}k`}
-                  dx={-10}
-                />
-                <Tooltip
-                  contentStyle={{
-                    backgroundColor: "hsl(var(--card))",
-                    borderColor: "hsl(var(--border))",
-                    color: "hsl(var(--foreground))",
-                  }}
-                  labelStyle={{ color: "hsl(var(--foreground))" }}
-                />
-                <Bar dataKey="amount" fill="#f59e0b" radius={[2, 2, 0, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
+            <div className="min-w-0">
+              <MeasuredChart className="w-full h-[300px] min-h-[300px]">
+                {(size) => (
+                  <BarChart
+                    width={size.width}
+                    height={size.height}
+                    data={dashboardData.dayOfWeek}
+                    barSize={25}
+                  >
+                    <XAxis
+                      dataKey="day"
+                      fontSize={10}
+                      tickLine={false}
+                      axisLine={{ stroke: "hsl(var(--border))" }}
+                      tick={{ fill: "hsl(var(--muted-foreground))" }}
+                      dy={10}
+                    />
+                    <YAxis
+                      fontSize={10}
+                      tickLine={false}
+                      axisLine={{ stroke: "hsl(var(--border))" }}
+                      tick={{ fill: "hsl(var(--muted-foreground))" }}
+                      tickFormatter={(val) => `₹${val / 1000}k`}
+                      dx={-10}
+                    />
+                    <Tooltip
+                      contentStyle={{
+                        backgroundColor: "hsl(var(--card))",
+                        borderColor: "hsl(var(--border))",
+                        color: "hsl(var(--foreground))",
+                      }}
+                      labelStyle={{ color: "hsl(var(--foreground))" }}
+                    />
+                    <Bar dataKey="amount" fill="#f59e0b" radius={[2, 2, 0, 0]} />
+                  </BarChart>
+                )}
+              </MeasuredChart>
+            </div>
           )}
         </CardContent>
       </Card>
