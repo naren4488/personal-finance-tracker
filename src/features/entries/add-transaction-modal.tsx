@@ -24,7 +24,11 @@ import {
   resolveLoanEmiAmount,
 } from "@/lib/api/loan-account-map"
 import { INCOME_SOURCE_OPTIONS } from "@/lib/api/transaction-schemas"
-import { FORM_OVERLAY_FOOTER, FORM_OVERLAY_SCROLL_BODY } from "@/lib/form-overlay-scroll"
+import {
+  FORM_OVERLAY_FILL_BODY,
+  FORM_OVERLAY_FOOTER,
+  FORM_OVERLAY_SCROLL_BODY,
+} from "@/lib/form-overlay-scroll"
 import type { TransactionType, TransferDestinationType } from "@/lib/api/schemas"
 import { formatCurrency } from "@/lib/format"
 import { assertSourceAccountCoversAmount } from "@/lib/validation/source-account-balance"
@@ -626,18 +630,20 @@ function AddTransactionModalMounted({
 
         <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
           {isLoading && (
-            <div className={cn(FORM_OVERLAY_SCROLL_BODY, "space-y-4 px-5 py-5")}>
-              <Skeleton className="h-14 w-full rounded-xl" />
-              <Skeleton className="h-10 w-full rounded-xl" />
-              <Skeleton className="h-10 w-full rounded-xl" />
+            <div className={cn(FORM_OVERLAY_FILL_BODY, "justify-center px-5 py-5")}>
+              <div className="space-y-4">
+                <Skeleton className="h-14 w-full rounded-xl" />
+                <Skeleton className="h-10 w-full rounded-xl" />
+                <Skeleton className="h-10 w-full rounded-xl" />
+              </div>
             </div>
           )}
 
           {isError && !isLoading && (
             <div
               className={cn(
-                FORM_OVERLAY_SCROLL_BODY,
-                "flex flex-col items-center justify-center gap-4 px-5 py-5 text-center"
+                FORM_OVERLAY_FILL_BODY,
+                "items-center justify-center gap-4 px-5 py-5 text-center"
               )}
             >
               <p className="text-sm font-medium text-destructive">{getErrorMessage(error)}</p>
@@ -653,7 +659,7 @@ function AddTransactionModalMounted({
           )}
 
           {!isLoading && !isError && accounts.length === 0 && (
-            <div className={cn(FORM_OVERLAY_SCROLL_BODY, "flex flex-col justify-center px-5 py-5")}>
+            <div className={cn(FORM_OVERLAY_FILL_BODY, "justify-center px-5 py-5")}>
               <NoAccountsEmptyState
                 onAddAccount={() => {
                   dismiss()

@@ -6,6 +6,12 @@ export const FORM_OVERLAY_SCROLL_BODY =
   "min-h-0 flex-1 overflow-y-auto overflow-x-hidden overscroll-y-contain scroll-smooth [scrollbar-width:thin] pb-4"
 
 /**
+ * Fills remaining modal height without a scroll container — use for short/empty/centered
+ * content so `overflow-y-auto` does not show a scrollbar when nothing overflows.
+ */
+export const FORM_OVERLAY_FILL_BODY = "min-h-0 flex-1 flex flex-col overflow-hidden"
+
+/**
  * Fixed action bar at the bottom of a sheet/modal: stays above the app chrome, never clipped
  * by the scroll area. Use below a FORM_OVERLAY_SCROLL_BODY sibling inside a flex column form.
  */

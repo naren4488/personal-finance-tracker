@@ -613,9 +613,9 @@ export default function EntriesPage() {
         )}
       </div>
 
-      <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain [-ms-overflow-style:none] [scrollbar-gutter:stable] [scrollbar-width:thin]">
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
         {isError && (
-          <div className="mb-4 space-y-3 rounded-2xl border border-destructive/30 bg-destructive/5 px-4 py-4">
+          <div className="mb-4 shrink-0 space-y-3 rounded-2xl border border-destructive/30 bg-destructive/5 px-4 py-4">
             <p className="text-sm text-destructive">{getErrorMessage(error)}</p>
             <Button
               type="button"
@@ -630,7 +630,7 @@ export default function EntriesPage() {
         )}
 
         {isLoading && !isError && (
-          <div className="space-y-2">
+          <div className="shrink-0 space-y-2">
             <Skeleton className="h-18 w-full rounded-2xl" />
             <Skeleton className="h-18 w-full rounded-2xl" />
             <Skeleton className="h-18 w-full rounded-2xl" />
@@ -638,133 +638,145 @@ export default function EntriesPage() {
         )}
 
         {showEmptyNoResults && (
-          <div
-            className={cn(
-              "flex min-h-[min(52vh,22rem)] flex-col items-center justify-center px-6 py-12 text-center",
-              segment === "transfer"
-                ? ""
-                : "rounded-2xl border border-dashed border-border/90 bg-card"
-            )}
-          >
-            {segment === "transfer" ? null : (
-              <div className="mb-4 flex size-14 items-center justify-center rounded-2xl bg-muted/80">
-                {segment === "expenses" ? (
-                  <div className="relative flex size-10 items-center justify-center">
-                    <FileText className="size-8 text-primary" strokeWidth={2} aria-hidden />
-                    <IndianRupee
-                      className="absolute -right-0.5 -bottom-0.5 size-4 text-primary"
-                      strokeWidth={2.5}
-                      aria-hidden
-                    />
-                  </div>
-                ) : segment === "udhar" ? (
-                  <Users className="size-7 text-primary" strokeWidth={2} aria-hidden />
-                ) : (
-                  <Banknote className="size-7 text-primary" strokeWidth={2} aria-hidden />
-                )}
-              </div>
-            )}
-            {segment === "transfer" ? null : (
-              <>
-                <p className="text-base font-bold text-primary">No transactions found</p>
-                <p className="mt-1 max-w-xs text-sm text-muted-foreground">
+          <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+            <div
+              className="flex min-h-0 flex-1 flex-col items-center justify-center px-1 pb-2 pt-1"
+              role="status"
+              aria-live="polite"
+            >
+              <div className="flex w-full max-w-full shrink-0 flex-col items-center overflow-hidden rounded-2xl border border-dashed border-border/90 bg-card px-6 pb-14 pt-12 text-center">
+                <div
+                  className="mx-auto mb-5 flex size-11 shrink-0 items-center justify-center rounded-xl bg-muted/80"
+                  aria-hidden
+                >
+                  {segment === "expenses" ? (
+                    <div className="relative flex size-8 items-center justify-center">
+                      <FileText className="size-5 text-primary" strokeWidth={2} aria-hidden />
+                      <IndianRupee
+                        className="absolute -right-0.5 -bottom-0.5 size-3 text-primary"
+                        strokeWidth={2.5}
+                        aria-hidden
+                      />
+                    </div>
+                  ) : segment === "udhar" ? (
+                    <Users className="size-6 text-primary" strokeWidth={2} aria-hidden />
+                  ) : segment === "transfer" ? (
+                    <ArrowRightLeft className="size-6 text-primary" strokeWidth={2} aria-hidden />
+                  ) : (
+                    <Banknote className="size-6 text-primary" strokeWidth={2} aria-hidden />
+                  )}
+                </div>
+                <p className="w-full text-base font-bold text-primary">No transactions found</p>
+                <p className="mx-auto mt-2 max-w-xs text-sm text-muted-foreground">
                   {segment === "udhar"
                     ? "No udhar entries in this range. Add an udhar entry to track money given or taken."
-                    : "Try adjusting filters or date range."}
+                    : segment === "transfer"
+                      ? "No transfer entries in this range. Add a transfer entry to track money given or taken."
+                      : "Try adjusting filters or date range."}
                 </p>
-              </>
-            )}
-            {segment === "txns" ? (
-              <div className="mt-6 flex flex-col items-center gap-3 sm:flex-row">
-                <Button
-                  type="button"
-                  className="h-11 rounded-xl px-8 text-base font-semibold"
-                  onClick={() => openTxModalWithType("expense")}
-                >
-                  Add Transaction
-                </Button>
-                <Button
-                  type="button"
-                  variant="outline"
-                  className="h-11 rounded-xl px-8 text-base font-semibold"
-                  onClick={() => openTxModalWithType("transfer")}
-                >
-                  Add Transfer
-                </Button>
+                {segment === "txns" ? (
+                  <div className="mt-6 flex flex-col items-center gap-3 sm:flex-row sm:justify-center">
+                    <Button
+                      type="button"
+                      className="h-11 rounded-xl px-8 text-base font-semibold"
+                      onClick={() => openTxModalWithType("expense")}
+                    >
+                      Add Transaction
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="h-11 rounded-xl px-8 text-base font-semibold"
+                      onClick={() => openTxModalWithType("transfer")}
+                    >
+                      Add Transfer
+                    </Button>
+                  </div>
+                ) : segment === "expenses" ? (
+                  <Button
+                    type="button"
+                    className="mt-6 h-11 rounded-xl px-8 text-base font-semibold"
+                    onClick={() => setExpenseModalOpen(true)}
+                  >
+                    Add Expense
+                  </Button>
+                ) : segment === "transfer" ? (
+                  <Button
+                    type="button"
+                    className="mt-6 h-11 rounded-xl px-8 text-base font-semibold"
+                    onClick={() => openTxModalWithType("transfer")}
+                  >
+                    Add Transfer
+                  </Button>
+                ) : segment === "udhar" ? (
+                  <Button
+                    type="button"
+                    className="mt-6 h-11 rounded-xl px-8 text-base font-semibold"
+                    onClick={() => setUdharSheetOpen(true)}
+                  >
+                    Add Udhar Entry
+                  </Button>
+                ) : null}
               </div>
-            ) : segment === "expenses" ? (
-              <Button
-                type="button"
-                className="mt-6 h-11 rounded-xl px-8 text-base font-semibold"
-                onClick={() => setExpenseModalOpen(true)}
-              >
-                Add Expense
-              </Button>
-            ) : segment === "transfer" ? (
-              <Button
-                type="button"
-                className="h-11 rounded-xl px-10 text-base font-semibold"
-                onClick={() => openTxModalWithType("transfer")}
-              >
-                Add Transfer
-              </Button>
-            ) : segment === "udhar" ? (
-              <Button
-                type="button"
-                className="mt-6 h-11 rounded-xl px-8 text-base font-semibold"
-                onClick={() => setUdharSheetOpen(true)}
-              >
-                Add Udhar Entry
-              </Button>
-            ) : null}
+            </div>
           </div>
         )}
 
-        {!isLoading &&
-          !isError &&
-          entriesHasList &&
-          (segment === "txns" || segment === "expenses") && (
-            <ul className="flex list-none flex-col gap-3" aria-label="Entries list">
-              {displayList.map((tx) => (
-                <li key={tx.id}>
-                  <RecentTransactionRow
-                    tx={tx}
-                    accounts={accounts}
-                    onDelete={txDelete.requestDelete}
-                  />
-                </li>
-              ))}
-            </ul>
-          )}
+        {!isLoading && !isError && entriesHasList && (
+          <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+            {(segment === "txns" || segment === "expenses") && (
+              <ul
+                className="flex min-h-0 min-w-0 flex-1 list-none flex-col gap-3 overflow-y-auto overscroll-contain pb-4 [-ms-overflow-style:none] [scrollbar-width:thin]"
+                aria-label="Entries list"
+              >
+                {displayList.map((tx) => (
+                  <li key={tx.id} className="shrink-0">
+                    <RecentTransactionRow
+                      tx={tx}
+                      accounts={accounts}
+                      onDelete={txDelete.requestDelete}
+                    />
+                  </li>
+                ))}
+              </ul>
+            )}
 
-        {!isLoading && !isError && entriesHasList && segment === "udhar" && (
-          <ul className="flex list-none flex-col gap-2.5" aria-label="Udhar list">
-            {displayList.map((tx) => (
-              <li key={tx.id}>
-                <UdharEntryRow
-                  date={tx.date}
-                  personName={resolveUdharPersonDisplayName(tx, commitments)}
-                  signedAmountInr={parseSignedAmountString(tx.signedAmount)}
-                  onClick={() => setSelectedUdharTx(tx)}
-                  onDelete={() => txDelete.requestDelete(tx)}
-                />
-              </li>
-            ))}
-          </ul>
-        )}
+            {segment === "udhar" && (
+              <ul
+                className="flex min-h-0 min-w-0 flex-1 list-none flex-col gap-2.5 overflow-y-auto overscroll-contain pb-4 [-ms-overflow-style:none] [scrollbar-width:thin]"
+                aria-label="Udhar list"
+              >
+                {displayList.map((tx) => (
+                  <li key={tx.id} className="shrink-0">
+                    <UdharEntryRow
+                      date={tx.date}
+                      personName={resolveUdharPersonDisplayName(tx, commitments)}
+                      signedAmountInr={parseSignedAmountString(tx.signedAmount)}
+                      onClick={() => setSelectedUdharTx(tx)}
+                      onDelete={() => txDelete.requestDelete(tx)}
+                    />
+                  </li>
+                ))}
+              </ul>
+            )}
 
-        {!isLoading && !isError && entriesHasList && segment === "transfer" && (
-          <ul className="flex list-none flex-col gap-3" aria-label="Transfers list">
-            {displayList.map((tx) => (
-              <li key={tx.id}>
-                <TransferTransactionRow
-                  tx={tx}
-                  accounts={accounts}
-                  onDelete={txDelete.requestDelete}
-                />
-              </li>
-            ))}
-          </ul>
+            {segment === "transfer" && (
+              <ul
+                className="flex min-h-0 min-w-0 flex-1 list-none flex-col gap-3 overflow-y-auto overscroll-contain pb-4 [-ms-overflow-style:none] [scrollbar-width:thin]"
+                aria-label="Transfers list"
+              >
+                {displayList.map((tx) => (
+                  <li key={tx.id} className="shrink-0">
+                    <TransferTransactionRow
+                      tx={tx}
+                      accounts={accounts}
+                      onDelete={txDelete.requestDelete}
+                    />
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
         )}
       </div>
     </main>

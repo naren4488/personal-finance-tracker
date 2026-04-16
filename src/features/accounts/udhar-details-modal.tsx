@@ -54,8 +54,8 @@ export function UdharDetailsModal({
         onClick={() => onOpenChange(false)}
         aria-label="Close details"
       />
-      <div className="relative z-10 max-h-[88vh] w-full max-w-2xl overflow-y-auto rounded-2xl border border-border bg-card p-4 shadow-2xl">
-        <div className="mb-3 flex items-center justify-between gap-2">
+      <div className="relative z-10 flex max-h-[88vh] w-full max-w-2xl flex-col overflow-hidden rounded-2xl border border-border bg-card p-4 shadow-2xl">
+        <div className="mb-3 flex shrink-0 items-center justify-between gap-2">
           <div>
             <h2 className="text-lg font-bold text-foreground">{personName}</h2>
             <p className="mt-1 text-sm text-muted-foreground">{headline}</p>
@@ -71,7 +71,7 @@ export function UdharDetailsModal({
           </Button>
         </div>
 
-        <div className="mb-4 grid grid-cols-3 gap-2">
+        <div className="mb-4 grid shrink-0 grid-cols-3 gap-2">
           <div className="rounded-xl border border-border bg-muted/30 p-2">
             <p className="text-xs text-muted-foreground">Receivable (+signed)</p>
             <p className="text-base font-bold text-income">{formatCurrency(totals.given)}</p>
@@ -96,7 +96,7 @@ export function UdharDetailsModal({
           </div>
         </div>
 
-        <ul className="space-y-2">
+        <ul className="min-h-0 flex-1 space-y-2 overflow-y-auto overscroll-contain [-ms-overflow-style:none] [scrollbar-width:thin]">
           {entries.map((tx) => {
             const signed = parseSignedAmountString(tx.signedAmount)
             const absAmt = Math.abs(signed)
