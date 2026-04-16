@@ -12,7 +12,6 @@ import type { CreateTransactionPayload } from "@/lib/api/schemas"
 import { endUserSession } from "@/lib/auth/end-session"
 import { FORM_OVERLAY_FOOTER, FORM_OVERLAY_SCROLL_BODY } from "@/lib/form-overlay-scroll"
 import { formatCurrency } from "@/lib/format"
-import { assertSourceAccountCoversAmount } from "@/lib/validation/source-account-balance"
 import { cn } from "@/lib/utils"
 import { useAddTransactionMutation } from "@/store/api/base-api"
 import { useAppDispatch } from "@/store/hooks"
@@ -88,6 +87,7 @@ function AddCardSpendSheetInner({
   const navigate = useNavigate()
   const dispatch = useAppDispatch()
   const titleId = useId()
+  const accountIdField = useId()
   const amountId = useId()
   const categoryId = useId()
   const dateId = useId()
@@ -133,10 +133,6 @@ function AddCardSpendSheetInner({
       return
     }
 
-    if (!assertSourceAccountCoversAmount(account, amt)) {
-      return
-    }
-
     const cardName = account.name.trim() || "Card"
     const noteParts = [
       note.trim(),
@@ -164,7 +160,7 @@ function AddCardSpendSheetInner({
 
     try {
       await addTransaction(payload).unwrap()
-      toast.success("Card spend added")
+      toast.success("Expense added")
       dismiss()
     } catch (err) {
       const msg = getErrorMessage(err)
@@ -254,6 +250,28 @@ function AddCardSpendSheetInner({
                 <span className="font-bold tabular-nums text-foreground">
                   {formatCurrency(limit)}
                 </span>
+              </div>
+            </section>
+
+            <section>
+              <Label htmlFor={accountIdField} className={lb}>
+                Account
+              </Label>
+              <div className="relative">
+                <select
+                  id={accountIdField}
+                  disabled
+                  aria-disabled="true"
+                  value={account.id}
+                  className={cn(
+                    fieldBase,
+                    "appearance-none pr-8 opacity-90",
+                    "cursor-not-allowed bg-muted/70"
+                  )}
+                >
+                  <option value={account.id}>{cardLabel}</option>
+                </select>
+                <SelectChevron compact />
               </div>
             </section>
 

@@ -125,6 +125,7 @@ import {
   mapApiTransactionToClient,
   parseCreateTransactionSuccess,
   parseGetRecentTransactionsSuccess,
+  applyAccountLedgerScopeToRecentTransactions,
   type CreateTransactionApiBody,
   type RecentTransaction,
 } from "@/lib/api/transaction-schemas"
@@ -711,6 +712,39 @@ export const baseApi = createApi({
       providesTags: (_result, _error, arg) => [{ type: "PersonLedger", id: arg.personId }],
     }),
 
+    getAccountLedger: build.query<RecentTransaction[], { accountId: string; limit?: number }>({
+      async queryFn({ accountId, limit = 500 }, _api, _extraOptions, baseQuery) {
+        const id = accountId.trim()
+        if (!id) {
+          return { error: { status: 422, data: "Account id is required" } }
+        }
+        const lim =
+          typeof limit === "number" && Number.isFinite(limit) && limit > 0 ? Math.floor(limit) : 500
+        const res = await baseQuery({
+          url: TRANSACTION_PATHS.ledger,
+          method: "GET",
+          params: { accountId: id, limit: String(lim) },
+        })
+        if (res.error) {
+          return { error: normalizeFetchError(res.error) }
+        }
+        const failMsg = parseApiFailureMessage(res.data)
+        if (failMsg) {
+          return { error: { status: 400, data: failMsg } }
+        }
+        const parsed = parseGetRecentTransactionsSuccess(res.data)
+        if (!parsed.ok) {
+          return { error: { status: 422, data: parsed.error } }
+        }
+        return {
+          data: applyAccountLedgerScopeToRecentTransactions(parsed.transactions, id),
+        }
+      },
+      providesTags: (_result, _error, arg) => [
+        { type: "Transaction", id: `LEDGER-${arg.accountId}` },
+      ],
+    }),
+
     getUdharAccountBalances: build.query<UdharAccountPersonBalance[], { accountId: string }>({
       async queryFn({ accountId }, _api, _extraOptions, baseQuery) {
         const id = accountId.trim()
@@ -1248,6 +1282,7 @@ export const {
   useGetUdharAccountBalancesQuery,
   useLazyGetPersonLedgerQuery,
   useGetPersonLedgerQuery,
+  useGetAccountLedgerQuery,
   useCreatePersonMutation,
   useGetRecentTransactionsQuery,
   useGetDashboardQuery,

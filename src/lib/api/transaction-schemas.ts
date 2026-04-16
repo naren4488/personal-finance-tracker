@@ -370,6 +370,67 @@ export const recentTransactionItemSchema = z
 
 export type RecentTransaction = z.infer<typeof recentTransactionItemSchema>
 
+function withCanonicalTransferFields(tx: RecentTransaction): RecentTransaction {
+  const rec = tx as unknown as Record<string, unknown>
+  const next = { ...rec } as Record<string, unknown>
+
+  const destinationType =
+    firstStringFromRecord(rec, ["destinationType", "destination_type"]) ??
+    (typeof tx.destinationType === "string" ? tx.destinationType : undefined)
+  if (destinationType) next.destinationType = destinationType
+
+  const creditCardAccountId = firstIdStringFromRecord(rec, [
+    "creditCardAccountId",
+    "credit_card_account_id",
+    // Some ledger payloads use card id keys without the "Account" segment.
+    "creditCardId",
+    "credit_card_id",
+    "cardId",
+    "card_id",
+  ])
+  if (creditCardAccountId) next.creditCardAccountId = creditCardAccountId
+
+  const loanAccountId = firstIdStringFromRecord(rec, [
+    "loanAccountId",
+    "loan_account_id",
+    // Some ledger payloads expose loan id in shorter keys.
+    "loanId",
+    "loan_id",
+  ])
+  if (loanAccountId) next.loanAccountId = loanAccountId
+
+  return next as RecentTransaction
+}
+
+/**
+ * GET /transactions/ledger?accountId=<id> is scoped to that account. Some payloads omit
+ * `creditCardAccountId` / `loanAccountId` on bill-payment transfers even though the row
+ * belongs to this ledger. Populate those canonical fields only when missing so strict
+ * filters (destinationType + id) can match without changing filter rules.
+ */
+export function applyAccountLedgerScopeToRecentTransactions(
+  transactions: RecentTransaction[],
+  ledgerAccountId: string
+): RecentTransaction[] {
+  const scopeId = ledgerAccountId.trim()
+  if (!scopeId) return transactions
+  return transactions.map((tx) => {
+    if (tx.type !== "transfer") return tx
+    const dest = String(tx.destinationType ?? "").toLowerCase()
+    const rec = tx as unknown as Record<string, unknown>
+    const next = { ...rec } as Record<string, unknown>
+    if (dest === "credit_card_bill") {
+      const existing = String(next.creditCardAccountId ?? "").trim()
+      if (!existing) next.creditCardAccountId = scopeId
+    }
+    if (dest === "loan_payment") {
+      const existing = String(next.loanAccountId ?? "").trim()
+      if (!existing) next.loanAccountId = scopeId
+    }
+    return next as RecentTransaction
+  })
+}
+
 function extractRecentTransactionsArray(raw: unknown): unknown[] | null {
   if (Array.isArray(raw)) return raw
   if (raw === null || typeof raw !== "object") return null
@@ -463,6 +524,18 @@ function firstStringFromRecord(
   for (const k of keys) {
     const v = rec[k]
     if (typeof v === "string" && v.trim()) return v.trim()
+  }
+  return undefined
+}
+
+function firstIdStringFromRecord(
+  rec: Record<string, unknown>,
+  keys: readonly string[]
+): string | undefined {
+  for (const k of keys) {
+    const v = rec[k]
+    if (typeof v === "string" && v.trim()) return v.trim()
+    if (typeof v === "number" && Number.isFinite(v)) return String(v)
   }
   return undefined
 }
@@ -581,9 +654,9 @@ export function parseGetRecentTransactionsSuccess(
     })
     .safeParse(raw)
   if (strict.success) {
-    const txs = strict.data.data.transactions.filter(
-      (t) => !shouldExcludeAsNonTransactionRow(t as unknown as Record<string, unknown>)
-    )
+    const txs = strict.data.data.transactions
+      .filter((t) => !shouldExcludeAsNonTransactionRow(t as unknown as Record<string, unknown>))
+      .map((t) => withCanonicalTransferFields(t))
     return { ok: true, transactions: txs }
   }
 
@@ -602,7 +675,7 @@ export function parseGetRecentTransactionsSuccess(
       continue
     }
     const row = normalizeRawToRecentTransaction(rec)
-    if (row) out.push(row)
+    if (row) out.push(withCanonicalTransferFields(row))
   }
 
   if (import.meta.env.DEV && excluded > 0) {

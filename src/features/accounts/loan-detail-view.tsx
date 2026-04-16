@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react"
+import { useCallback, useEffect, useMemo, useState } from "react"
 import {
   ArrowLeft,
   Building2,
@@ -32,10 +32,17 @@ import {
   RecordLoanPaymentSheet,
   type LoanPaymentMode,
 } from "@/features/accounts/record-loan-payment-sheet"
+import { RecentTransactionRow } from "@/features/entries/recent-transaction-row"
 import { getAccountDeleteWarning } from "@/lib/accounts/account-delete"
 import { getErrorMessage } from "@/lib/api/errors"
+import type { RecentTransaction } from "@/lib/api/transaction-schemas"
 import { formatCurrency } from "@/lib/format"
-import { useDeleteAccountMutation, useUpdateAccountMutation } from "@/store/api/base-api"
+import {
+  useGetAccountLedgerQuery,
+  useDeleteAccountMutation,
+  useGetAccountsQuery,
+  useUpdateAccountMutation,
+} from "@/store/api/base-api"
 import { cn } from "@/lib/utils"
 
 function comingSoon(label: string) {
@@ -70,6 +77,36 @@ function parseDigitsInt(s: string): number {
   return Number.isFinite(n) ? n : 0
 }
 
+function txSourceAccountId(tx: RecentTransaction): string | undefined {
+  const rec = tx as unknown as Record<string, unknown>
+  const id =
+    typeof tx.accountId === "string" && tx.accountId.trim()
+      ? tx.accountId.trim()
+      : typeof rec.sourceAccountId === "string" && rec.sourceAccountId.trim()
+        ? rec.sourceAccountId.trim()
+        : typeof rec.fromAccountId === "string" && rec.fromAccountId.trim()
+          ? rec.fromAccountId.trim()
+          : undefined
+  return id || undefined
+}
+
+function isLoanPaymentTransaction(tx: RecentTransaction, loanId: string): boolean {
+  const selectedId = String(loanId ?? "").trim()
+  const txLoanId = String(tx.loanAccountId ?? "").trim()
+  return (
+    tx.type === "transfer" &&
+    String(tx.destinationType ?? "").toLowerCase() === "loan_payment" &&
+    txLoanId.length > 0 &&
+    txLoanId === selectedId
+  )
+}
+
+function isLoanActivityTransaction(tx: RecentTransaction, loanId: string): boolean {
+  if (tx.type === "transfer") return false
+  const sourceId = txSourceAccountId(tx)
+  return sourceId === loanId
+}
+
 export function LoanDetailView({
   open,
   onOpenChange,
@@ -95,6 +132,17 @@ export function LoanDetailView({
   const [paymentMode, setPaymentMode] = useState<LoanPaymentMode>("pay_emi")
   const [isEditing, setIsEditing] = useState(false)
   const [draft, setDraft] = useState<Account | null>(null)
+  const { data: allAccounts = [] } = useGetAccountsQuery(undefined, { skip: !open || !account })
+  const {
+    data: recentTransactions = [],
+    isFetching: txsFetching,
+    isError: txsError,
+    error: txsErrorValue,
+    refetch: refetchRecentTransactions,
+  } = useGetAccountLedgerQuery(
+    { accountId: String(account?.id ?? ""), limit: 500 },
+    { skip: !open || !account }
+  )
 
   const dismiss = useCallback(() => {
     setIsEditing(false)
@@ -306,6 +354,78 @@ export function LoanDetailView({
     }
   }, [open])
 
+  const labelSm = "text-[10px] font-medium text-muted-foreground sm:text-xs"
+  const selectedLoanId = String(account?.id ?? "").trim()
+  useEffect(() => {
+    if (!open || !selectedLoanId) return
+    void refetchRecentTransactions()
+  }, [open, selectedLoanId, refetchRecentTransactions])
+  const loanTransactions = useMemo(() => {
+    if (!selectedLoanId) return [] as RecentTransaction[]
+    return [...recentTransactions]
+      .filter((tx) => isLoanActivityTransaction(tx, selectedLoanId))
+      .sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0))
+  }, [selectedLoanId, recentTransactions])
+  const loanPaymentsMade = useMemo(() => {
+    if (!selectedLoanId) return [] as RecentTransaction[]
+    return [...recentTransactions]
+      .filter((tx) => isLoanPaymentTransaction(tx, selectedLoanId))
+      .sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0))
+  }, [selectedLoanId, recentTransactions])
+  const loanTransactionsForUi = loanTransactions
+  const loanPaymentsForUi = loanPaymentsMade
+
+  useEffect(() => {
+    if (!open || !account) return
+    const currentLoanId = String(account.id ?? "").trim()
+    console.log("DETAIL VIEW RAW DATA:", recentTransactions)
+    console.log("SELECTED ID:", currentLoanId)
+    console.log("RAW DATA USED IN UI (LOAN TX):", loanTransactionsForUi)
+    console.log("RAW DATA USED IN UI (LOAN PAYMENTS):", loanPaymentsForUi)
+    const spendIds = new Set(loanTransactions.map((tx) => String(tx.id)))
+    const overlap = loanPaymentsMade.filter((tx) => spendIds.has(String(tx.id)))
+    if (overlap.length > 0) {
+      console.warn("Loan transaction overlap detected", overlap)
+    }
+
+    if (import.meta.env.DEV) {
+      console.log("=== LOAN PAYMENT DEBUG START ===")
+      console.log("Loan ID:", currentLoanId)
+      console.log("Total TX:", recentTransactions.length)
+      if (txsError) {
+        console.error("LOAN DETAIL TRANSACTIONS QUERY ERROR:", txsErrorValue)
+      }
+
+      const transfers = recentTransactions.filter((tx) => tx.type === "transfer")
+      transfers.forEach((tx) => {
+        const destinationType = String(tx.destinationType ?? "").toLowerCase()
+        const loanId = tx.loanAccountId
+        console.log("Transfer TX:", {
+          id: tx.id,
+          destinationType,
+          loanId,
+          matchesLoan: loanId === currentLoanId,
+        })
+      })
+
+      console.log("Filtered Loan Payments:", loanPaymentsForUi.length)
+      if (loanPaymentsForUi.length === 0) {
+        console.error("No loan payments found for this loan. Check transaction data.")
+      }
+      console.log("=== LOAN PAYMENT DEBUG END ===")
+    }
+  }, [
+    open,
+    account,
+    recentTransactions,
+    loanTransactions,
+    loanPaymentsMade,
+    loanTransactionsForUi,
+    loanPaymentsForUi,
+    txsError,
+    txsErrorValue,
+  ])
+
   if (!open || !account) return null
 
   const working = isEditing && draft ? draft : account
@@ -331,8 +451,6 @@ export function LoanDetailView({
     "mt-1 w-full rounded-lg border border-border bg-background px-2 py-1.5 text-center text-sm font-semibold tabular-nums text-foreground shadow-sm outline-none",
     "focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/50"
   )
-
-  const labelSm = "text-[10px] font-medium text-muted-foreground sm:text-xs"
 
   const deleteWarning = getAccountDeleteWarning(account)
 
@@ -541,7 +659,7 @@ export function LoanDetailView({
                 <div className="mt-4 flex gap-2">
                   <Button
                     type="button"
-                    className="h-11 min-h-11 min-w-0 flex-[3] rounded-xl bg-primary text-sm font-bold text-primary-foreground hover:bg-primary/90 sm:text-base"
+                    className="h-11 min-h-11 min-w-0 flex-3 rounded-xl bg-primary text-sm font-bold text-primary-foreground hover:bg-primary/90 sm:text-base"
                     onClick={saveEdit}
                     disabled={isSavingLoan}
                   >
@@ -799,11 +917,51 @@ export function LoanDetailView({
               </div>
             ) : null}
 
-            <div className="mt-8">
-              <h2 className="text-base font-bold text-foreground">Payment History</h2>
-              <p className="mt-6 text-center text-sm text-muted-foreground">
-                No payments recorded yet
-              </p>
+            <div className="mt-8 rounded-2xl bg-inherit p-4 sm:p-5">
+              <h2 className="text-base font-bold text-foreground">Transactions</h2>
+              {txsError ? (
+                <p className="mt-6 text-center text-sm text-destructive">
+                  Unable to load transactions
+                </p>
+              ) : txsFetching ? (
+                <p className="mt-6 text-center text-sm text-muted-foreground">Loading...</p>
+              ) : loanTransactionsForUi.length === 0 ? (
+                <p className="mt-6 text-center text-sm text-muted-foreground">
+                  No transactions yet
+                </p>
+              ) : (
+                <ul className="mt-4 flex list-none flex-col gap-2.5" aria-label="Loan transactions">
+                  {loanTransactionsForUi.map((tx) => (
+                    <li key={tx.id}>
+                      <RecentTransactionRow tx={tx} accounts={allAccounts} />
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+
+            <div className="mt-4 rounded-2xl bg-inherit p-4 sm:mt-5 sm:p-5">
+              <h2 className="text-base font-bold text-foreground">Payments Made</h2>
+              {txsError ? (
+                <p className="mt-6 text-center text-sm text-destructive">Unable to load payments</p>
+              ) : txsFetching ? (
+                <p className="mt-6 text-center text-sm text-muted-foreground">Loading...</p>
+              ) : loanPaymentsForUi.length === 0 ? (
+                <p className="mt-6 text-center text-sm text-muted-foreground">
+                  No payments recorded yet
+                </p>
+              ) : (
+                <ul
+                  className="mt-4 flex list-none flex-col gap-2.5"
+                  aria-label="Loan payments made"
+                >
+                  {loanPaymentsForUi.map((tx) => (
+                    <li key={tx.id}>
+                      <RecentTransactionRow tx={tx} accounts={allAccounts} />
+                    </li>
+                  ))}
+                </ul>
+              )}
             </div>
           </div>
         </div>

@@ -21,9 +21,16 @@ import {
   paymentDueDayNumber,
 } from "@/lib/api/credit-card-map"
 import { AddCardSpendSheet } from "@/features/accounts/add-card-spend-sheet"
+import { RecentTransactionRow } from "@/features/entries/recent-transaction-row"
 import { getAccountDeleteWarning } from "@/lib/accounts/account-delete"
+import { type RecentTransaction } from "@/lib/api/transaction-schemas"
 import { formatCurrency } from "@/lib/format"
-import { useDeleteAccountMutation, useUpdateAccountMutation } from "@/store/api/base-api"
+import {
+  useGetAccountLedgerQuery,
+  useDeleteAccountMutation,
+  useGetAccountsQuery,
+  useUpdateAccountMutation,
+} from "@/store/api/base-api"
 import { cn } from "@/lib/utils"
 
 const CARD_NETWORKS = [
@@ -64,6 +71,36 @@ function parseDigitsInt(s: string): number {
   return Number.isFinite(n) ? n : 0
 }
 
+function txSourceAccountId(tx: RecentTransaction): string | undefined {
+  const rec = tx as unknown as Record<string, unknown>
+  const id =
+    typeof tx.accountId === "string" && tx.accountId.trim()
+      ? tx.accountId.trim()
+      : typeof rec.sourceAccountId === "string" && rec.sourceAccountId.trim()
+        ? rec.sourceAccountId.trim()
+        : typeof rec.fromAccountId === "string" && rec.fromAccountId.trim()
+          ? rec.fromAccountId.trim()
+          : undefined
+  return id || undefined
+}
+
+function isCardSpendTransaction(tx: RecentTransaction, cardId: string): boolean {
+  if (tx.type !== "expense") return false
+  const sourceId = txSourceAccountId(tx)
+  return sourceId === cardId
+}
+
+function isCardPaymentTransaction(tx: RecentTransaction, cardId: string): boolean {
+  const selectedId = String(cardId ?? "").trim()
+  const txCardId = String(tx.creditCardAccountId ?? "").trim()
+  return (
+    tx.type === "transfer" &&
+    String(tx.destinationType ?? "").toLowerCase() === "credit_card_bill" &&
+    txCardId.length > 0 &&
+    txCardId === selectedId
+  )
+}
+
 export function CreditCardDetailView({
   open,
   onOpenChange,
@@ -87,6 +124,17 @@ export function CreditCardDetailView({
   const [isEditing, setIsEditing] = useState(false)
   const [draft, setDraft] = useState<Account | null>(null)
   const [spendOpen, setSpendOpen] = useState(false)
+  const { data: allAccounts = [] } = useGetAccountsQuery(undefined, { skip: !open || !account })
+  const {
+    data: recentTransactions = [],
+    isFetching: txsFetching,
+    isError: txsError,
+    error: txsErrorValue,
+    refetch: refetchRecentTransactions,
+  } = useGetAccountLedgerQuery(
+    { accountId: String(account?.id ?? ""), limit: 500 },
+    { skip: !open || !account }
+  )
 
   const dismiss = useCallback(() => {
     setIsEditing(false)
@@ -280,6 +328,88 @@ export function CreditCardDetailView({
     }
     return [...CARD_NETWORKS]
   }, [draft])
+
+  const selectedCardId = String(account?.id ?? "").trim()
+  useEffect(() => {
+    if (!open || !selectedCardId) return
+    void refetchRecentTransactions()
+  }, [open, selectedCardId, refetchRecentTransactions])
+  const cardTransactions = useMemo(() => {
+    if (!selectedCardId) return [] as RecentTransaction[]
+    return [...recentTransactions]
+      .filter((tx) => isCardSpendTransaction(tx, selectedCardId))
+      .sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0))
+  }, [selectedCardId, recentTransactions])
+  const cardPaymentsMade = useMemo(() => {
+    if (!selectedCardId) return [] as RecentTransaction[]
+    return [...recentTransactions]
+      .filter((tx) => isCardPaymentTransaction(tx, selectedCardId))
+      .sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0))
+  }, [selectedCardId, recentTransactions])
+  const cardTransactionsForUi = cardTransactions
+  const cardPaymentsForUi = cardPaymentsMade
+
+  if (import.meta.env.DEV) {
+    const spendIds = new Set(cardTransactions.map((tx) => String(tx.id)))
+    const overlap = cardPaymentsMade.filter((tx) => spendIds.has(String(tx.id)))
+    if (overlap.length > 0) {
+      console.warn("Card transaction overlap detected", overlap)
+    }
+  }
+
+  useEffect(() => {
+    if (!import.meta.env.DEV || !open || !account) return
+    console.debug("[credit-card] detail tx snapshot", {
+      cardId: String(account.id),
+      spends: cardTransactions.length,
+      paymentsMade: cardPaymentsMade.length,
+      totalRecentFetched: recentTransactions.length,
+    })
+  }, [open, account, cardTransactions.length, cardPaymentsMade.length, recentTransactions.length])
+
+  useEffect(() => {
+    if (!open || !account) return
+    const currentCardId = String(account.id ?? "").trim()
+    console.log("DETAIL VIEW RAW DATA:", recentTransactions)
+    console.log("SELECTED ID:", currentCardId)
+    console.log("RAW DATA USED IN UI (CARD TX):", cardTransactionsForUi)
+    console.log("RAW DATA USED IN UI (CARD PAYMENTS):", cardPaymentsForUi)
+    console.log("=== CARD PAYMENT DEBUG START ===")
+    console.log("Current Card ID:", currentCardId)
+    console.log("Total Transactions:", recentTransactions.length)
+    if (txsError) {
+      console.error("CARD DETAIL TRANSACTIONS QUERY ERROR:", txsErrorValue)
+    }
+
+    recentTransactions.forEach((tx) => {
+      const destinationType = String(tx.destinationType ?? "").toLowerCase()
+      const creditCardId = tx.creditCardAccountId
+
+      if (tx.type === "transfer") {
+        console.log("Transfer TX:", {
+          id: tx.id,
+          destinationType,
+          creditCardId,
+          matchesCard: creditCardId === currentCardId,
+        })
+      }
+    })
+
+    console.log("Filtered Payments:", cardPaymentsForUi.length)
+    const transferCandidates = recentTransactions.filter((tx) => tx.type === "transfer")
+    if (cardPaymentsForUi.length === 0 && transferCandidates.length > 0) {
+      console.warn("No card payments found for this card. Check transaction data.")
+    }
+    console.log("=== CARD PAYMENT DEBUG END ===")
+  }, [
+    open,
+    account,
+    recentTransactions,
+    cardTransactionsForUi,
+    cardPaymentsForUi,
+    txsError,
+    txsErrorValue,
+  ])
 
   if (!open || !account) return null
 
@@ -700,14 +830,51 @@ export function CreditCardDetailView({
 
             <div className="mt-4 rounded-2xl bg-inherit p-4 sm:mt-5 sm:p-5">
               <h2 className="text-base font-bold text-foreground">Transactions</h2>
-              <p className="mt-8 pb-2 text-center text-sm text-muted-foreground">
-                No transactions yet
-              </p>
+              {txsError ? (
+                <p className="mt-8 pb-2 text-center text-sm text-destructive">
+                  Unable to load transactions
+                </p>
+              ) : txsFetching ? (
+                <p className="mt-8 pb-2 text-center text-sm text-muted-foreground">Loading...</p>
+              ) : cardTransactionsForUi.length === 0 ? (
+                <p className="mt-8 pb-2 text-center text-sm text-muted-foreground">
+                  No transactions yet
+                </p>
+              ) : (
+                <ul className="mt-4 flex list-none flex-col gap-2.5" aria-label="Card transactions">
+                  {cardTransactionsForUi.map((tx) => (
+                    <li key={tx.id}>
+                      <RecentTransactionRow tx={tx} accounts={allAccounts} />
+                    </li>
+                  ))}
+                </ul>
+              )}
             </div>
 
             <div className="mt-4 rounded-2xl bg-inherit p-4 sm:mt-5 sm:p-5">
               <h2 className="text-base font-bold text-foreground">Payments Made</h2>
-              <p className="mt-8 pb-2 text-center text-sm text-muted-foreground">No payments yet</p>
+              {txsError ? (
+                <p className="mt-8 pb-2 text-center text-sm text-destructive">
+                  Unable to load payments
+                </p>
+              ) : txsFetching ? (
+                <p className="mt-8 pb-2 text-center text-sm text-muted-foreground">Loading...</p>
+              ) : cardPaymentsForUi.length === 0 ? (
+                <p className="mt-8 pb-2 text-center text-sm text-muted-foreground">
+                  No payments yet
+                </p>
+              ) : (
+                <ul
+                  className="mt-4 flex list-none flex-col gap-2.5"
+                  aria-label="Card payments made"
+                >
+                  {cardPaymentsForUi.map((tx) => (
+                    <li key={tx.id}>
+                      <RecentTransactionRow tx={tx} accounts={allAccounts} />
+                    </li>
+                  ))}
+                </ul>
+              )}
             </div>
           </div>
         </div>
