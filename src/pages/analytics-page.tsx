@@ -107,7 +107,7 @@ export default function AnalyticsFullPage() {
   return (
     <div
       className={cn(
-        "flex min-h-0 flex-1 flex-col overflow-y-auto overscroll-contain bg-slate-50 pb-20 font-sans transition-opacity [-ms-overflow-style:none] [scrollbar-gutter:stable] [scrollbar-width:thin]",
+        "flex min-h-0 flex-1 flex-col overflow-y-auto overscroll-contain bg-background text-foreground pb-20 font-sans transition-opacity [-ms-overflow-style:none] [scrollbar-gutter:stable] [scrollbar-width:thin]",
         analyticsUpdating && dashboardData && "opacity-95"
       )}
     >
@@ -122,8 +122,8 @@ export default function AnalyticsFullPage() {
                 onClick={() => setActiveTab(tab)}
                 className={`px-4 py-1.5 rounded-full text-xs font-medium transition-colors ${
                   activeTab === tab
-                    ? "bg-[#1e1b4b] text-white shadow-sm"
-                    : "bg-white text-slate-500 border hover:bg-slate-50"
+                    ? "bg-primary text-primary-foreground shadow-sm"
+                    : "bg-card text-muted-foreground border border-border hover:bg-muted/60"
                 }`}
               >
                 {tab}
@@ -134,7 +134,7 @@ export default function AnalyticsFullPage() {
             type="button"
             variant="outline"
             size="sm"
-            className="shrink-0 rounded-full border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-[#1e1b4b] hover:bg-slate-50"
+            className="shrink-0 rounded-full border-border bg-card px-3 py-1.5 text-xs font-semibold text-primary hover:bg-muted"
             onClick={() => setCommitmentOpen(true)}
           >
             + Commitment
@@ -142,8 +142,8 @@ export default function AnalyticsFullPage() {
         </div>
 
         {!user ? (
-          <Card className="rounded-2xl border-slate-100 shadow-sm">
-            <CardContent className="py-8 text-center text-sm text-slate-600">
+          <Card className="rounded-2xl border-border shadow-sm">
+            <CardContent className="py-8 text-center text-sm text-muted-foreground">
               Sign in to load analytics for your account.
             </CardContent>
           </Card>
@@ -183,32 +183,32 @@ export default function AnalyticsFullPage() {
         ) : null}
       </main>
 
-      <nav className="fixed bottom-0 w-full bg-white border-t border-slate-100 flex justify-around items-center py-3 pb-safe z-50">
+      <nav className="fixed bottom-0 z-50 flex w-full items-center justify-around border-t border-border bg-background py-3 pb-safe">
         <button
           type="button"
-          className="flex flex-col items-center gap-1 text-slate-400 hover:text-slate-600"
+          className="flex flex-col items-center gap-1 text-muted-foreground hover:text-foreground"
         >
           <Home className="w-5 h-5" />
           <span className="text-[10px] font-medium">Home</span>
         </button>
         <button
           type="button"
-          className="flex flex-col items-center gap-1 text-slate-400 hover:text-slate-600"
+          className="flex flex-col items-center gap-1 text-muted-foreground hover:text-foreground"
         >
           <LayoutGrid className="w-5 h-5" />
           <span className="text-[10px] font-medium">Entries</span>
         </button>
         <button
           type="button"
-          className="flex flex-col items-center gap-1 text-slate-400 hover:text-slate-600"
+          className="flex flex-col items-center gap-1 text-muted-foreground hover:text-foreground"
         >
           <Wallet className="w-5 h-5" />
           <span className="text-[10px] font-medium">Accounts</span>
         </button>
-        <button type="button" className="flex flex-col items-center gap-1 text-[#1e1b4b]">
+        <button type="button" className="flex flex-col items-center gap-1 text-primary">
           <BarChart2 className="w-5 h-5" />
           <span className="text-[10px] font-bold">Analytics</span>
-          <div className="w-1 h-1 bg-[#1e1b4b] rounded-full mt-0.5" />
+          <div className="mt-0.5 h-1 w-1 rounded-full bg-primary" />
         </button>
       </nav>
     </div>
@@ -271,44 +271,44 @@ function AnalyticsContent({
     <>
       <div className="space-y-1">
         <div className="relative">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 w-4 h-4" />
+          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <Input
             placeholder="Search (filters analytics from server)…"
             value={searchInput}
             onChange={(e) => onSearchChange(e.target.value)}
-            className="pl-9 bg-white border-slate-200 shadow-sm rounded-xl"
+            className="rounded-xl border-border bg-card pl-9 shadow-sm"
             autoComplete="off"
           />
         </div>
         {searchDebouncePending ? (
-          <p className="text-[10px] text-slate-400 px-0.5">Updating search…</p>
+          <p className="px-0.5 text-[10px] text-muted-foreground">Updating search…</p>
         ) : null}
       </div>
 
       <div className="grid grid-cols-3 gap-3">
-        <Card className="text-center py-4 shadow-sm border-slate-100 rounded-2xl">
+        <Card className="rounded-2xl border-border py-4 text-center shadow-sm">
           <div className="flex justify-center mb-1">
             <TrendingUp className="text-emerald-500 w-4 h-4" />
           </div>
-          <p className="text-[10px] text-slate-500 font-medium mb-1">Income</p>
+          <p className="mb-1 text-[10px] font-medium text-muted-foreground">Income</p>
           <p className="text-sm font-bold text-emerald-600">
             ₹{dashboardData.summary.income.toLocaleString("en-IN")}
           </p>
         </Card>
-        <Card className="text-center py-4 shadow-sm border-slate-100 rounded-2xl">
+        <Card className="rounded-2xl border-border py-4 text-center shadow-sm">
           <div className="flex justify-center mb-1">
             <TrendingDown className="text-red-500 w-4 h-4" />
           </div>
-          <p className="text-[10px] text-slate-500 font-medium mb-1">Expenses</p>
+          <p className="mb-1 text-[10px] font-medium text-muted-foreground">Expenses</p>
           <p className="text-sm font-bold text-red-600">
             ₹{dashboardData.summary.expenses.toLocaleString("en-IN")}
           </p>
         </Card>
-        <Card className="text-center py-4 shadow-sm border-slate-100 rounded-2xl">
+        <Card className="rounded-2xl border-border py-4 text-center shadow-sm">
           <div className="flex justify-center mb-1">
             <Wallet className={cn("w-4 h-4", netPositive ? "text-emerald-500" : "text-red-500")} />
           </div>
-          <p className="text-[10px] text-slate-500 font-medium mb-1">Net Savings</p>
+          <p className="mb-1 text-[10px] font-medium text-muted-foreground">Net Savings</p>
           <p className={cn("text-sm font-bold", netPositive ? "text-emerald-600" : "text-red-600")}>
             ₹{dashboardData.summary.netSavings.toLocaleString("en-IN")}
           </p>
@@ -316,25 +316,27 @@ function AnalyticsContent({
       </div>
 
       <div className="grid grid-cols-2 gap-3">
-        <Card className="p-4 shadow-sm border-slate-100 rounded-2xl">
-          <p className="text-[10px] text-slate-500 mb-1">Savings Rate</p>
+        <Card className="rounded-2xl border-border p-4 shadow-sm">
+          <p className="mb-1 text-[10px] text-muted-foreground">Savings Rate</p>
           <p className="text-lg font-bold text-emerald-600">{dashboardData.summary.savingsRate}%</p>
         </Card>
-        <Card className="p-4 shadow-sm border-slate-100 rounded-2xl">
-          <p className="text-[10px] text-slate-500 mb-1">Avg Daily Spend</p>
+        <Card className="rounded-2xl border-border p-4 shadow-sm">
+          <p className="mb-1 text-[10px] text-muted-foreground">Avg Daily Spend</p>
           <p className="text-lg font-bold text-red-600">
             ₹{dashboardData.summary.avgDailySpend.toLocaleString("en-IN")}
           </p>
         </Card>
       </div>
 
-      <Card className="shadow-sm border-slate-100 rounded-2xl">
+      <Card className="rounded-2xl border-border shadow-sm">
         <CardHeader className="pb-0">
           <CardTitle className="text-sm font-bold">Category Breakdown</CardTitle>
         </CardHeader>
         <CardContent className="pt-4">
           {dashboardData.categoryBreakdown.length === 0 ? (
-            <p className="text-sm text-slate-500 py-6 text-center">No category data this period.</p>
+            <p className="py-6 text-center text-sm text-muted-foreground">
+              No category data this period.
+            </p>
           ) : (
             <div className="flex items-center gap-2">
               <div className="h-28 w-1/4">
@@ -364,7 +366,7 @@ function AnalyticsContent({
                         className="w-1.5 h-1.5 rounded-full shrink-0"
                         style={{ backgroundColor: item.color }}
                       />
-                      <span className="text-slate-600 truncate">{item.name}</span>
+                      <span className="truncate text-muted-foreground">{item.name}</span>
                     </div>
                     <span className="font-semibold shrink-0">
                       ₹{item.value.toLocaleString("en-IN")}
@@ -377,23 +379,23 @@ function AnalyticsContent({
         </CardContent>
       </Card>
 
-      <Card className="shadow-sm border-slate-100 rounded-2xl">
+      <Card className="rounded-2xl border-border shadow-sm">
         <CardHeader className="pb-2">
           <CardTitle className="text-sm font-bold">Payment Methods</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4 pt-2">
           {dashboardData.paymentMethods.length === 0 ? (
-            <p className="text-sm text-slate-500 py-2">No payment method data.</p>
+            <p className="py-2 text-sm text-muted-foreground">No payment method data.</p>
           ) : (
             dashboardData.paymentMethods.map((method) => (
               <div key={method.name} className="space-y-1.5">
                 <div className="flex justify-between text-xs gap-2">
-                  <span className="text-slate-500 truncate">{method.name}</span>
+                  <span className="truncate text-muted-foreground">{method.name}</span>
                   <span className="font-bold shrink-0">
                     ₹{method.amount.toLocaleString("en-IN")} ({method.percentage}%)
                   </span>
                 </div>
-                <div className="w-full bg-slate-100 rounded-full h-1.5 overflow-hidden">
+                <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted">
                   <div
                     className={cn("h-full rounded-full", method.color)}
                     style={{ width: `${Math.min(100, method.percentage)}%` }}
@@ -405,28 +407,28 @@ function AnalyticsContent({
         </CardContent>
       </Card>
 
-      <Card className="shadow-sm border-slate-100 rounded-2xl">
+      <Card className="rounded-2xl border-border shadow-sm">
         <CardHeader className="pb-2">
           <CardTitle className="text-sm font-bold">Top 5 Expenses</CardTitle>
         </CardHeader>
         <CardContent className="space-y-0 pt-0">
           {dashboardData.topExpenses.length === 0 ? (
-            <p className="text-sm text-slate-500 py-4 text-center">
+            <p className="py-4 text-center text-sm text-muted-foreground">
               {isSearchFilterActive ? "No matches for your search." : "No expenses in this period."}
             </p>
           ) : (
             dashboardData.topExpenses.map((expense, index) => (
               <div
                 key={`${expense.id}-${index}`}
-                className="flex justify-between items-center py-3 border-b border-slate-50 last:border-0 gap-2"
+                className="flex items-center justify-between gap-2 border-b border-border/40 py-3 last:border-0"
               >
                 <div className="flex items-center gap-3 min-w-0">
-                  <div className="w-5 h-5 rounded-full bg-red-50 text-red-500 flex items-center justify-center text-[10px] font-bold shrink-0">
+                  <div className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-destructive/10 text-[10px] font-bold text-destructive">
                     {index + 1}
                   </div>
                   <div className="min-w-0">
-                    <p className="text-xs font-bold text-slate-800 truncate">{expense.name}</p>
-                    <p className="text-[10px] text-slate-400">
+                    <p className="truncate text-xs font-bold text-foreground">{expense.name}</p>
+                    <p className="text-[10px] text-muted-foreground">
                       {formatExpenseDateLabel(expense.date)}
                     </p>
                   </div>
@@ -440,16 +442,16 @@ function AnalyticsContent({
         </CardContent>
       </Card>
 
-      <Card className="shadow-sm border-slate-100 rounded-2xl">
+      <Card className="rounded-2xl border-border shadow-sm">
         <CardHeader className="pb-0">
           <CardTitle className="text-sm font-bold">Monthly Trends</CardTitle>
-          <p className="text-[10px] text-slate-500 font-normal pt-1">
+          <p className="pt-1 text-[10px] font-normal text-muted-foreground">
             Income, expenses, and optional loan / credit-card series from the dashboard API.
           </p>
         </CardHeader>
         <CardContent className={cn("pt-4", showExtendedMonthly ? "h-[280px]" : "h-[200px]")}>
           {dashboardData.monthlyTrends.length === 0 ? (
-            <p className="text-sm text-slate-500 flex h-full items-center justify-center">
+            <p className="flex h-full items-center justify-center text-sm text-muted-foreground">
               No monthly trend data.
             </p>
           ) : (
@@ -463,20 +465,30 @@ function AnalyticsContent({
                   dataKey="month"
                   fontSize={10}
                   tickLine={false}
-                  axisLine={{ stroke: "#94a3b8" }}
-                  tick={{ fill: "#94a3b8" }}
+                  axisLine={{ stroke: "hsl(var(--border))" }}
+                  tick={{ fill: "hsl(var(--muted-foreground))" }}
                   dy={10}
                 />
                 <YAxis
                   fontSize={10}
                   tickLine={false}
-                  axisLine={{ stroke: "#94a3b8" }}
-                  tick={{ fill: "#94a3b8" }}
+                  axisLine={{ stroke: "hsl(var(--border))" }}
+                  tick={{ fill: "hsl(var(--muted-foreground))" }}
                   tickFormatter={(val) => `₹${val / 1000}k`}
                   dx={-10}
                 />
-                <Tooltip />
-                <Legend iconType="square" wrapperStyle={{ fontSize: "9px" }} />
+                <Tooltip
+                  contentStyle={{
+                    backgroundColor: "hsl(var(--card))",
+                    borderColor: "hsl(var(--border))",
+                    color: "hsl(var(--foreground))",
+                  }}
+                  labelStyle={{ color: "hsl(var(--foreground))" }}
+                />
+                <Legend
+                  iconType="square"
+                  wrapperStyle={{ fontSize: "9px", color: "hsl(var(--muted-foreground))" }}
+                />
                 <Bar dataKey="income" name="Income" fill="#22c55e" radius={[2, 2, 0, 0]} />
                 <Bar dataKey="expense" name="Expense" fill="#ef4444" radius={[2, 2, 0, 0]} />
                 {showExtendedMonthly ? (
@@ -507,13 +519,13 @@ function AnalyticsContent({
         </CardContent>
       </Card>
 
-      <Card className="shadow-sm border-slate-100 rounded-2xl">
+      <Card className="rounded-2xl border-border shadow-sm">
         <CardHeader className="pb-0">
           <CardTitle className="text-sm font-bold">Spending by Day of Week</CardTitle>
         </CardHeader>
         <CardContent className="h-[200px] pt-4">
           {dashboardData.dayOfWeek.length === 0 ? (
-            <p className="text-sm text-slate-500 flex h-full items-center justify-center">
+            <p className="flex h-full items-center justify-center text-sm text-muted-foreground">
               No day-of-week data.
             </p>
           ) : (
@@ -523,19 +535,26 @@ function AnalyticsContent({
                   dataKey="day"
                   fontSize={10}
                   tickLine={false}
-                  axisLine={{ stroke: "#94a3b8" }}
-                  tick={{ fill: "#94a3b8" }}
+                  axisLine={{ stroke: "hsl(var(--border))" }}
+                  tick={{ fill: "hsl(var(--muted-foreground))" }}
                   dy={10}
                 />
                 <YAxis
                   fontSize={10}
                   tickLine={false}
-                  axisLine={{ stroke: "#94a3b8" }}
-                  tick={{ fill: "#94a3b8" }}
+                  axisLine={{ stroke: "hsl(var(--border))" }}
+                  tick={{ fill: "hsl(var(--muted-foreground))" }}
                   tickFormatter={(val) => `₹${val / 1000}k`}
                   dx={-10}
                 />
-                <Tooltip />
+                <Tooltip
+                  contentStyle={{
+                    backgroundColor: "hsl(var(--card))",
+                    borderColor: "hsl(var(--border))",
+                    color: "hsl(var(--foreground))",
+                  }}
+                  labelStyle={{ color: "hsl(var(--foreground))" }}
+                />
                 <Bar dataKey="amount" fill="#f59e0b" radius={[2, 2, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
@@ -544,51 +563,51 @@ function AnalyticsContent({
       </Card>
 
       <div className="grid grid-cols-3 gap-3">
-        <Card className="p-4 shadow-sm border-slate-100 rounded-2xl">
-          <p className="text-[10px] text-slate-500 mb-1">Total Fees Paid</p>
+        <Card className="rounded-2xl border-border p-4 shadow-sm">
+          <p className="mb-1 text-[10px] text-muted-foreground">Total Fees Paid</p>
           <p className="text-lg font-bold text-red-500">
             ₹{dashboardData.summary.totalFees.toLocaleString("en-IN")}
           </p>
         </Card>
-        <Card className="p-4 shadow-sm border-slate-100 rounded-2xl">
-          <p className="text-[10px] text-slate-500 mb-1">Total Transactions</p>
-          <p className="text-lg font-bold text-slate-800">
+        <Card className="rounded-2xl border-border p-4 shadow-sm">
+          <p className="mb-1 text-[10px] text-muted-foreground">Total Transactions</p>
+          <p className="text-lg font-bold text-foreground">
             {dashboardData.summary.totalTransactions}
           </p>
         </Card>
-        <Card className="p-4 shadow-sm border-slate-100 rounded-2xl">
-          <p className="text-[10px] text-slate-500 mb-1">Active Spend Days</p>
-          <p className="text-lg font-bold text-slate-800">
+        <Card className="rounded-2xl border-border p-4 shadow-sm">
+          <p className="mb-1 text-[10px] text-muted-foreground">Active Spend Days</p>
+          <p className="text-lg font-bold text-foreground">
             {dashboardData.summary.activeSpendDays}
           </p>
         </Card>
       </div>
 
-      <Card className="shadow-sm border-slate-100 rounded-2xl">
+      <Card className="rounded-2xl border-border shadow-sm">
         <CardHeader className="pb-2">
           <CardTitle className="text-sm font-bold">Transaction Count by Type</CardTitle>
         </CardHeader>
         <CardContent className="space-y-0 pt-0">
           {dashboardData.transactionCounts.length === 0 ? (
-            <p className="text-sm text-slate-500 py-4 text-center">No type breakdown.</p>
+            <p className="py-4 text-center text-sm text-muted-foreground">No type breakdown.</p>
           ) : (
             dashboardData.transactionCounts.map((type, index) => (
               <div
                 key={`${type.name}-${index}`}
-                className="flex justify-between items-center py-3 border-b border-slate-50 last:border-0"
+                className="flex items-center justify-between border-b border-border/40 py-3 last:border-0"
               >
                 <div className="flex items-center gap-2">
                   <div className={cn("w-1.5 h-1.5 rounded-full", type.color)} />
-                  <span className="text-xs font-bold text-slate-700">{type.name}</span>
+                  <span className="text-xs font-bold text-foreground">{type.name}</span>
                 </div>
-                <span className="text-xs font-bold text-slate-900">{type.count}</span>
+                <span className="text-xs font-bold text-foreground">{type.count}</span>
               </div>
             ))
           )}
         </CardContent>
       </Card>
 
-      <Card className="shadow-sm border-slate-100 rounded-2xl">
+      <Card className="rounded-2xl border-border shadow-sm">
         <CardHeader className="pb-4">
           <CardTitle className="text-sm font-bold flex items-center gap-2">
             <CreditCard className="w-4 h-4" /> CC Utilization
@@ -596,20 +615,20 @@ function AnalyticsContent({
         </CardHeader>
         <CardContent className="space-y-5 pt-0">
           {dashboardData.ccUtilization.length === 0 ? (
-            <p className="text-sm text-slate-500">No credit card data.</p>
+            <p className="text-sm text-muted-foreground">No credit card data.</p>
           ) : (
             dashboardData.ccUtilization.map((card, index) => (
               <div key={`${card.name}-${index}`} className="space-y-1.5">
                 <div className="flex justify-between text-xs gap-2">
-                  <span className="font-bold text-slate-800 truncate">{card.name}</span>
-                  <span className="text-slate-500 shrink-0 text-right">
+                  <span className="truncate font-bold text-foreground">{card.name}</span>
+                  <span className="shrink-0 text-right text-muted-foreground">
                     ₹{card.used.toLocaleString("en-IN")} / ₹{card.total.toLocaleString("en-IN")} (
                     {card.percentage}%)
                   </span>
                 </div>
-                <div className="w-full bg-slate-100 rounded-full h-1.5 overflow-hidden">
+                <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted">
                   <div
-                    className="h-full rounded-full bg-[#1e1b4b]"
+                    className="h-full rounded-full bg-primary"
                     style={{ width: `${Math.min(100, card.percentage)}%` }}
                   />
                 </div>
@@ -620,28 +639,28 @@ function AnalyticsContent({
       </Card>
 
       {dashboardData.loanOverview ? (
-        <Card className="shadow-sm border-slate-100 rounded-2xl">
+        <Card className="rounded-2xl border-border shadow-sm">
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-bold flex items-center gap-2">
-              <span className="text-slate-600">🏛️</span> Loan Overview
+              <span className="text-muted-foreground">🏛️</span> Loan Overview
             </CardTitle>
           </CardHeader>
           <CardContent className="pt-2 flex justify-between px-6">
-            <div className="text-center bg-gray-100 w-[30%] py-3 rounded-sm">
-              <p className="text-[10px] text-slate-500 mb-1">Active</p>
-              <p className="text-sm font-bold text-slate-800">
+            <div className="w-[30%] rounded-sm bg-muted py-3 text-center">
+              <p className="mb-1 text-[10px] text-muted-foreground">Active</p>
+              <p className="text-sm font-bold text-foreground">
                 {dashboardData.loanOverview.active}
               </p>
             </div>
-            <div className="text-center bg-gray-100 w-[30%] py-3 rounded-sm">
-              <p className="text-[10px] text-slate-500 mb-1">Monthly EMI</p>
+            <div className="w-[30%] rounded-sm bg-muted py-3 text-center">
+              <p className="mb-1 text-[10px] text-muted-foreground">Monthly EMI</p>
               <p className="text-sm font-bold text-red-500">
                 ₹{dashboardData.loanOverview.monthlyEmi.toLocaleString("en-IN")}
               </p>
             </div>
-            <div className="text-center bg-gray-100 w-[30%] py-3 rounded-sm">
-              <p className="text-[10px] text-slate-500 mb-1">Total Principal</p>
-              <p className="text-sm font-bold text-slate-800">
+            <div className="w-[30%] rounded-sm bg-muted py-3 text-center">
+              <p className="mb-1 text-[10px] text-muted-foreground">Total Principal</p>
+              <p className="text-sm font-bold text-foreground">
                 ₹{dashboardData.loanOverview.principal.toLocaleString("en-IN")}
               </p>
             </div>
@@ -649,21 +668,21 @@ function AnalyticsContent({
         </Card>
       ) : null}
 
-      <Card className="shadow-sm border-slate-100 rounded-2xl">
+      <Card className="rounded-2xl border-border shadow-sm">
         <CardHeader className="pb-2">
           <CardTitle className="text-sm font-bold flex items-center gap-2">
-            <span className="text-slate-600">👥</span> Udhar Position
+            <span className="text-muted-foreground">👥</span> Udhar Position
           </CardTitle>
         </CardHeader>
         <CardContent className="pt-2">
           <div className="grid grid-cols-2 gap-3 mb-4">
-            <div className="bg-emerald-50/50 p-4 rounded-xl border border-emerald-100/50">
+            <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-4">
               <p className="text-[10px] text-emerald-700 mb-1">To Receive</p>
               <p className="text-base font-bold text-emerald-600">
                 ₹{dashboardData.udhar.receive.toLocaleString("en-IN")}
               </p>
             </div>
-            <div className="bg-red-50/50 p-4 rounded-xl border border-red-100/50">
+            <div className="rounded-xl border border-destructive/30 bg-destructive/10 p-4">
               <p className="text-[10px] text-red-700 mb-1">To Pay</p>
               <p className="text-base font-bold text-red-500">
                 ₹{dashboardData.udhar.pay.toLocaleString("en-IN")}
@@ -671,7 +690,7 @@ function AnalyticsContent({
             </div>
           </div>
           <div className="text-center">
-            <span className="text-xs text-slate-500">Net: </span>
+            <span className="text-xs text-muted-foreground">Net: </span>
             <span
               className={cn(
                 "text-xs font-bold",
@@ -684,32 +703,32 @@ function AnalyticsContent({
         </CardContent>
       </Card>
 
-      <Card className="shadow-sm border-slate-100 rounded-2xl">
+      <Card className="rounded-2xl border-border shadow-sm">
         <CardHeader className="pb-2">
           <CardTitle className="text-sm font-bold">Commitments</CardTitle>
         </CardHeader>
         <CardContent className="space-y-0 pt-0">
           {commitmentsLoading ? (
-            <p className="text-sm text-slate-500 py-4 text-center">Loading commitments…</p>
+            <p className="py-4 text-center text-sm text-muted-foreground">Loading commitments…</p>
           ) : commitmentsError ? (
             <p className="text-sm text-destructive py-3">
               {commitmentsErrorMessage ?? "Could not load commitments."}
             </p>
           ) : commitmentsSorted.length === 0 ? (
-            <p className="text-sm text-slate-500 py-4 text-center">No commitments yet.</p>
+            <p className="py-4 text-center text-sm text-muted-foreground">No commitments yet.</p>
           ) : (
             commitmentsSorted.map((c) => (
               <div
                 key={c.id}
-                className="flex flex-col gap-1 py-3 border-b border-slate-50 last:border-0"
+                className="flex flex-col gap-1 border-b border-border/40 py-3 last:border-0"
               >
                 <div className="flex justify-between gap-2 items-start">
-                  <span className="text-xs font-bold text-slate-800">{c.title}</span>
-                  <span className="text-xs font-bold text-slate-900 shrink-0 tabular-nums">
+                  <span className="text-xs font-bold text-foreground">{c.title}</span>
+                  <span className="shrink-0 text-xs font-bold text-foreground tabular-nums">
                     ₹{formatCommitmentInr(c.amount)}
                   </span>
                 </div>
-                <div className="flex flex-wrap gap-x-2 gap-y-1 text-[10px] text-slate-500">
+                <div className="flex flex-wrap gap-x-2 gap-y-1 text-[10px] text-muted-foreground">
                   <span>{c.dueDate}</span>
                   <span aria-hidden>·</span>
                   <span>{c.direction}</span>
@@ -719,7 +738,7 @@ function AnalyticsContent({
                   <span className="capitalize">{c.status}</span>
                 </div>
                 {c.note?.trim() ? (
-                  <p className="text-[10px] text-slate-600 line-clamp-2">{c.note.trim()}</p>
+                  <p className="line-clamp-2 text-[10px] text-muted-foreground">{c.note.trim()}</p>
                 ) : null}
               </div>
             ))
