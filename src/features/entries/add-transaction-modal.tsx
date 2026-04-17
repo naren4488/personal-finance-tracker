@@ -8,21 +8,10 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Switch } from "@/components/ui/switch"
-import { accountSelectLabel, filterActiveAccounts, type Account } from "@/lib/api/account-schemas"
-import {
-  creditCardMinimumPaymentInr,
-  interestRatePercentFromAccount,
-  isCreditCardAccount,
-} from "@/lib/api/credit-card-map"
+import { accountSelectLabel, filterActiveAccounts } from "@/lib/api/account-schemas"
+import { isCreditCardAccount } from "@/lib/api/credit-card-map"
 import { getErrorMessage } from "@/lib/api/errors"
-import {
-  isLoanAccount,
-  loanNextEmiInterestInr,
-  loanNextEmiPrincipalInr,
-  loanOutstandingInr,
-  loanPrincipalInr,
-  resolveLoanEmiAmount,
-} from "@/lib/api/loan-account-map"
+import { isLoanAccount } from "@/lib/api/loan-account-map"
 import { INCOME_SOURCE_OPTIONS } from "@/lib/api/transaction-schemas"
 import {
   FORM_OVERLAY_FILL_BODY,
@@ -30,11 +19,28 @@ import {
   FORM_OVERLAY_SCROLL_BODY,
 } from "@/lib/form-overlay-scroll"
 import type { TransactionType, TransferDestinationType } from "@/lib/api/schemas"
-import { formatCurrency } from "@/lib/format"
 import { assertSourceAccountCoversAmount } from "@/lib/validation/source-account-balance"
 import { cn } from "@/lib/utils"
-import { useAddTransactionMutation, useGetAccountsQuery } from "@/store/api/base-api"
-import { useAppSelector } from "@/store/hooks"
+import {
+  useAddTransactionMutation,
+  useGetAccountsQuery,
+  useGetCreditCardAccountsForPaymentQuery,
+  useGetLoanAccountsForEmiQuery,
+  useGetRecentTransactionsForEmiQuery,
+} from "@/store/api/base-api"
+import {
+  selectCreditCardPaymentDisabled,
+  selectCreditCardPaymentFormState,
+} from "@/store/credit-card-payment-selectors"
+import {
+  clearCreditCardPaymentUi,
+  setIsMinimumPaymentEnabled,
+  setMinimumAmount,
+  setSelectedCreditCardId,
+} from "@/store/credit-card-payment-ui-slice"
+import { selectLoanEmiAutoFill } from "@/store/loan-emi-selectors"
+import { clearSelectedLoanAccountId, setSelectedLoanAccountId } from "@/store/loan-emi-ui-slice"
+import { useAppDispatch, useAppSelector } from "@/store/hooks"
 
 const TX_CATEGORIES = [
   "Food & dining",
@@ -71,48 +77,9 @@ function sanitizeDecimalInput(raw: string): string {
   return dec.length > 0 ? `${int}.${dec}` : `${int}.`
 }
 
-function parseDecimalInput(s: string): number {
-  const t = s.trim().replace(/,/g, "")
-  if (!t) return 0
-  const n = Number(t)
-  return Number.isFinite(n) ? n : 0
-}
-
 function formatInr2(n: number): string {
   if (!Number.isFinite(n)) return "0.00"
   return n.toFixed(2)
-}
-
-function formatLoanRupee(n: number): string {
-  return new Intl.NumberFormat("en-IN", {
-    style: "currency",
-    currency: "INR",
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 2,
-  }).format(n)
-}
-
-function computeLoanPrefillStrings(loan: Account): { principal: string; interest: string } {
-  const int = loanNextEmiInterestInr(loan)
-  const pr = loanNextEmiPrincipalInr(loan)
-  if (int != null && int > 0) {
-    const interestStr = formatInr2(int)
-    if (pr != null && pr > 0) {
-      return { principal: formatInr2(pr), interest: interestStr }
-    }
-    const emi = resolveLoanEmiAmount(loan)
-    if (emi != null && emi > int) {
-      return {
-        principal: formatInr2(Math.round((emi - int) * 100) / 100),
-        interest: interestStr,
-      }
-    }
-    return { principal: "", interest: interestStr }
-  }
-  if (pr != null && pr > 0) {
-    return { principal: formatInr2(pr), interest: "" }
-  }
-  return { principal: "", interest: "" }
 }
 
 function SelectChevron() {
@@ -188,6 +155,7 @@ function AddTransactionModalMounted({
   const loanPrincipalFieldId = useId()
   const loanInterestFieldId = useId()
   const navigate = useNavigate()
+  const dispatch = useAppDispatch()
   const user = useAppSelector((s) => s.auth.user)
 
   // Shared Styles mapping to your AddCreditCard requirements
@@ -205,13 +173,24 @@ function AddTransactionModalMounted({
   } = useGetAccountsQuery(undefined, { skip: !user })
 
   const accounts = useMemo(() => filterActiveAccounts(accountsRaw), [accountsRaw])
+  const { data: creditCardAccountsRaw = [] } = useGetCreditCardAccountsForPaymentQuery(undefined, {
+    skip: !user,
+  })
+  const { data: loanAccountsRaw = [] } = useGetLoanAccountsForEmiQuery(undefined, { skip: !user })
+  useGetRecentTransactionsForEmiQuery(undefined, { skip: !user })
+  const creditCardAccounts = useMemo(
+    () => filterActiveAccounts(creditCardAccountsRaw),
+    [creditCardAccountsRaw]
+  )
+  const loanAccounts = useMemo(() => filterActiveAccounts(loanAccountsRaw), [loanAccountsRaw])
+  const creditCardPayment = useAppSelector(selectCreditCardPaymentFormState)
+  const isCreditCardPaymentDisabled = useAppSelector(selectCreditCardPaymentDisabled)
+  const loanEmiAutoFill = useAppSelector(selectLoanEmiAutoFill)
 
   const transferSourceAccounts = useMemo(
     () => accounts.filter((a) => !isLoanAccount(a) && !isCreditCardAccount(a)),
     [accounts]
   )
-  const creditCardAccounts = useMemo(() => accounts.filter(isCreditCardAccount), [accounts])
-  const loanAccounts = useMemo(() => accounts.filter(isLoanAccount), [accounts])
 
   const [addTransaction, { isLoading: isSubmitting }] = useAddTransactionMutation()
 
@@ -248,7 +227,7 @@ function AddTransactionModalMounted({
           ? "loan_emi"
           : "account"
   )
-  const [payMinimum, setPayMinimum] = useState(false)
+  const [minimumAmountText, setMinimumAmountText] = useState("")
   const [loanFieldOverride, setLoanFieldOverride] = useState<{
     principal?: string
     interest?: string
@@ -257,105 +236,63 @@ function AddTransactionModalMounted({
   const effectiveType: TransactionType = expenseFlow ? "expense" : txType
   const hasAccount = accounts.length > 0
 
-  const selectedCreditCardAccount = useMemo(() => {
-    const fromList = creditCardAccounts.find((c) => c.id === creditCardAccountId)
-    if (fromList) return fromList
-    const a = accounts.find((x) => x.id === creditCardAccountId)
-    return a && isCreditCardAccount(a) ? a : undefined
-  }, [creditCardAccounts, creditCardAccountId, accounts])
-  const minimumDueInr = useMemo(
-    () =>
-      selectedCreditCardAccount ? creditCardMinimumPaymentInr(selectedCreditCardAccount) : null,
-    [selectedCreditCardAccount]
-  )
-
-  const selectedLoanAccount = useMemo(() => {
-    const fromList = loanAccounts.find((l) => l.id === loanAccountId)
-    if (fromList) return fromList
-    const a = accounts.find((x) => x.id === loanAccountId)
-    return a && isLoanAccount(a) ? a : null
-  }, [loanAccounts, loanAccountId, accounts])
-
-  const loanPrefillFromSelectedAccount = useMemo(
-    () =>
-      selectedLoanAccount
-        ? computeLoanPrefillStrings(selectedLoanAccount)
-        : { principal: "", interest: "" },
-    [selectedLoanAccount]
-  )
-
   const loanPrincipalStr =
     loanFieldOverride?.principal !== undefined
       ? loanFieldOverride.principal
-      : loanPrefillFromSelectedAccount.principal
+      : formatInr2(loanEmiAutoFill.emiPrincipal)
 
   const loanInterestStr =
     loanFieldOverride?.interest !== undefined
       ? loanFieldOverride.interest
-      : loanPrefillFromSelectedAccount.interest
+      : formatInr2(loanEmiAutoFill.emiInterest)
 
   const loanTotalInr = useMemo(() => {
-    const p = parseDecimalInput(loanPrincipalStr)
-    const i = parseDecimalInput(loanInterestStr)
-    return Math.round((p + i) * 100) / 100
-  }, [loanPrincipalStr, loanInterestStr])
-
-  const loanScheduleSummary = useMemo(() => {
-    const a = selectedLoanAccount
-    if (!a) return null
-    const emi = resolveLoanEmiAmount(a)
-    const rate = interestRatePercentFromAccount(a)
-    const interestThisMonth = loanNextEmiInterestInr(a)
-    const principalThisMonth = loanNextEmiPrincipalInr(a)
-    const totalLoanPrincipal = loanPrincipalInr(a)
-    const outstanding = loanOutstandingInr(a)
-    const installmentTotal =
-      emi != null
-        ? emi
-        : principalThisMonth != null || interestThisMonth != null
-          ? Math.round(((principalThisMonth ?? 0) + (interestThisMonth ?? 0)) * 100) / 100
-          : null
-    return {
-      emi,
-      rate,
-      interestThisMonth,
-      principalThisMonth,
-      installmentTotal,
-      totalLoanPrincipal,
-      outstanding,
+    if (loanFieldOverride) {
+      const p = Number(loanPrincipalStr.trim()) || 0
+      const i = Number(loanInterestStr.trim()) || 0
+      return Math.round((p + i) * 100) / 100
     }
-  }, [selectedLoanAccount])
-
-  const loanBreakdownVisible = useMemo(() => {
-    if (!loanScheduleSummary) return false
-    const s = loanScheduleSummary
-    return (
-      (s.emi != null && s.emi > 0) ||
-      (s.rate != null && Number.isFinite(s.rate)) ||
-      (s.principalThisMonth != null && s.principalThisMonth > 0) ||
-      (s.interestThisMonth != null && s.interestThisMonth > 0) ||
-      (s.installmentTotal != null && s.installmentTotal > 0 && !(s.emi != null && s.emi > 0)) ||
-      s.totalLoanPrincipal > 0 ||
-      s.outstanding > 0
-    )
-  }, [loanScheduleSummary])
+    return loanEmiAutoFill.emiTotal
+  }, [loanFieldOverride, loanPrincipalStr, loanInterestStr, loanEmiAutoFill.emiTotal])
 
   function resetTransferDependentState() {
     setToAccountId("")
     if (!lockTransferPayment) {
       setCreditCardAccountId("")
+      dispatch(clearCreditCardPaymentUi())
       setLoanAccountId("")
+      dispatch(clearSelectedLoanAccountId())
     } else if (transferPaymentPreset?.kind === "credit_card_bill") {
       setLoanAccountId("")
+      dispatch(clearSelectedLoanAccountId())
       setCreditCardAccountId(transferPaymentPreset.creditCardAccountId)
+      dispatch(setSelectedCreditCardId(transferPaymentPreset.creditCardAccountId))
     } else if (transferPaymentPreset?.kind === "loan_emi") {
       setCreditCardAccountId("")
+      dispatch(clearCreditCardPaymentUi())
       setLoanAccountId(transferPaymentPreset.loanAccountId)
+      dispatch(setSelectedLoanAccountId(transferPaymentPreset.loanAccountId))
     }
     setAmount("")
-    setPayMinimum(false)
+    setMinimumAmountText("")
     setLoanFieldOverride(null)
   }
+
+  useEffect(() => {
+    if (loanAccountId) {
+      dispatch(setSelectedLoanAccountId(loanAccountId))
+    } else {
+      dispatch(clearSelectedLoanAccountId())
+    }
+  }, [dispatch, loanAccountId])
+
+  useEffect(() => {
+    if (creditCardAccountId) {
+      dispatch(setSelectedCreditCardId(creditCardAccountId))
+    } else {
+      dispatch(clearCreditCardPaymentUi())
+    }
+  }, [dispatch, creditCardAccountId])
 
   const creditCardSelectOptions = useMemo(() => {
     const list = [...creditCardAccounts]
@@ -454,7 +391,12 @@ function AddTransactionModalMounted({
       toast.error("Select income source")
       return
     }
-    if (!accountId) {
+    const sourceAccountIdForSubmit =
+      effectiveType === "transfer" && transferDestinationType === "credit_card_bill"
+        ? accountId || creditCardPayment.fromAccountId || ""
+        : accountId
+
+    if (!sourceAccountIdForSubmit) {
       toast.error(effectiveType === "transfer" ? "Select source account" : "Select an account")
       return
     }
@@ -478,28 +420,17 @@ function AddTransactionModalMounted({
           toast.error("Select credit card")
           return
         }
-        if (payMinimum) {
-          const m = selectedCreditCardAccount
-            ? creditCardMinimumPaymentInr(selectedCreditCardAccount)
-            : null
-          if (m == null || m <= 0) {
-            toast.error("Minimum due is not available for this card")
-            return
-          }
-        } else {
-          const n = amount.replace(/\D/g, "")
-          if (!n || Number(n) <= 0) {
-            toast.error("Enter a valid amount")
-            return
-          }
+        if (isCreditCardPaymentDisabled) {
+          toast.error("Payment is not available for this card")
+          return
         }
       } else if (transferDestinationType === "loan_emi") {
         if (!loanAccountId) {
           toast.error("Select loan account")
           return
         }
-        if (!(loanTotalInr > 0)) {
-          toast.error("Enter principal and/or interest so the total is greater than zero")
+        if (loanEmiAutoFill.isDisabled) {
+          toast.error("EMI is not available for this loan")
           return
         }
       }
@@ -507,8 +438,8 @@ function AddTransactionModalMounted({
 
     let submitAmountNum: number
     if (effectiveType === "transfer") {
-      if (transferDestinationType === "credit_card_bill" && payMinimum) {
-        submitAmountNum = minimumDueInr ?? 0
+      if (transferDestinationType === "credit_card_bill") {
+        submitAmountNum = creditCardPayment.paymentAmount
       } else if (transferDestinationType === "loan_emi") {
         submitAmountNum = loanTotalInr
       } else {
@@ -518,7 +449,7 @@ function AddTransactionModalMounted({
       submitAmountNum = Number(amount.replace(/\D/g, ""))
     }
 
-    const acc = accounts.find((a) => a.id === accountId)
+    const acc = accounts.find((a) => a.id === sourceAccountIdForSubmit)
     if (effectiveType !== "income" && !assertSourceAccountCoversAmount(acc, submitAmountNum)) {
       return
     }
@@ -549,11 +480,11 @@ function AddTransactionModalMounted({
           : undefined,
       principalComponent:
         effectiveType === "transfer" && transferDestinationType === "loan_emi"
-          ? parseDecimalInput(loanPrincipalStr)
+          ? Number(loanPrincipalStr.trim()) || 0
           : undefined,
       interestComponent:
         effectiveType === "transfer" && transferDestinationType === "loan_emi"
-          ? parseDecimalInput(loanInterestStr)
+          ? Number(loanInterestStr.trim()) || 0
           : undefined,
       transferDestination: effectiveType === "transfer" ? transferDestinationType : undefined,
       paymentMethod,
@@ -565,7 +496,7 @@ function AddTransactionModalMounted({
       note: noteForApi,
       tags,
       displayTitle,
-      accountId,
+      accountId: sourceAccountIdForSubmit,
       accountName: acc?.name,
     }
 
@@ -724,7 +655,11 @@ function AddTransactionModalMounted({
                         <div className="relative">
                           <select
                             id={accountIdField}
-                            value={accountId}
+                            value={
+                              transferDestinationType === "credit_card_bill"
+                                ? accountId || creditCardPayment.fromAccountId || ""
+                                : accountId
+                            }
                             onChange={(e) => {
                               const v = e.target.value
                               setAccountId(v)
@@ -808,7 +743,25 @@ function AddTransactionModalMounted({
                             <select
                               id={creditCardAccountFieldId}
                               value={creditCardAccountId}
-                              onChange={(e) => setCreditCardAccountId(e.target.value)}
+                              onChange={(e) => {
+                                const v = e.target.value
+                                setCreditCardAccountId(v)
+                                setToAccountId(v)
+                                const selectedCard = creditCardSelectOptions.find(
+                                  (card) => card.id === v
+                                )
+                                const selectedRecord = selectedCard as
+                                  | Record<string, unknown>
+                                  | undefined
+                                const linkedRepaymentAccountId =
+                                  selectedRecord &&
+                                  typeof selectedRecord.linkedRepaymentAccountId === "string"
+                                    ? selectedRecord.linkedRepaymentAccountId
+                                    : ""
+                                if (linkedRepaymentAccountId) {
+                                  setAccountId(linkedRepaymentAccountId)
+                                }
+                              }}
                               disabled={
                                 lockTransferPayment &&
                                 transferPaymentPreset?.kind === "credit_card_bill"
@@ -838,40 +791,46 @@ function AddTransactionModalMounted({
                         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2  items-center ">
                           <div className="flex h-10 mt-6 items-center justify-between gap-2  rounded-xl border border-input bg-muted/20 px-3">
                             <span className="text-sm font-semibold text-primary ">
-                              Pay minimum?
+                              Pay Minimum Amount
                             </span>
                             <div className="flex items-center gap-2">
                               <span className="text-xs font-medium text-muted-foreground">
-                                {payMinimum ? "Yes" : "No"}
+                                {creditCardPayment.isMinimumPaymentEnabled ? "Yes" : "No"}
                               </span>
                               <Switch
-                                checked={payMinimum}
+                                checked={creditCardPayment.isMinimumPaymentEnabled}
                                 onCheckedChange={(on) => {
-                                  setPayMinimum(on)
-                                  if (on) setAmount("")
+                                  dispatch(setIsMinimumPaymentEnabled(on))
+                                  if (!on) setMinimumAmountText("")
                                 }}
                                 aria-label="Pay minimum amount"
                               />
                             </div>
                           </div>
-                          <section>
-                            <Label htmlFor="at-minimum-due-transfer" className={labelClass}>
-                              Minimum amount
-                            </Label>
-                            <Input
-                              id="at-minimum-due-transfer"
-                              readOnly
-                              value={
-                                minimumDueInr != null && minimumDueInr > 0
-                                  ? formatInr2(minimumDueInr)
-                                  : "0.00"
-                              }
-                              className={cn(
-                                fieldBase,
-                                "bg-muted/40 font-medium tabular-nums text-muted-foreground"
-                              )}
-                            />
-                          </section>
+                          {creditCardPayment.isMinimumPaymentEnabled ? (
+                            <section>
+                              <Label htmlFor="at-minimum-due-transfer" className={labelClass}>
+                                Minimum amount
+                              </Label>
+                              <Input
+                                id="at-minimum-due-transfer"
+                                inputMode="decimal"
+                                placeholder="0.00"
+                                value={minimumAmountText}
+                                onChange={(e) => {
+                                  const next = sanitizeDecimalInput(e.target.value)
+                                  setMinimumAmountText(next)
+                                  const parsed = Number(next)
+                                  if (next.trim() === "" || !Number.isFinite(parsed)) {
+                                    dispatch(setMinimumAmount(null))
+                                    return
+                                  }
+                                  dispatch(setMinimumAmount(parsed))
+                                }}
+                                className={cn(fieldBase, "font-medium tabular-nums")}
+                              />
+                            </section>
+                          ) : null}
                         </div>
                       </>
                     ) : (
@@ -887,6 +846,19 @@ function AddTransactionModalMounted({
                               onChange={(e) => {
                                 const v = e.target.value
                                 setLoanAccountId(v)
+                                setToAccountId(v)
+                                const selected = loanSelectOptions.find((loan) => loan.id === v)
+                                const selectedRecord = selected as
+                                  | Record<string, unknown>
+                                  | undefined
+                                const linkedRepaymentAccountId =
+                                  selectedRecord &&
+                                  typeof selectedRecord.linkedRepaymentAccountId === "string"
+                                    ? selectedRecord.linkedRepaymentAccountId
+                                    : ""
+                                if (linkedRepaymentAccountId) {
+                                  setAccountId(linkedRepaymentAccountId)
+                                }
                                 setLoanFieldOverride(null)
                               }}
                               disabled={
@@ -906,14 +878,9 @@ function AddTransactionModalMounted({
                                   : "Select loan"}
                               </option>
                               {loanSelectOptions.map((a) => {
-                                const emiOpt = resolveLoanEmiAmount(a)
-                                const optLabel =
-                                  emiOpt != null
-                                    ? `${a.name} — EMI ${formatLoanRupee(emiOpt)}/mo`
-                                    : accountSelectLabel(a)
                                 return (
                                   <option key={a.id} value={a.id}>
-                                    {optLabel}
+                                    {accountSelectLabel(a)}
                                   </option>
                                 )
                               })}
@@ -922,90 +889,30 @@ function AddTransactionModalMounted({
                           </div>
                         </section>
 
-                        {loanScheduleSummary && loanBreakdownVisible ? (
+                        {loanAccountId ? (
                           <div className="space-y-1.5 rounded-xl border border-input bg-muted/20 p-4 text-xs">
-                            {loanScheduleSummary.emi != null && loanScheduleSummary.emi > 0 ? (
-                              <div className="flex items-center justify-between gap-2">
-                                <span className="text-muted-foreground">Monthly EMI</span>
-                                <span className="font-semibold tabular-nums text-foreground">
-                                  {formatLoanRupee(loanScheduleSummary.emi)}
-                                </span>
-                              </div>
-                            ) : null}
-                            {loanScheduleSummary.rate != null &&
-                            Number.isFinite(loanScheduleSummary.rate) ? (
-                              <div
-                                className={cn(
-                                  "flex items-center justify-between gap-2",
-                                  loanScheduleSummary.emi != null && loanScheduleSummary.emi > 0
-                                    ? "border-t border-border/50 pt-2 mt-1.5"
-                                    : ""
-                                )}
-                              >
-                                <span className="text-muted-foreground">Interest rate (p.a.)</span>
-                                <span className="font-semibold tabular-nums text-foreground">
-                                  {loanScheduleSummary.rate % 1 === 0
-                                    ? `${Math.round(loanScheduleSummary.rate)}%`
-                                    : `${loanScheduleSummary.rate.toFixed(2)}%`}
-                                </span>
-                              </div>
-                            ) : null}
-                            {(loanScheduleSummary.principalThisMonth != null &&
-                              loanScheduleSummary.principalThisMonth > 0) ||
-                            (loanScheduleSummary.interestThisMonth != null &&
-                              loanScheduleSummary.interestThisMonth > 0) ? (
-                              <div className="border-t border-border/50 pt-2 mt-1.5">
-                                <p className="mb-1.5 font-semibold text-primary">
-                                  This month&apos;s installment split
-                                </p>
-                                <div className="flex items-center justify-between gap-2">
-                                  <span className="text-muted-foreground">Principal</span>
-                                  <span className="font-semibold tabular-nums text-foreground">
-                                    {loanScheduleSummary.principalThisMonth != null &&
-                                    loanScheduleSummary.principalThisMonth > 0
-                                      ? formatLoanRupee(loanScheduleSummary.principalThisMonth)
-                                      : "—"}
-                                  </span>
-                                </div>
-                                <div className="mt-1 flex items-center justify-between gap-2">
-                                  <span className="text-muted-foreground">Interest</span>
-                                  <span className="font-semibold tabular-nums text-foreground">
-                                    {loanScheduleSummary.interestThisMonth != null &&
-                                    loanScheduleSummary.interestThisMonth > 0
-                                      ? formatLoanRupee(loanScheduleSummary.interestThisMonth)
-                                      : "—"}
-                                  </span>
-                                </div>
-                              </div>
-                            ) : null}
-                            {loanScheduleSummary.installmentTotal != null &&
-                            loanScheduleSummary.installmentTotal > 0 &&
-                            (loanScheduleSummary.emi == null || loanScheduleSummary.emi <= 0) ? (
-                              <div className="flex items-center justify-between gap-2 border-t border-border/50 pt-2 mt-1.5">
-                                <span className="text-muted-foreground">Installment total</span>
-                                <span className="font-semibold tabular-nums text-foreground">
-                                  {formatLoanRupee(loanScheduleSummary.installmentTotal)}
-                                </span>
-                              </div>
-                            ) : null}
-                            {loanScheduleSummary.totalLoanPrincipal > 0 ? (
-                              <div
-                                className={cn(
-                                  "flex items-center justify-between gap-2",
-                                  "border-t border-border/50 pt-2 mt-1.5"
-                                )}
-                              >
-                                <span className="text-muted-foreground">Total loan amount</span>
-                                <span className="font-semibold tabular-nums text-foreground">
-                                  {formatCurrency(loanScheduleSummary.totalLoanPrincipal)}
-                                </span>
-                              </div>
-                            ) : null}
-                            {loanScheduleSummary.outstanding > 0 ? (
-                              <div className="flex items-center justify-between gap-2">
-                                <span className="text-muted-foreground">Outstanding balance</span>
-                                <span className="font-semibold tabular-nums text-foreground">
-                                  {formatCurrency(loanScheduleSummary.outstanding)}
+                            <div className="flex items-center justify-between gap-2">
+                              <span className="text-muted-foreground">EMI total</span>
+                              <span className="font-semibold tabular-nums text-foreground">
+                                {formatInr2(loanEmiAutoFill.emiTotal)}
+                              </span>
+                            </div>
+                            <div className="flex items-center justify-between gap-2">
+                              <span className="text-muted-foreground">EMI interest</span>
+                              <span className="font-semibold tabular-nums text-foreground">
+                                {formatInr2(loanEmiAutoFill.emiInterest)}
+                              </span>
+                            </div>
+                            <div className="flex items-center justify-between gap-2">
+                              <span className="text-muted-foreground">EMI principal</span>
+                              <span className="font-semibold tabular-nums text-foreground">
+                                {formatInr2(loanEmiAutoFill.emiPrincipal)}
+                              </span>
+                            </div>
+                            {loanEmiAutoFill.lastPaymentDate ? (
+                              <div className="border-t border-border/50 pt-2">
+                                <span className="text-muted-foreground">
+                                  Last payment: {loanEmiAutoFill.lastPaymentDate}
                                 </span>
                               </div>
                             ) : null}
@@ -1068,16 +975,12 @@ function AddTransactionModalMounted({
                               "bg-muted/40 text-center font-semibold tabular-nums text-muted-foreground"
                             )}
                           />
-                        ) : transferDestinationType === "credit_card_bill" && payMinimum ? (
+                        ) : transferDestinationType === "credit_card_bill" ? (
                           <Input
                             id="at-amount-transfer"
                             readOnly
-                            value={
-                              minimumDueInr != null && minimumDueInr > 0
-                                ? formatInr2(minimumDueInr)
-                                : ""
-                            }
-                            placeholder="—"
+                            value={formatInr2(creditCardPayment.paymentAmount)}
+                            placeholder="0.00"
                             className={cn(
                               fieldBase,
                               "bg-muted/40 text-center font-semibold tabular-nums text-muted-foreground placeholder:text-muted-foreground/60"
@@ -1395,7 +1298,12 @@ function AddTransactionModalMounted({
               <div className={cn(FORM_OVERLAY_FOOTER, "px-5")}>
                 <Button
                   type="submit"
-                  disabled={isSubmitting}
+                  disabled={
+                    isSubmitting ||
+                    (effectiveType === "transfer" &&
+                      transferDestinationType === "credit_card_bill" &&
+                      isCreditCardPaymentDisabled)
+                  }
                   className="h-10 w-full rounded-xl bg-[hsl(230_22%_62%)] text-sm font-bold text-white hover:bg-[hsl(230_22%_56%)] disabled:opacity-60 sm:h-11 sm:text-base"
                 >
                   {isSubmitting ? "Saving…" : submitLabel}

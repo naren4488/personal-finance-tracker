@@ -403,6 +403,20 @@ export const baseApi = createApi({
       providesTags: [{ type: "Account", id: "LIST" }],
     }),
 
+    /** Strict credit card payment flow endpoint: GET /accounts?kind=credit_card */
+    getCreditCardAccountsForPayment: build.query<Account[], void>({
+      query: () => ({
+        url: ACCOUNT_PATHS.list,
+        method: "GET",
+        params: { kind: "credit_card" },
+      }),
+      transformResponse: (response: unknown) => {
+        const parsed = parseGetAccountsSuccess(response)
+        return parsed.ok ? parsed.accounts : []
+      },
+      providesTags: [{ type: "Account", id: "LIST" }],
+    }),
+
     /** GET /accounts?kind=loan — same list endpoint, filtered for loan UI. */
     getLoans: build.query<Account[], void>({
       async queryFn(_arg, _api, _extraOptions, baseQuery) {
@@ -424,6 +438,20 @@ export const baseApi = createApi({
         }
         const onlyLoans = parsed.accounts.filter(isLoanAccount)
         return { data: onlyLoans.length > 0 ? onlyLoans : parsed.accounts }
+      },
+      providesTags: [{ type: "Account", id: "LIST" }],
+    }),
+
+    /** Strict EMI flow endpoint: GET /accounts?kind=loan */
+    getLoanAccountsForEmi: build.query<Account[], void>({
+      query: () => ({
+        url: ACCOUNT_PATHS.list,
+        method: "GET",
+        params: { kind: "loan" },
+      }),
+      transformResponse: (response: unknown) => {
+        const parsed = parseGetAccountsSuccess(response)
+        return parsed.ok ? parsed.accounts : []
       },
       providesTags: [{ type: "Account", id: "LIST" }],
     }),
@@ -975,6 +1003,19 @@ export const baseApi = createApi({
       providesTags: [{ type: "Transaction", id: "RECENT" }],
     }),
 
+    /** Strict EMI flow endpoint: GET /transactions/recent */
+    getRecentTransactionsForEmi: build.query<RecentTransaction[], void>({
+      query: () => ({
+        url: TRANSACTION_PATHS.recent,
+        method: "GET",
+      }),
+      transformResponse: (response: unknown) => {
+        const parsed = parseGetRecentTransactionsSuccess(response)
+        return parsed.ok ? parsed.transactions : []
+      },
+      providesTags: [{ type: "Transaction", id: "RECENT" }],
+    }),
+
     getDashboard: build.query<DashboardHomeView, DashboardHomeQueryArg | void>({
       async queryFn(arg, _api, _extraOptions, baseQuery) {
         const daysArg = arg && typeof arg === "object" ? arg.days : undefined
@@ -1272,7 +1313,9 @@ export const {
   useRefreshTokenMutation,
   useGetAccountsQuery,
   useGetCreditCardsQuery,
+  useGetCreditCardAccountsForPaymentQuery,
   useGetLoansQuery,
+  useGetLoanAccountsForEmiQuery,
   useCreateAccountMutation,
   useUpdateAccountMutation,
   useDeleteAccountMutation,
@@ -1285,6 +1328,7 @@ export const {
   useGetAccountLedgerQuery,
   useCreatePersonMutation,
   useGetRecentTransactionsQuery,
+  useGetRecentTransactionsForEmiQuery,
   useGetDashboardQuery,
   useDeleteTransactionMutation,
   useAddTransactionMutation,
