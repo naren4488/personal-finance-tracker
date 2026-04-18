@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react"
 import { useNavigate } from "react-router-dom"
-import { Archive, ArrowLeft, Check, ChevronDown, CreditCard, Pencil, Trash2, X } from "lucide-react"
+import { Archive, ArrowLeft, Check, ChevronDown, Pencil, Trash2, X } from "lucide-react"
 import { toast } from "sonner"
 import { ConfirmDeleteDialog } from "@/components/confirm-delete-dialog"
 import { Button } from "@/components/ui/button"
@@ -447,7 +447,11 @@ export function CreditCardDetailView({
 
   const masked = maskedCardNumberDisplay(model.last4Digits)
   const networkDisplay = model.cardNetwork ? model.cardNetwork.replace(/_/g, " ").toUpperCase() : ""
-  const subtitleParts = [model.bankName, networkDisplay].filter(Boolean)
+  const nameKey = model.name.trim().toLowerCase()
+  const subtitleParts: string[] = []
+  const bankTrim = model.bankName.trim()
+  if (bankTrim && bankTrim.toLowerCase() !== nameKey) subtitleParts.push(bankTrim)
+  if (networkDisplay && networkDisplay.toLowerCase() !== nameKey) subtitleParts.push(networkDisplay)
   const subtitle = subtitleParts.join(" · ")
 
   const billGenDay = billGenerationDayNumber(working)
@@ -496,79 +500,77 @@ export function CreditCardDetailView({
             "relative z-10 flex min-h-0 w-full max-w-lg flex-1 flex-col overflow-hidden bg-background shadow-2xl sm:max-h-[min(92dvh,calc(100dvh-1.5rem))] sm:rounded-2xl"
           )}
         >
-          <div className="shrink-0 px-4 pb-1 pt-3 sm:px-5 sm:pt-4">
+          <div className="shrink-0 flex items-center gap-2 px-4 pb-1.5 pt-2 sm:px-5 sm:pt-2.5">
             <button
               type="button"
               onClick={dismiss}
-              className="inline-flex items-center gap-1 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground"
+              className="inline-flex shrink-0 items-center gap-1 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground sm:text-sm"
             >
               <ArrowLeft className="size-4 shrink-0" strokeWidth={2} aria-hidden />
               Back
             </button>
+            <p
+              id="cc-detail-card-name"
+              className="min-w-0 flex-1 truncate text-base font-bold leading-tight text-foreground sm:text-lg"
+            >
+              {model.name}
+            </p>
+            <div className="flex shrink-0 items-center gap-0.5">
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon-sm"
+                className="size-8 shrink-0 rounded-full text-muted-foreground hover:bg-muted hover:text-foreground sm:size-9"
+                aria-label={isEditing ? "Editing card" : "Edit card"}
+                disabled={isEditing}
+                onClick={startEdit}
+              >
+                <Pencil className="size-4 sm:size-[18px]" strokeWidth={2} aria-hidden />
+              </Button>
+            </div>
           </div>
 
           <div
             className={cn(
-              "min-h-0 flex-1 overflow-y-auto overflow-x-hidden overscroll-y-contain px-4 pb-6 pt-1 [-ms-overflow-style:none] [scrollbar-width:thin] sm:px-5 sm:pb-8"
+              "min-h-0 flex-1 overflow-y-auto overflow-x-hidden overscroll-y-contain px-4 pb-5 pt-0 [-ms-overflow-style:none] [scrollbar-width:thin] sm:px-5 sm:pb-6"
             )}
           >
             <div className="overflow-hidden rounded-2xl bg-primary text-primary-foreground shadow-md">
-              <div className="px-4 pb-5 pt-4 sm:px-5 sm:pb-6 sm:pt-5">
-                <div className="flex items-start justify-between gap-3">
-                  <div className="min-w-0 flex-1">
-                    <p
-                      id="cc-detail-card-name"
-                      className="truncate text-xl font-bold tracking-tight sm:text-2xl"
-                    >
-                      {model.name}
-                    </p>
-                    {subtitle ? (
-                      <p className="mt-1 truncate text-sm font-medium text-primary-foreground/80">
-                        {subtitle}
-                      </p>
-                    ) : null}
-                  </div>
-                  <div className="flex shrink-0 items-center gap-1">
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="icon-sm"
-                      className="size-9 shrink-0 rounded-full text-primary-foreground hover:bg-primary-foreground/15"
-                      aria-label={isEditing ? "Editing card" : "Edit card"}
-                      disabled={isEditing}
-                      onClick={startEdit}
-                    >
-                      <Pencil className="size-[18px]" strokeWidth={2} aria-hidden />
-                    </Button>
-                    <span className="flex size-9 items-center justify-center" aria-hidden>
-                      <CreditCard className="size-6 text-primary-foreground/95" strokeWidth={2} />
-                    </span>
-                  </div>
-                </div>
+              <div className="px-3 pb-2.5 pt-2 sm:px-4 sm:pb-3 sm:pt-2.5">
+                {subtitle ? (
+                  <p className="truncate text-center text-[11px] font-medium text-primary-foreground/85 sm:text-xs">
+                    {subtitle}
+                  </p>
+                ) : null}
 
                 {masked ? (
-                  <p className="mt-5 text-center text-sm font-medium tracking-[0.12em] text-primary-foreground sm:mt-6 sm:text-base">
+                  <p
+                    className={cn(
+                      "text-center text-xs font-medium tracking-[0.12em] text-primary-foreground sm:text-sm",
+                      subtitle ? "mt-1.5" : "mt-0"
+                    )}
+                  >
                     {masked}
                   </p>
                 ) : (
-                  <div className="mt-5 sm:mt-6" />
+                  <div className={subtitle ? "mt-1.5" : "mt-0"} />
                 )}
 
-                <div className="mt-5 flex flex-wrap items-end justify-between gap-x-6 gap-y-4 sm:mt-6">
+                <div className="mt-2 flex flex-wrap items-end justify-between gap-x-4 gap-y-1.5 sm:mt-2.5">
                   <div className="min-w-0">
-                    <p className="text-[11px] font-medium uppercase tracking-wide text-primary-foreground/70">
+                    <p className="text-[10px] font-medium uppercase tracking-wide text-primary-foreground/70 sm:text-[11px]">
                       Credit Limit
                     </p>
-                    <p className="mt-0.5 text-3xl font-bold leading-none tabular-nums sm:text-4xl">
+                    <p className="mt-0.5 text-2xl font-bold leading-none tabular-nums sm:text-3xl">
                       {formatCurrency(limit)}
                     </p>
                   </div>
                   {model.dueDateLabel ? (
                     <div className="min-w-0 text-right">
-                      <p className="text-[11px] font-medium uppercase tracking-wide text-primary-foreground/70">
+                      <p className="text-[10px] font-medium uppercase tracking-wide text-primary-foreground/70 sm:text-[11px]">
                         Next Due Date
                       </p>
-                      <p className="mt-0.5 text-lg font-bold tabular-nums text-primary-foreground sm:text-xl">
+                      <p className="mt-0.5 text-base font-bold tabular-nums text-primary-foreground sm:text-lg">
                         {model.dueDateLabel}
                       </p>
                     </div>
