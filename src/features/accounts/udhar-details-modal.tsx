@@ -3,6 +3,7 @@ import { X } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { TransactionEntryDeleteButton } from "@/features/entries/transaction-entry-delete-button"
 import { aggregateUdharLedgerEntries } from "@/lib/udhar/udhar-totals"
+import { getUdharEffect, udharEffectTextClassName } from "@/lib/udhar/udhar-effect"
 import {
   inferUdharPersonName,
   parseSignedAmountString,
@@ -73,11 +74,11 @@ export function UdharDetailsModal({
 
         <div className="mb-4 grid shrink-0 grid-cols-3 gap-2">
           <div className="rounded-xl border border-border bg-muted/30 p-2">
-            <p className="text-xs text-muted-foreground">Receivable (+signed)</p>
+            <p className="text-xs text-muted-foreground">Receivable total</p>
             <p className="text-base font-bold text-income">{formatCurrency(totals.given)}</p>
           </div>
           <div className="rounded-xl border border-border bg-muted/30 p-2">
-            <p className="text-xs text-muted-foreground">Payable (−signed)</p>
+            <p className="text-xs text-muted-foreground">Payable total</p>
             <p className="text-base font-bold text-destructive">{formatCurrency(totals.taken)}</p>
           </div>
           <div className="rounded-xl border border-border bg-muted/30 p-2">
@@ -98,14 +99,14 @@ export function UdharDetailsModal({
 
         <ul className="min-h-0 flex-1 space-y-2 overflow-y-auto overscroll-contain [-ms-overflow-style:none] [scrollbar-width:thin]">
           {entries.map((tx) => {
-            const signed = parseSignedAmountString(tx.signedAmount)
-            const absAmt = Math.abs(signed)
+            const effect = getUdharEffect(tx)
+            const absAmt = Math.abs(parseSignedAmountString(tx.signedAmount))
             const amountLabel =
-              signed > 0
-                ? `Receivable ${formatCurrency(absAmt)}`
-                : signed < 0
-                  ? `Payable ${formatCurrency(absAmt)}`
-                  : formatCurrency(0)
+              absAmt === 0
+                ? formatCurrency(0)
+                : effect === "receivable"
+                  ? `Receivable ${formatCurrency(absAmt)}`
+                  : `Payable ${formatCurrency(absAmt)}`
             const canDelete = Boolean(onDeleteEntry && String(tx.id ?? "").trim())
 
             return (
@@ -120,13 +121,10 @@ export function UdharDetailsModal({
                       <TransactionEntryDeleteButton onClick={() => onDeleteEntry?.(tx)} />
                     ) : null}
                     <p
-                      className={
-                        signed > 0
-                          ? "text-right font-bold tabular-nums text-income"
-                          : signed < 0
-                            ? "text-right font-bold tabular-nums text-destructive"
-                            : "text-right font-bold tabular-nums text-muted-foreground"
-                      }
+                      className={cn(
+                        "text-right font-bold tabular-nums",
+                        absAmt === 0 ? "text-muted-foreground" : udharEffectTextClassName(effect)
+                      )}
                     >
                       {amountLabel}
                     </p>

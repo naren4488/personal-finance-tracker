@@ -1,4 +1,5 @@
 import { TransactionEntryDeleteButton } from "@/features/entries/transaction-entry-delete-button"
+import { type UdharBalanceEffect, udharEffectTextClassName } from "@/lib/udhar/udhar-effect"
 import { formatCurrency, formatDate } from "@/lib/format"
 import { ACTION_GROUP_ROW } from "@/lib/ui/action-group-classes"
 import { cn } from "@/lib/utils"
@@ -6,7 +7,8 @@ import { cn } from "@/lib/utils"
 export function UdharEntryRow({
   date,
   personName,
-  signedAmountInr,
+  economicEffect,
+  amountMagnitudeInr,
   entryCount,
   statusLabel,
   onClick,
@@ -15,22 +17,24 @@ export function UdharEntryRow({
   /** Transaction date (ISO or display string from API). */
   date: string
   personName: string
-  /** Backend `signedAmount` as number: &gt;0 = receivable (green), &lt;0 = payable (red). */
-  signedAmountInr: number
+  /** Receivable (green) vs Payable (red) — from {@link getUdharEffect}, not raw sign. */
+  economicEffect: UdharBalanceEffect
+  /** Display magnitude only (≥ 0); typically `Math.abs(parseSignedAmountString(tx.signedAmount))`. */
+  amountMagnitudeInr: number
   entryCount?: number
   statusLabel?: string
   onClick?: () => void
   /** Separate from row navigation — uses pill Delete like other entry lists. */
   onDelete?: () => void
 }) {
-  const abs = Math.abs(signedAmountInr)
-  const amountColor =
-    signedAmountInr > 0
-      ? "text-income"
-      : signedAmountInr < 0
-        ? "text-destructive"
-        : "text-muted-foreground"
-  const sign = signedAmountInr > 0 ? "+" : signedAmountInr < 0 ? "−" : ""
+  const abs = Math.max(0, amountMagnitudeInr)
+  const amountColor = udharEffectTextClassName(economicEffect)
+  const amountLabel =
+    abs === 0
+      ? formatCurrency(0)
+      : economicEffect === "receivable"
+        ? `Receivable ${formatCurrency(abs)}`
+        : `Payable ${formatCurrency(abs)}`
   const showDelete = Boolean(onDelete)
 
   return (
@@ -60,7 +64,7 @@ export function UdharEntryRow({
         {showDelete ? <TransactionEntryDeleteButton onClick={() => onDelete?.()} /> : null}
         <div className="text-right">
           <p className={cn("text-base font-bold tabular-nums tracking-tight", amountColor)}>
-            {signedAmountInr === 0 ? formatCurrency(0) : `${sign}${formatCurrency(abs)}`}
+            {amountLabel}
           </p>
           {statusLabel ? <p className="text-sm text-muted-foreground">{statusLabel}</p> : null}
         </div>
