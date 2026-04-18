@@ -10,7 +10,11 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import type { Account } from "@/lib/api/account-schemas"
 import { filterActiveAccounts } from "@/lib/api/account-schemas"
-import { creditCardLimitInr } from "@/lib/api/credit-card-map"
+import {
+  creditCardAvailableCreditInr,
+  creditCardLimitInr,
+  creditCardOutstandingInr,
+} from "@/lib/api/credit-card-map"
 import { getErrorMessage } from "@/lib/api/errors"
 import type { CreateTransactionPayload } from "@/lib/api/schemas"
 import { endUserSession } from "@/lib/auth/end-session"
@@ -221,6 +225,9 @@ function AddCardSpendSheetInner({
   }
 
   const limit = selectedCard ? creditCardLimitInr(selectedCard) : 0
+  const used = selectedCard ? creditCardOutstandingInr(selectedCard) : 0
+  const available = selectedCard ? creditCardAvailableCreditInr(selectedCard) : 0
+  const limitKnown = limit > 0
 
   const fieldBase = cn(
     "w-full rounded-xl border border-border bg-muted/50 text-foreground shadow-sm outline-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/50",
@@ -304,11 +311,26 @@ function AddCardSpendSheetInner({
 
             {selectedCard && (
               <section>
-                <div className="flex items-center justify-between gap-3 rounded-xl border border-border/80 bg-muted/40 px-3 py-3 text-sm">
-                  <span className="text-muted-foreground">Credit limit</span>
-                  <span className="font-bold tabular-nums text-foreground">
-                    {formatCurrency(limit)}
-                  </span>
+                <div className="space-y-2 rounded-xl border border-border/80 bg-muted/40 px-3 py-3 text-sm">
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="text-muted-foreground">Available credit</span>
+                    <span
+                      className={cn(
+                        "font-bold tabular-nums",
+                        !limitKnown && "text-muted-foreground",
+                        limitKnown && available < 0 && "text-destructive",
+                        limitKnown && available >= 0 && "text-foreground"
+                      )}
+                    >
+                      {limitKnown ? formatCurrency(available) : "—"}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between gap-3 border-t border-border/60 pt-2 text-xs sm:text-sm">
+                    <span className="text-muted-foreground">Used</span>
+                    <span className="font-semibold tabular-nums text-foreground">
+                      {formatCurrency(used)}
+                    </span>
+                  </div>
                 </div>
               </section>
             )}

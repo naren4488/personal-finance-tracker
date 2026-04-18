@@ -26,6 +26,14 @@ export function creditCardLimitInr(a: Account): number {
 }
 
 /**
+ * Remaining headroom: total credit limit minus outstanding/used (same basis as list/detail).
+ * Negative when outstanding exceeds the stated limit (over limit).
+ */
+export function creditCardAvailableCreditInr(a: Account): number {
+  return creditCardLimitInr(a) - creditCardOutstandingInr(a)
+}
+
+/**
  * Minimum amount due for the current billing cycle when the API provides it.
  * Falls back to `minDuePercent` (or similar) × outstanding when present.
  */

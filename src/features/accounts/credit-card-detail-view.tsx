@@ -20,18 +20,18 @@ import {
   maskedCardNumberDisplay,
   paymentDueDayNumber,
 } from "@/lib/api/credit-card-map"
-import { AddCardSpendSheet } from "@/features/accounts/add-card-spend-sheet"
 import { getAccountDeleteWarning } from "@/lib/accounts/account-delete"
+import { RecentTransactionRow } from "@/features/entries/recent-transaction-row"
+import { useDeleteTransactionFlow } from "@/features/entries/use-delete-transaction-flow"
 import {
-  getRecentTransactionCategoryLabel,
-  getRecentTransactionNote,
-  matchesRecentTransactionCreditCard,
-  parseSignedAmountString,
+  dedupeRecentTransactionsByIdLatestFirst,
+  transactionInvolvesCreditCard,
   type RecentTransaction,
 } from "@/lib/api/transaction-schemas"
-import { formatCurrency, formatDate } from "@/lib/format"
+import { formatCurrency } from "@/lib/format"
 import {
   useGetAccountLedgerQuery,
+  useGetAccountsQuery,
   useDeleteAccountMutation,
   useUpdateAccountMutation,
 } from "@/store/api/base-api"
@@ -82,19 +82,24 @@ function CreditCardRecentTransactionsSection({
   recentTransactions,
   txsError,
   txsFetching,
+  accounts,
+  onDelete,
 }: {
   selectedCardId: string
   recentTransactions: RecentTransaction[]
   txsError: boolean
   txsFetching: boolean
+  accounts: Account[]
+  onDelete: (tx: RecentTransaction) => void
 }) {
   const [visibleTxCount, setVisibleTxCount] = useState(CARD_TX_PAGE_SIZE)
 
   const cardLinkedTransactions = useMemo(() => {
     if (!selectedCardId) return [] as RecentTransaction[]
-    return [...recentTransactions]
-      .filter((tx) => matchesRecentTransactionCreditCard(tx, selectedCardId))
-      .sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0))
+    const filtered = recentTransactions.filter((tx) =>
+      transactionInvolvesCreditCard(tx, selectedCardId)
+    )
+    return dedupeRecentTransactionsByIdLatestFirst(filtered)
   }, [selectedCardId, recentTransactions])
 
   const totalCardTx = cardLinkedTransactions.length
@@ -138,7 +143,7 @@ function CreditCardRecentTransactionsSection({
             >
               {visibleCardTransactions.map((tx) => (
                 <li key={tx.id}>
-                  <RecentCardTransactionRow tx={tx} />
+                  <RecentTransactionRow tx={tx} accounts={accounts} onDelete={onDelete} />
                 </li>
               ))}
             </ul>
@@ -173,42 +178,13 @@ function CreditCardRecentTransactionsSection({
   )
 }
 
-function RecentCardTransactionRow({ tx }: { tx: RecentTransaction }) {
-  const n = parseSignedAmountString(tx.signedAmount)
-  const amountAbs = Math.abs(n)
-  const category = getRecentTransactionCategoryLabel(tx) || tx.title.trim() || "—"
-  const note = getRecentTransactionNote(tx)
-  const isBillPayment =
-    tx.type === "transfer" && String(tx.destinationType ?? "").toLowerCase() === "credit_card_bill"
-  const amountClass = isBillPayment
-    ? "text-income"
-    : tx.type === "expense"
-      ? "text-destructive"
-      : "text-foreground"
-  return (
-    <div className="rounded-xl border border-border/80 bg-card px-3 py-2.5 shadow-sm">
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0 flex-1">
-          <p className="truncate text-sm font-semibold text-foreground">{category}</p>
-          <p className="mt-0.5 text-xs text-muted-foreground">{formatDate(tx.date)}</p>
-          {note ? (
-            <p className="mt-1 line-clamp-2 text-xs leading-snug text-muted-foreground">{note}</p>
-          ) : null}
-        </div>
-        <p className={cn("shrink-0 text-sm font-bold tabular-nums", amountClass)}>
-          {formatCurrency(amountAbs)}
-        </p>
-      </div>
-    </div>
-  )
-}
-
 export function CreditCardDetailView({
   open,
   onOpenChange,
   account,
   onCardUpdated,
   onPayBill,
+  onAddSpend,
   onCardDeleted,
 }: {
   open: boolean
@@ -217,15 +193,18 @@ export function CreditCardDetailView({
   onCardUpdated?: (account: Account) => void
   /** Pay Bill — opens shared Add Transaction (transfer → credit card bill). */
   onPayBill?: () => void
+  /** Add Spend — parent opens shared AddCardSpendSheet on AccountsPage. */
+  onAddSpend?: () => void
   onCardDeleted?: () => void
 }) {
   const navigate = useNavigate()
   const [updateAccount, { isLoading: isSaving }] = useUpdateAccountMutation()
   const [deleteAccount, { isLoading: isDeletingAccount }] = useDeleteAccountMutation()
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false)
+  const txDelete = useDeleteTransactionFlow()
+  const { data: allAccounts = [] } = useGetAccountsQuery(undefined, { skip: !open || !account })
   const [isEditing, setIsEditing] = useState(false)
   const [draft, setDraft] = useState<Account | null>(null)
-  const [spendOpen, setSpendOpen] = useState(false)
   const {
     data: recentTransactions = [],
     isFetching: txsFetching,
@@ -239,7 +218,6 @@ export function CreditCardDetailView({
   const dismiss = useCallback(() => {
     setIsEditing(false)
     setDraft(null)
-    setSpendOpen(false)
     setDeleteConfirmOpen(false)
     onOpenChange(false)
   }, [onOpenChange])
@@ -388,7 +366,6 @@ export function CreditCardDetailView({
       const res = await deleteAccount(id).unwrap()
       toast.success(res.message ?? "Card deleted")
       setDeleteConfirmOpen(false)
-      setSpendOpen(false)
       setIsEditing(false)
       setDraft(null)
       onOpenChange(false)
@@ -484,7 +461,14 @@ export function CreditCardDetailView({
         isDeleting={isDeletingAccount}
         onConfirm={confirmDeleteCard}
       />
-      <AddCardSpendSheet open={spendOpen} onOpenChange={setSpendOpen} account={account} />
+      <ConfirmDeleteDialog
+        open={txDelete.confirmOpen}
+        onOpenChange={(v) => !v && txDelete.dismiss()}
+        title="Delete entry"
+        message="Are you sure you want to delete this transaction? This cannot be undone."
+        isDeleting={txDelete.isDeleting}
+        onConfirm={txDelete.confirmDelete}
+      />
       <div className="fixed inset-0 z-60 flex items-stretch justify-center sm:items-center sm:p-3">
         <button
           type="button"
@@ -821,7 +805,7 @@ export function CreditCardDetailView({
                     type="button"
                     variant="outline"
                     className="h-12 rounded-xl border-0 bg-inherit font-semibold text-foreground shadow-none hover:bg-muted/40"
-                    onClick={() => setSpendOpen(true)}
+                    onClick={() => onAddSpend?.()}
                   >
                     Add Spend
                   </Button>
@@ -860,6 +844,8 @@ export function CreditCardDetailView({
               recentTransactions={recentTransactions}
               txsError={txsError}
               txsFetching={txsFetching}
+              accounts={allAccounts}
+              onDelete={txDelete.requestDelete}
             />
           </div>
         </div>

@@ -618,6 +618,85 @@ export function matchesRecentTransactionCreditCard(
   return tx.type === "expense" && String(tx.accountId ?? "").trim() === id
 }
 
+const SOURCE_ACCOUNT_ID_KEYS = [
+  "sourceAccountId",
+  "source_account_id",
+  "fromAccountId",
+  "from_account_id",
+] as const
+
+const DESTINATION_ACCOUNT_ID_KEYS = [
+  "destinationAccountId",
+  "destination_account_id",
+  "toAccountId",
+  "to_account_id",
+] as const
+
+/** Keys for loan account id on a ledger row (aligned with `applyAccountLedgerScope`). */
+const LOAN_ACCOUNT_ID_KEYS_FOR_FILTER = [
+  "loanAccountId",
+  "loan_account_id",
+  "loanId",
+  "loan_id",
+] as const
+
+/**
+ * Ledger / detail view: card is involved if any canonical id field matches (after
+ * `applyAccountLedgerScopeToRecentTransactions`).
+ */
+export function transactionInvolvesCreditCard(
+  tx: RecentTransaction,
+  creditCardAccountId: string
+): boolean {
+  const id = creditCardAccountId.trim()
+  if (!id) return false
+  if (getRecentTransactionCreditCardAccountId(tx) === id) return true
+  const rec = tx as unknown as Record<string, unknown>
+  if (String(tx.accountId ?? "").trim() === id) return true
+  if (firstIdStringFromRecord(rec, SOURCE_ACCOUNT_ID_KEYS) === id) return true
+  if (firstIdStringFromRecord(rec, DESTINATION_ACCOUNT_ID_KEYS) === id) return true
+  return false
+}
+
+/**
+ * Ledger / detail view: loan is involved if any canonical id field matches, including
+ * structured EMI transfers (`loan_payment`).
+ */
+export function transactionInvolvesLoan(tx: RecentTransaction, loanAccountId: string): boolean {
+  const id = loanAccountId.trim()
+  if (!id) return false
+  const rec = tx as unknown as Record<string, unknown>
+  const loanFromRow =
+    String(tx.loanAccountId ?? "").trim() ||
+    (firstIdStringFromRecord(rec, LOAN_ACCOUNT_ID_KEYS_FOR_FILTER) ?? "").trim()
+  if (loanFromRow === id) return true
+  if (String(tx.accountId ?? "").trim() === id) return true
+  if (firstIdStringFromRecord(rec, SOURCE_ACCOUNT_ID_KEYS) === id) return true
+  if (firstIdStringFromRecord(rec, DESTINATION_ACCOUNT_ID_KEYS) === id) return true
+  return false
+}
+
+/** Deduplicate by transaction `id`, sort latest first (date desc, then id desc). */
+export function dedupeRecentTransactionsByIdLatestFirst(
+  transactions: RecentTransaction[]
+): RecentTransaction[] {
+  const sorted = [...transactions].sort((a, b) => {
+    const da = a.date.slice(0, 10)
+    const db = b.date.slice(0, 10)
+    if (da !== db) return da < db ? 1 : -1
+    return String(b.id).localeCompare(String(a.id))
+  })
+  const seen = new Set<string>()
+  const out: RecentTransaction[] = []
+  for (const tx of sorted) {
+    const tid = String(tx.id ?? "").trim()
+    if (!tid || seen.has(tid)) continue
+    seen.add(tid)
+    out.push(tx)
+  }
+  return out
+}
+
 export function getRecentTransactionCategoryLabel(tx: RecentTransaction): string {
   const rec = tx as unknown as Record<string, unknown>
   const cat =

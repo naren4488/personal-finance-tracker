@@ -33,9 +33,14 @@ import {
   type LoanPaymentMode,
 } from "@/features/accounts/record-loan-payment-sheet"
 import { RecentTransactionRow } from "@/features/entries/recent-transaction-row"
+import { useDeleteTransactionFlow } from "@/features/entries/use-delete-transaction-flow"
 import { getAccountDeleteWarning } from "@/lib/accounts/account-delete"
 import { getErrorMessage } from "@/lib/api/errors"
-import type { RecentTransaction } from "@/lib/api/transaction-schemas"
+import {
+  dedupeRecentTransactionsByIdLatestFirst,
+  transactionInvolvesLoan,
+  type RecentTransaction,
+} from "@/lib/api/transaction-schemas"
 import { formatCurrency } from "@/lib/format"
 import {
   useGetAccountLedgerQuery,
@@ -77,36 +82,6 @@ function parseDigitsInt(s: string): number {
   return Number.isFinite(n) ? n : 0
 }
 
-function txSourceAccountId(tx: RecentTransaction): string | undefined {
-  const rec = tx as unknown as Record<string, unknown>
-  const id =
-    typeof tx.accountId === "string" && tx.accountId.trim()
-      ? tx.accountId.trim()
-      : typeof rec.sourceAccountId === "string" && rec.sourceAccountId.trim()
-        ? rec.sourceAccountId.trim()
-        : typeof rec.fromAccountId === "string" && rec.fromAccountId.trim()
-          ? rec.fromAccountId.trim()
-          : undefined
-  return id || undefined
-}
-
-function isLoanPaymentTransaction(tx: RecentTransaction, loanId: string): boolean {
-  const selectedId = String(loanId ?? "").trim()
-  const txLoanId = String(tx.loanAccountId ?? "").trim()
-  return (
-    tx.type === "transfer" &&
-    String(tx.destinationType ?? "").toLowerCase() === "loan_payment" &&
-    txLoanId.length > 0 &&
-    txLoanId === selectedId
-  )
-}
-
-function isLoanActivityTransaction(tx: RecentTransaction, loanId: string): boolean {
-  if (tx.type === "transfer") return false
-  const sourceId = txSourceAccountId(tx)
-  return sourceId === loanId
-}
-
 export function LoanDetailView({
   open,
   onOpenChange,
@@ -128,6 +103,7 @@ export function LoanDetailView({
   const [updateAccount, { isLoading: isSavingLoan }] = useUpdateAccountMutation()
   const [deleteAccount, { isLoading: isDeletingAccount }] = useDeleteAccountMutation()
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false)
+  const txDelete = useDeleteTransactionFlow()
   const [paymentOpen, setPaymentOpen] = useState(false)
   const [paymentMode, setPaymentMode] = useState<LoanPaymentMode>("pay_emi")
   const [isEditing, setIsEditing] = useState(false)
@@ -137,7 +113,6 @@ export function LoanDetailView({
     data: recentTransactions = [],
     isFetching: txsFetching,
     isError: txsError,
-    error: txsErrorValue,
     refetch: refetchRecentTransactions,
   } = useGetAccountLedgerQuery(
     { accountId: String(account?.id ?? ""), limit: 500 },
@@ -360,71 +335,11 @@ export function LoanDetailView({
     if (!open || !selectedLoanId) return
     void refetchRecentTransactions()
   }, [open, selectedLoanId, refetchRecentTransactions])
-  const loanTransactions = useMemo(() => {
+  const loanLedgerForUi = useMemo(() => {
     if (!selectedLoanId) return [] as RecentTransaction[]
-    return [...recentTransactions]
-      .filter((tx) => isLoanActivityTransaction(tx, selectedLoanId))
-      .sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0))
+    const filtered = recentTransactions.filter((tx) => transactionInvolvesLoan(tx, selectedLoanId))
+    return dedupeRecentTransactionsByIdLatestFirst(filtered)
   }, [selectedLoanId, recentTransactions])
-  const loanPaymentsMade = useMemo(() => {
-    if (!selectedLoanId) return [] as RecentTransaction[]
-    return [...recentTransactions]
-      .filter((tx) => isLoanPaymentTransaction(tx, selectedLoanId))
-      .sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0))
-  }, [selectedLoanId, recentTransactions])
-  const loanTransactionsForUi = loanTransactions
-  const loanPaymentsForUi = loanPaymentsMade
-
-  useEffect(() => {
-    if (!open || !account) return
-    const currentLoanId = String(account.id ?? "").trim()
-    console.log("DETAIL VIEW RAW DATA:", recentTransactions)
-    console.log("SELECTED ID:", currentLoanId)
-    console.log("RAW DATA USED IN UI (LOAN TX):", loanTransactionsForUi)
-    console.log("RAW DATA USED IN UI (LOAN PAYMENTS):", loanPaymentsForUi)
-    const spendIds = new Set(loanTransactions.map((tx) => String(tx.id)))
-    const overlap = loanPaymentsMade.filter((tx) => spendIds.has(String(tx.id)))
-    if (overlap.length > 0) {
-      console.warn("Loan transaction overlap detected", overlap)
-    }
-
-    if (import.meta.env.DEV) {
-      console.log("=== LOAN PAYMENT DEBUG START ===")
-      console.log("Loan ID:", currentLoanId)
-      console.log("Total TX:", recentTransactions.length)
-      if (txsError) {
-        console.error("LOAN DETAIL TRANSACTIONS QUERY ERROR:", txsErrorValue)
-      }
-
-      const transfers = recentTransactions.filter((tx) => tx.type === "transfer")
-      transfers.forEach((tx) => {
-        const destinationType = String(tx.destinationType ?? "").toLowerCase()
-        const loanId = tx.loanAccountId
-        console.log("Transfer TX:", {
-          id: tx.id,
-          destinationType,
-          loanId,
-          matchesLoan: loanId === currentLoanId,
-        })
-      })
-
-      console.log("Filtered Loan Payments:", loanPaymentsForUi.length)
-      if (loanPaymentsForUi.length === 0) {
-        console.error("No loan payments found for this loan. Check transaction data.")
-      }
-      console.log("=== LOAN PAYMENT DEBUG END ===")
-    }
-  }, [
-    open,
-    account,
-    recentTransactions,
-    loanTransactions,
-    loanPaymentsMade,
-    loanTransactionsForUi,
-    loanPaymentsForUi,
-    txsError,
-    txsErrorValue,
-  ])
 
   if (!open || !account) return null
 
@@ -463,6 +378,14 @@ export function LoanDetailView({
         warning={deleteWarning}
         isDeleting={isDeletingAccount}
         onConfirm={confirmDeleteLoan}
+      />
+      <ConfirmDeleteDialog
+        open={txDelete.confirmOpen}
+        onOpenChange={(v) => !v && txDelete.dismiss()}
+        title="Delete entry"
+        message="Are you sure you want to delete this transaction? This cannot be undone."
+        isDeleting={txDelete.isDeleting}
+        onConfirm={txDelete.confirmDelete}
       />
       <RecordLoanPaymentSheet
         open={paymentOpen}
@@ -925,39 +848,19 @@ export function LoanDetailView({
                 </p>
               ) : txsFetching ? (
                 <p className="mt-6 text-center text-sm text-muted-foreground">Loading...</p>
-              ) : loanTransactionsForUi.length === 0 ? (
+              ) : loanLedgerForUi.length === 0 ? (
                 <p className="mt-6 text-center text-sm text-muted-foreground">
                   No transactions yet
                 </p>
               ) : (
                 <ul className="mt-4 flex list-none flex-col gap-2.5" aria-label="Loan transactions">
-                  {loanTransactionsForUi.map((tx) => (
+                  {loanLedgerForUi.map((tx) => (
                     <li key={tx.id}>
-                      <RecentTransactionRow tx={tx} accounts={allAccounts} />
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </div>
-
-            <div className="mt-4 rounded-2xl bg-inherit p-4 sm:mt-5 sm:p-5">
-              <h2 className="text-base font-bold text-foreground">Payments Made</h2>
-              {txsError ? (
-                <p className="mt-6 text-center text-sm text-destructive">Unable to load payments</p>
-              ) : txsFetching ? (
-                <p className="mt-6 text-center text-sm text-muted-foreground">Loading...</p>
-              ) : loanPaymentsForUi.length === 0 ? (
-                <p className="mt-6 text-center text-sm text-muted-foreground">
-                  No payments recorded yet
-                </p>
-              ) : (
-                <ul
-                  className="mt-4 flex list-none flex-col gap-2.5"
-                  aria-label="Loan payments made"
-                >
-                  {loanPaymentsForUi.map((tx) => (
-                    <li key={tx.id}>
-                      <RecentTransactionRow tx={tx} accounts={allAccounts} />
+                      <RecentTransactionRow
+                        tx={tx}
+                        accounts={allAccounts}
+                        onDelete={txDelete.requestDelete}
+                      />
                     </li>
                   ))}
                 </ul>

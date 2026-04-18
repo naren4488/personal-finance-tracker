@@ -21,6 +21,8 @@ import { AddCommitmentModal } from "@/features/analytics/add-commitment-modal"
 import { RecentTransactionRow } from "@/features/entries/recent-transaction-row"
 import { useDeleteTransactionFlow } from "@/features/entries/use-delete-transaction-flow"
 import { getErrorMessage } from "@/lib/api/errors"
+import { getDashboardAccountDisplay } from "@/lib/api/dashboard-account-display"
+import type { Account } from "@/lib/api/account-schemas"
 import type { DashboardAccountPreview } from "@/lib/api/dashboard-home-schemas"
 import { formatCurrency, formatDate } from "@/lib/format"
 import { useGetAccountsQuery, useGetDashboardQuery } from "@/store/api/base-api"
@@ -273,9 +275,10 @@ export default function HomePage() {
                 <p className="text-sm text-muted-foreground">No accounts yet.</p>
               ) : (
                 <div className="grid grid-cols-2 gap-2">
-                  {dashboard.accounts.map((a) => (
-                    <AccountPreviewCard key={a.id} account={a} />
-                  ))}
+                  {dashboard.accounts.map((a) => {
+                    const full = accounts.find((x) => String(x.id) === a.id)
+                    return <AccountPreviewCard key={a.id} account={a} fullAccount={full} />
+                  })}
                 </div>
               )}
             </section>
@@ -477,9 +480,16 @@ function HorizonSection({
   )
 }
 
-function AccountPreviewCard({ account }: { account: DashboardAccountPreview }) {
+function AccountPreviewCard({
+  account,
+  fullAccount,
+}: {
+  account: DashboardAccountPreview
+  fullAccount?: Account
+}) {
   const KindIcon = accountKindIcon(account.kind)
   const label = accountKindBadgeLabel(account.kind)
+  const { amount, label: amountContext } = getDashboardAccountDisplay(account, fullAccount)
   return (
     <div className="flex flex-col rounded-2xl border border-border/60 bg-card p-3 shadow-sm">
       <div className="mb-2 flex items-start justify-between gap-1">
@@ -493,8 +503,11 @@ function AccountPreviewCard({ account }: { account: DashboardAccountPreview }) {
       <p className="truncate text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
         {account.name}
       </p>
-      <p className="mt-1 text-base font-bold tabular-nums">
-        {formatCurrency(account.currentBalance)}
+      {amountContext ? (
+        <p className="mt-1 text-[9px] font-medium text-muted-foreground">{amountContext}</p>
+      ) : null}
+      <p className={cn("text-base font-bold tabular-nums", amountContext ? "mt-0.5" : "mt-1")}>
+        {formatCurrency(amount)}
       </p>
     </div>
   )

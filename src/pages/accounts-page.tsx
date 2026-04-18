@@ -23,7 +23,6 @@ import {
   ACCOUNTS_URL_CARD,
   ACCOUNTS_URL_LOAN,
   applyAccountsDetailSearch,
-  buildAccountsDetailPath,
 } from "@/features/accounts/accounts-route"
 import { CreditCardDetailView } from "@/features/accounts/credit-card-detail-view"
 import { CreditCardList } from "@/features/accounts/credit-card-list"
@@ -93,14 +92,11 @@ export default function AccountsPage() {
   const [selectedCreditCard, setSelectedCreditCard] = useState<Account | null>(null)
   const [selectedLoan, setSelectedLoan] = useState<Account | null>(null)
   const [selectedAccount, setSelectedAccount] = useState<Account | null>(null)
-  /**
-   * When true, the full-screen loan sheet is shown. False = list-only flows (e.g. Pay EMI) keep
-   * `selectedLoan` for the transfer modal without showing the sheet behind it.
-   */
+  /** Full-screen loan detail — only when user opens a loan from the list (or URL deep link). */
   const [loanDetailVisible, setLoanDetailVisible] = useState(false)
-  /** Same pattern for card: list actions can open modals/sheets without the card detail overlay. */
+  /** Full-screen card detail — only when user opens a card from the list (or URL deep link). */
   const [cardDetailVisible, setCardDetailVisible] = useState(false)
-  /** Add spend from card list (detail hidden) — sheet rendered on accounts page. */
+  /** Add spend sheet (single instance on this page; list or after leaving card detail). */
   const [cardInlineSpendOpen, setCardInlineSpendOpen] = useState(false)
   const [transferModalOpen, setTransferModalOpen] = useState(false)
   const [transferPreset, setTransferPreset] = useState<TransferPaymentPreset | null>(null)
@@ -127,6 +123,28 @@ export default function AccountsPage() {
     setTransferPreset({ kind: "loan_emi", loanAccountId: String(a.id) })
     setTransferModalOpen(true)
   }, [selectedLoan])
+
+  const exitToLoansList = useCallback(() => {
+    setSegment("loans")
+    setLoanDetailVisible(false)
+    setSelectedLoan(null)
+    applyAccountsDetailSearch(setSearchParams, null)
+  }, [setSearchParams])
+
+  const exitToCardsList = useCallback(() => {
+    setSegment("cards")
+    setCardDetailVisible(false)
+    setCardInlineSpendOpen(false)
+    setSelectedCreditCard(null)
+    applyAccountsDetailSearch(setSearchParams, null)
+  }, [setSearchParams])
+
+  const openAddSpendFromCardDetail = useCallback(() => {
+    if (!selectedCreditCard) return
+    setCardDetailVisible(false)
+    applyAccountsDetailSearch(setSearchParams, null)
+    setCardInlineSpendOpen(true)
+  }, [selectedCreditCard, setSearchParams])
 
   const confirmDeleteFromList = useCallback(async () => {
     if (!pendingListDeleteAccount) return
@@ -351,16 +369,6 @@ export default function AccountsPage() {
     [resolveAccountFromCache, selectedLoan]
   )
 
-  const accountsReturnPath = useMemo(
-    () =>
-      selectedLoan
-        ? buildAccountsDetailPath({ kind: "loan", id: String(selectedLoan.id) })
-        : selectedCreditCard
-          ? buildAccountsDetailPath({ kind: "card", id: String(selectedCreditCard.id) })
-          : undefined,
-    [selectedLoan, selectedCreditCard]
-  )
-
   const showAccountsLoading = segment === "accounts" && accountsLoading
   const showAccountsError = segment === "accounts" && accountsError
   const showAccountsEmpty =
@@ -442,13 +450,10 @@ export default function AccountsPage() {
       <AddLoanSheet open={loanOpen} onOpenChange={setLoanOpen} />
       <AddCreditCardSheet open={cardOpen} onOpenChange={setCardOpen} />
       <AddCardSpendSheet
-        open={cardInlineSpendOpen && !!selectedCreditCard && !cardDetailVisible}
+        open={cardInlineSpendOpen && !!selectedCreditCard}
         onOpenChange={(v) => {
           setCardInlineSpendOpen(v)
-          if (!v && !cardDetailVisible) {
-            setSelectedCreditCard(null)
-            applyAccountsDetailSearch(setSearchParams, null)
-          }
+          if (!v) exitToCardsList()
         }}
         account={resolvedSelectedCreditCard}
       />
@@ -464,6 +469,7 @@ export default function AccountsPage() {
         account={resolvedSelectedCreditCard}
         onCardUpdated={(a) => setSelectedCreditCard(a)}
         onPayBill={openPayBillFromCardDetail}
+        onAddSpend={openAddSpendFromCardDetail}
         onCardDeleted={() => {
           setSelectedCreditCard(null)
           setCardDetailVisible(false)
@@ -493,18 +499,13 @@ export default function AccountsPage() {
           if (!v) {
             const kind = transferPreset?.kind
             setTransferPreset(null)
-            if (kind === "loan_emi" && !loanDetailVisible) {
-              setSelectedLoan(null)
-              applyAccountsDetailSearch(setSearchParams, null)
-            } else if (kind === "credit_card_bill" && !cardDetailVisible && !cardInlineSpendOpen) {
-              setSelectedCreditCard(null)
-              applyAccountsDetailSearch(setSearchParams, null)
-            }
+            if (kind === "loan_emi") exitToLoansList()
+            else if (kind === "credit_card_bill") exitToCardsList()
           }
         }}
         initialType="transfer"
         transferPaymentPreset={transferPreset}
-        accountsReturnPath={accountsReturnPath}
+        accountsReturnPath="/accounts"
       />
       {selectedAccount ? (
         <AccountDetailView
@@ -831,14 +832,12 @@ export default function AccountsPage() {
                   }}
                   onAddSpend={(a) => {
                     setCardDetailVisible(false)
-                    setCardInlineSpendOpen(true)
                     setSelectedCreditCard(a)
-                    applyAccountsDetailSearch(setSearchParams, { kind: "card", id: String(a.id) })
+                    setCardInlineSpendOpen(true)
                   }}
                   onPayBill={(a) => {
                     setCardDetailVisible(false)
                     setSelectedCreditCard(a)
-                    applyAccountsDetailSearch(setSearchParams, { kind: "card", id: String(a.id) })
                     setTransferPreset({
                       kind: "credit_card_bill",
                       creditCardAccountId: String(a.id),
@@ -858,7 +857,6 @@ export default function AccountsPage() {
                   onPayEmi={(a) => {
                     setLoanDetailVisible(false)
                     setSelectedLoan(a)
-                    applyAccountsDetailSearch(setSearchParams, { kind: "loan", id: String(a.id) })
                     setTransferPreset({ kind: "loan_emi", loanAccountId: String(a.id) })
                     setTransferModalOpen(true)
                   }}

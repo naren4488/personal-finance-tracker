@@ -41,6 +41,14 @@ export type DashboardAccountPreview = {
   creditLimit: number
   currentOutstanding: number
   status: string
+  /** Dashboard may expose spendable headroom directly (camelCase or parsed from snake_case). */
+  availableLimit?: number
+  remainingLimit?: number
+  /** Loan remaining / outstanding from dashboard payload when provided. */
+  remainingBalance?: number
+  outstandingAmount?: number
+  remainingAmount?: number
+  totalLoanAmount?: number
 }
 
 export type DashboardHomeView = {
@@ -106,12 +114,32 @@ function parseScheduledBlock(
   return { days, total, items }
 }
 
+function parseOptionalMoneyField(
+  o: Record<string, unknown>,
+  keys: readonly string[]
+): number | undefined {
+  for (const k of keys) {
+    const v = o[k]
+    if (v === undefined || v === null) continue
+    const n = parseMoney(v)
+    if (Number.isFinite(n)) return n
+  }
+  return undefined
+}
+
 function parseAccountPreview(raw: unknown): DashboardAccountPreview | null {
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null
   const o = raw as Record<string, unknown>
   const id = o.id != null ? String(o.id).trim() : ""
   const name = typeof o.name === "string" ? o.name.trim() : ""
   if (!id || !name) return null
+  const availableLimit = parseOptionalMoneyField(o, ["availableLimit", "available_limit"])
+  const remainingLimit = parseOptionalMoneyField(o, ["remainingLimit", "remaining_limit"])
+  const remainingBalance = parseOptionalMoneyField(o, ["remainingBalance", "remaining_balance"])
+  const outstandingAmount = parseOptionalMoneyField(o, ["outstandingAmount", "outstanding_amount"])
+  const remainingAmount = parseOptionalMoneyField(o, ["remainingAmount", "remaining_amount"])
+  const totalLoanAmount = parseOptionalMoneyField(o, ["totalLoanAmount", "total_loan_amount"])
+
   return {
     id,
     name,
@@ -120,6 +148,12 @@ function parseAccountPreview(raw: unknown): DashboardAccountPreview | null {
     creditLimit: parseMoney(o.creditLimit),
     currentOutstanding: parseMoney(o.currentOutstanding),
     status: typeof o.status === "string" ? o.status.trim() : "",
+    ...(availableLimit !== undefined ? { availableLimit } : {}),
+    ...(remainingLimit !== undefined ? { remainingLimit } : {}),
+    ...(remainingBalance !== undefined ? { remainingBalance } : {}),
+    ...(outstandingAmount !== undefined ? { outstandingAmount } : {}),
+    ...(remainingAmount !== undefined ? { remainingAmount } : {}),
+    ...(totalLoanAmount !== undefined ? { totalLoanAmount } : {}),
   }
 }
 

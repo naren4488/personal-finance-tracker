@@ -11,7 +11,8 @@ const analyze = process.env.ANALYZE === "true"
 export default defineConfig({
   server: {
     proxy: {
-      // Dev: same-origin `/api/*` → backend `http://localhost:8080/api/v1/*` (avoids CORS)
+      // Dev: browser `/api/*` (same origin) → `https://expensetracker-api.lazycoderz.com/api/v1/*` (no CORS).
+      // Requires `VITE_API_BASE_URL` empty so RTK uses relative `/api` (see .env.example).
       "/api": {
         target: "https://expensetracker-api.lazycoderz.com",
         changeOrigin: true,

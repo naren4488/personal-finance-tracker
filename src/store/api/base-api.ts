@@ -1164,6 +1164,7 @@ export const baseApi = createApi({
         return { data: { message: parsed.message } }
       },
       invalidatesTags: [
+        "Transaction",
         { type: "Transaction", id: "LIST" },
         { type: "Transaction", id: "RECENT" },
         { type: "Account", id: "LIST" },

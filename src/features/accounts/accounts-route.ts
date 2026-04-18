@@ -13,7 +13,10 @@ export function buildAccountsDetailPath(detail: AccountsDetailParam): string {
   return `/accounts?${q.toString()}`
 }
 
-/** Keeps loan/card detail in the URL so overlays + modals can close without losing account context. */
+/**
+ * Sets or clears `?loan=` / `?card=` for **explicit detail navigation** (row tap, deep link).
+ * Pay EMI / Pay Bill / Add Spend flows must not rely on these params — use React state only.
+ */
 export function applyAccountsDetailSearch(
   setSearchParams: SetURLSearchParams,
   detail: AccountsDetailParam
