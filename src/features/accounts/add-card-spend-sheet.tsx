@@ -1,11 +1,15 @@
-import { useCallback, useEffect, useId, useState } from "react"
+import { zodResolver } from "@hookform/resolvers/zod"
+import { useCallback, useEffect, useId, useMemo, useState } from "react"
 import { useNavigate } from "react-router-dom"
-import { ChevronDown, X } from "lucide-react"
+import { ChevronDown, Plus, X } from "lucide-react"
+import { useForm, useWatch } from "react-hook-form"
 import { toast } from "sonner"
+import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import type { Account } from "@/lib/api/account-schemas"
+import { filterActiveAccounts } from "@/lib/api/account-schemas"
 import { creditCardLimitInr } from "@/lib/api/credit-card-map"
 import { getErrorMessage } from "@/lib/api/errors"
 import type { CreateTransactionPayload } from "@/lib/api/schemas"
@@ -13,21 +17,14 @@ import { endUserSession } from "@/lib/auth/end-session"
 import { FORM_OVERLAY_FOOTER, FORM_OVERLAY_SCROLL_BODY } from "@/lib/form-overlay-scroll"
 import { formatCurrency } from "@/lib/format"
 import { cn } from "@/lib/utils"
-import { useAddTransactionMutation } from "@/store/api/base-api"
+import { useAddTransactionMutation, useGetCreditCardsQuery } from "@/store/api/base-api"
 import { useAppDispatch } from "@/store/hooks"
-
-const TX_CATEGORIES = [
-  "Food & dining",
-  "Transport",
-  "Shopping",
-  "Bills & utilities",
-  "Health",
-  "Entertainment",
-  "Salary",
-  "Investments",
-  "Transfer",
-  "Other",
-] as const
+import {
+  cardExpenseFormSchema,
+  parseNonNegativeFee,
+  parsePositiveAmount,
+  type CardExpenseFormValues,
+} from "@/lib/forms/credit-card-expense-schema"
 
 function todayIsoDate(): string {
   const d = new Date()
@@ -35,14 +32,6 @@ function todayIsoDate(): string {
   const m = String(d.getMonth() + 1).padStart(2, "0")
   const day = String(d.getDate()).padStart(2, "0")
   return `${y}-${m}-${day}`
-}
-
-function parseDecimalAmountInput(raw: string): number | null {
-  const t = raw.replace(/,/g, "").trim()
-  if (!t) return null
-  const n = Number(t)
-  if (!Number.isFinite(n) || n <= 0) return null
-  return Math.round(n * 100) / 100
 }
 
 function cardSpendSelectLabel(account: Account): string {
@@ -69,36 +58,51 @@ function SelectChevron({ compact }: { compact?: boolean }) {
 export type AddCardSpendSheetProps = {
   open: boolean
   onOpenChange: (open: boolean) => void
+  /** When set, this card is selected when the sheet opens */
   account: Account | null
 }
 
 export function AddCardSpendSheet({ open, onOpenChange, account }: AddCardSpendSheetProps) {
-  if (!open || !account) return null
-  return <AddCardSpendSheetInner account={account} onOpenChange={onOpenChange} />
+  if (!open) return null
+  return <AddCardSpendSheetInner defaultAccount={account} onOpenChange={onOpenChange} />
 }
 
 function AddCardSpendSheetInner({
-  account,
+  defaultAccount,
   onOpenChange,
 }: {
-  account: Account
+  defaultAccount: Account | null
   onOpenChange: (open: boolean) => void
 }) {
   const navigate = useNavigate()
   const dispatch = useAppDispatch()
   const titleId = useId()
-  const accountIdField = useId()
   const amountId = useId()
   const categoryId = useId()
+  const cardId = useId()
+  const feeId = useId()
   const dateId = useId()
   const noteId = useId()
+  const tagInputId = useId()
 
   const [addTransaction, { isLoading: isSubmitting }] = useAddTransactionMutation()
+  const { data: creditCardsRaw = [], isLoading: cardsLoading } = useGetCreditCardsQuery()
+  const creditCards = useMemo(() => filterActiveAccounts(creditCardsRaw), [creditCardsRaw])
 
-  const [amount, setAmount] = useState("0")
-  const [category, setCategory] = useState("")
-  const [date, setDate] = useState(todayIsoDate)
-  const [note, setNote] = useState("")
+  const [tagDraft, setTagDraft] = useState("")
+
+  const form = useForm<CardExpenseFormValues>({
+    resolver: zodResolver(cardExpenseFormSchema),
+    defaultValues: {
+      amount: "",
+      category: "",
+      creditCardAccountId: defaultAccount?.id ?? "",
+      feeAmount: "",
+      date: todayIsoDate(),
+      note: "",
+      tags: [],
+    },
+  })
 
   const dismiss = useCallback(() => {
     onOpenChange(false)
@@ -120,42 +124,83 @@ function AddCardSpendSheetInner({
     }
   }, [])
 
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault()
+  useEffect(() => {
+    if (!defaultAccount?.id) return
+    form.setValue("creditCardAccountId", defaultAccount.id)
+  }, [defaultAccount?.id, form])
 
-    const amt = parseDecimalAmountInput(amount)
+  useEffect(() => {
+    if (cardsLoading || creditCards.length === 0) return
+    const current = form.getValues("creditCardAccountId")
+    if (current && creditCards.some((c) => c.id === current)) return
+    const pick =
+      defaultAccount?.id && creditCards.some((c) => c.id === defaultAccount.id)
+        ? defaultAccount.id
+        : creditCards[0]!.id
+    form.setValue("creditCardAccountId", pick)
+  }, [cardsLoading, creditCards, defaultAccount?.id, form])
+
+  const selectedCardId = useWatch({ control: form.control, name: "creditCardAccountId" }) ?? ""
+  const selectedCard = useMemo(
+    () => creditCards.find((c) => c.id === selectedCardId) ?? null,
+    [creditCards, selectedCardId]
+  )
+
+  const tags = useWatch({ control: form.control, name: "tags" }) ?? []
+
+  const addTag = useCallback(() => {
+    const next = tagDraft.trim()
+    if (!next) return
+    const cur = form.getValues("tags")
+    if (cur.includes(next)) {
+      setTagDraft("")
+      return
+    }
+    form.setValue("tags", [...cur, next], { shouldValidate: true })
+    setTagDraft("")
+  }, [form, tagDraft])
+
+  const removeTag = useCallback(
+    (t: string) => {
+      form.setValue(
+        "tags",
+        form.getValues("tags").filter((x) => x !== t),
+        { shouldValidate: true }
+      )
+    },
+    [form]
+  )
+
+  async function onValid(values: CardExpenseFormValues) {
+    const amt = parsePositiveAmount(values.amount)
     if (amt == null) {
       toast.error("Enter a valid amount")
       return
     }
-    if (!category.trim()) {
-      toast.error("Select category")
+    const feeParsed = parseNonNegativeFee(values.feeAmount)
+    if (feeParsed === null) {
+      toast.error("Fee must be empty or a non-negative number")
       return
     }
 
-    const cardName = account.name.trim() || "Card"
-    const noteParts = [
-      note.trim(),
-      `[Card: ${cardName}]`,
-      `[Card account id: ${account.id}]`,
-    ].filter(Boolean)
-    const noteForApi = noteParts.join(" — ")
+    const card = creditCards.find((c) => c.id === values.creditCardAccountId)
+    const cardLabel = card ? cardSpendSelectLabel(card) : "Card"
 
     const payload: CreateTransactionPayload = {
       type: "expense",
       amount: amt,
-      category: category.trim(),
+      category: values.category.trim(),
+      creditCardAccountId: values.creditCardAccountId,
       paymentMethod: "card",
-      sourceName: cardName,
-      feeAmount: "0",
+      sourceName: cardLabel,
+      feeAmount: String(feeParsed),
       paidOnBehalf: false,
       scheduled: false,
-      date,
-      note: noteForApi,
-      tags: [],
-      displayTitle: `Card spend · ${cardName}`,
-      accountId: account.id,
-      accountName: cardName,
+      date: values.date,
+      note: values.note,
+      tags: values.tags,
+      displayTitle: `Card · ${values.category.trim()}`,
+      accountName: cardLabel,
     }
 
     try {
@@ -175,8 +220,7 @@ function AddCardSpendSheetInner({
     }
   }
 
-  const limit = creditCardLimitInr(account)
-  const cardLabel = cardSpendSelectLabel(account)
+  const limit = selectedCard ? creditCardLimitInr(selectedCard) : 0
 
   const fieldBase = cn(
     "w-full rounded-xl border border-border bg-muted/50 text-foreground shadow-sm outline-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/50",
@@ -186,7 +230,7 @@ function AddCardSpendSheetInner({
   const lb = "mb-0.5 block text-[10px] font-bold text-primary sm:text-xs"
 
   return (
-    <div className="fixed inset-0 z-[70] flex min-h-0 max-h-dvh items-center justify-center overflow-hidden p-2 pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:p-4">
+    <div className="fixed inset-0 z-70 flex min-h-0 max-h-dvh items-center justify-center overflow-hidden p-2 pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:p-4">
       <button
         type="button"
         className="absolute inset-0 bg-black/50 backdrop-blur-[2px]"
@@ -218,62 +262,56 @@ function AddCardSpendSheetInner({
           </Button>
         </header>
 
-        <form onSubmit={handleSubmit} className="flex min-h-0 flex-1 flex-col overflow-hidden">
+        <form
+          onSubmit={form.handleSubmit(onValid)}
+          className="flex min-h-0 flex-1 flex-col overflow-hidden"
+        >
+          <input type="hidden" name="type" value="expense" readOnly aria-hidden />
+
           <div
             className={cn(FORM_OVERLAY_SCROLL_BODY, "space-y-3 px-4 py-3 sm:space-y-3.5 sm:py-4")}
           >
             <section>
-              <Label className={lb}>Credit Card</Label>
-              <div className="relative">
-                <select
-                  disabled
-                  aria-disabled="true"
-                  value={account.id}
-                  className={cn(
-                    fieldBase,
-                    "appearance-none pr-8 opacity-90",
-                    "cursor-not-allowed bg-muted/70"
-                  )}
-                >
-                  <option value={account.id}>{cardLabel}</option>
-                </select>
-                <SelectChevron compact />
-              </div>
-              <p className="mt-1 text-[10px] text-muted-foreground sm:text-[11px]">
-                Pre-selected from card detail
-              </p>
-            </section>
-
-            <section>
-              <div className="flex items-center justify-between gap-3 rounded-xl border border-border/80 bg-muted/40 px-3 py-3 text-sm">
-                <span className="text-muted-foreground">Credit Limit</span>
-                <span className="font-bold tabular-nums text-foreground">
-                  {formatCurrency(limit)}
-                </span>
-              </div>
-            </section>
-
-            <section>
-              <Label htmlFor={accountIdField} className={lb}>
-                Account
+              <Label htmlFor={cardId} className={lb}>
+                Credit card
               </Label>
               <div className="relative">
                 <select
-                  id={accountIdField}
-                  disabled
-                  aria-disabled="true"
-                  value={account.id}
+                  id={cardId}
+                  disabled={cardsLoading || creditCards.length === 0}
+                  {...form.register("creditCardAccountId")}
                   className={cn(
                     fieldBase,
-                    "appearance-none pr-8 opacity-90",
-                    "cursor-not-allowed bg-muted/70"
+                    "appearance-none pr-8",
+                    !selectedCardId && "text-muted-foreground"
                   )}
                 >
-                  <option value={account.id}>{cardLabel}</option>
+                  <option value="">{cardsLoading ? "Loading cards…" : "Select credit card"}</option>
+                  {creditCards.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {cardSpendSelectLabel(c)}
+                    </option>
+                  ))}
                 </select>
                 <SelectChevron compact />
               </div>
+              {form.formState.errors.creditCardAccountId && (
+                <p className="mt-1 text-xs text-destructive">
+                  {form.formState.errors.creditCardAccountId.message}
+                </p>
+              )}
             </section>
+
+            {selectedCard && (
+              <section>
+                <div className="flex items-center justify-between gap-3 rounded-xl border border-border/80 bg-muted/40 px-3 py-3 text-sm">
+                  <span className="text-muted-foreground">Credit limit</span>
+                  <span className="font-bold tabular-nums text-foreground">
+                    {formatCurrency(limit)}
+                  </span>
+                </div>
+              </section>
+            )}
 
             <section>
               <Label htmlFor={amountId} className={lb}>
@@ -281,54 +319,59 @@ function AddCardSpendSheetInner({
               </Label>
               <Input
                 id={amountId}
-                type="number"
+                type="text"
                 inputMode="decimal"
-                min={0}
-                step="0.01"
                 autoComplete="off"
-                value={amount}
-                onChange={(e) => {
-                  const v = e.target.value
-                  if (v === "") {
-                    setAmount("")
-                    return
-                  }
-                  if (/^\d*\.?\d{0,2}$/.test(v)) {
-                    setAmount(v)
-                  }
-                }}
+                placeholder="0.00"
+                aria-invalid={!!form.formState.errors.amount}
+                {...form.register("amount")}
                 className={cn(
                   "h-12 rounded-xl border-2 border-primary bg-card px-3 text-center text-lg font-bold tabular-nums shadow-sm sm:h-14 sm:text-xl",
-                  "focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-primary/30",
-                  "[appearance:textfield] [&::-webkit-inner-spin-button]:appearance-auto [&::-webkit-outer-spin-button]:appearance-auto"
+                  "focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-primary/30"
                 )}
               />
+              {form.formState.errors.amount && (
+                <p className="mt-1 text-xs text-destructive">
+                  {form.formState.errors.amount.message}
+                </p>
+              )}
             </section>
 
             <section>
               <Label htmlFor={categoryId} className={lb}>
                 Category
               </Label>
-              <div className="relative">
-                <select
-                  id={categoryId}
-                  value={category}
-                  onChange={(e) => setCategory(e.target.value)}
-                  className={cn(
-                    fieldBase,
-                    "appearance-none pr-8",
-                    !category && "text-muted-foreground"
-                  )}
-                >
-                  <option value="">Select category</option>
-                  {TX_CATEGORIES.map((c) => (
-                    <option key={c} value={c}>
-                      {c}
-                    </option>
-                  ))}
-                </select>
-                <SelectChevron compact />
-              </div>
+              <Input
+                id={categoryId}
+                placeholder="e.g. food"
+                autoComplete="off"
+                aria-invalid={!!form.formState.errors.category}
+                {...form.register("category")}
+                className={fieldBase}
+              />
+              {form.formState.errors.category && (
+                <p className="mt-1 text-xs text-destructive">
+                  {form.formState.errors.category.message}
+                </p>
+              )}
+            </section>
+
+            <section>
+              <Label htmlFor={feeId} className={lb}>
+                Fee amount (₹)
+              </Label>
+              <Input
+                id={feeId}
+                type="text"
+                inputMode="decimal"
+                autoComplete="off"
+                placeholder="0 (optional)"
+                {...form.register("feeAmount")}
+                className={fieldBase}
+              />
+              <p className="mt-1 text-[10px] text-muted-foreground sm:text-[11px]">
+                Leave empty for 0
+              </p>
             </section>
 
             <section>
@@ -338,10 +381,15 @@ function AddCardSpendSheetInner({
               <Input
                 id={dateId}
                 type="date"
-                value={date}
-                onChange={(e) => setDate(e.target.value)}
+                aria-invalid={!!form.formState.errors.date}
+                {...form.register("date")}
                 className={fieldBase}
               />
+              {form.formState.errors.date && (
+                <p className="mt-1 text-xs text-destructive">
+                  {form.formState.errors.date.message}
+                </p>
+              )}
             </section>
 
             <section>
@@ -350,18 +398,66 @@ function AddCardSpendSheetInner({
               </Label>
               <Input
                 id={noteId}
-                placeholder="What was this spend for?"
-                value={note}
-                onChange={(e) => setNote(e.target.value)}
+                placeholder="Optional"
+                autoComplete="off"
+                {...form.register("note")}
                 className={fieldBase}
               />
+            </section>
+
+            <section>
+              <Label htmlFor={tagInputId} className={lb}>
+                Tags
+              </Label>
+              <div className="flex flex-wrap gap-2">
+                <Input
+                  id={tagInputId}
+                  value={tagDraft}
+                  onChange={(e) => setTagDraft(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault()
+                      addTag()
+                    }
+                  }}
+                  placeholder="Add tag"
+                  className={cn(fieldBase, "min-w-32 flex-1")}
+                />
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="sm"
+                  className="h-9 shrink-0 rounded-xl sm:h-10"
+                  onClick={addTag}
+                  aria-label="Add tag"
+                >
+                  <Plus className="size-4" />
+                </Button>
+              </div>
+              {tags.length > 0 && (
+                <div className="mt-2 flex flex-wrap gap-1.5">
+                  {tags.map((t) => (
+                    <Badge key={t} variant="secondary" className="gap-1 pr-1 font-normal">
+                      {t}
+                      <button
+                        type="button"
+                        className="rounded-full p-0.5 hover:bg-muted"
+                        aria-label={`Remove ${t}`}
+                        onClick={() => removeTag(t)}
+                      >
+                        <X className="size-3" />
+                      </button>
+                    </Badge>
+                  ))}
+                </div>
+              )}
             </section>
           </div>
 
           <div className={FORM_OVERLAY_FOOTER}>
             <Button
               type="submit"
-              disabled={isSubmitting}
+              disabled={isSubmitting || cardsLoading || creditCards.length === 0}
               className="h-10 w-full rounded-xl bg-[hsl(230_22%_62%)] text-sm font-bold text-white hover:bg-[hsl(230_22%_56%)] sm:h-11 sm:text-base"
             >
               {isSubmitting ? "Saving…" : "Add Card Spend"}

@@ -16,6 +16,25 @@ export const createTransactionIncomeBodySchema = z.object({
   tags: z.array(z.string()),
 })
 
+/**
+ * POST /transactions — expense charged to a credit card account (numeric amounts).
+ * Distinct from `createTransactionExpenseBodySchema` (bank/cash `accountId` + string amount).
+ */
+export const createTransactionCreditCardExpenseBodySchema = z.object({
+  type: z.literal("expense"),
+  amount: z.number().finite().positive(),
+  category: z.string().min(1),
+  creditCardAccountId: z.string().min(1),
+  feeAmount: z.number().finite().nonnegative(),
+  date: z.string(),
+  note: z.string(),
+  tags: z.array(z.string()),
+})
+
+export type CreateTransactionCreditCardExpenseApiBody = z.infer<
+  typeof createTransactionCreditCardExpenseBodySchema
+>
+
 /** POST /transactions — expense. */
 export const createTransactionExpenseBodySchema = z.object({
   type: z.literal("expense"),
@@ -69,6 +88,7 @@ export const createTransactionTransferLoanPaymentSchema = z.object({
 
 export const createTransactionApiBodySchema = z.union([
   createTransactionIncomeBodySchema,
+  createTransactionCreditCardExpenseBodySchema,
   createTransactionExpenseBodySchema,
   createTransactionTransferToAccountSchema,
   createTransactionTransferCreditCardBillSchema,
@@ -230,8 +250,40 @@ export function buildTransactionPostBody(body: CreateTransactionPayload): Create
   }
 
   if (body.type === "expense") {
+    const ccId = body.creditCardAccountId?.trim()
+    if (ccId) {
+      const amt = Math.round(body.amount * 100) / 100
+      if (!Number.isFinite(amt) || amt <= 0) {
+        throw new Error("expense amount must be greater than zero")
+      }
+      let feeInr = 0
+      if (typeof body.feeAmount === "number" && Number.isFinite(body.feeAmount)) {
+        feeInr = Math.round(body.feeAmount * 100) / 100
+      } else {
+        const fs = String(body.feeAmount ?? "")
+          .replace(/,/g, "")
+          .trim()
+        if (fs) {
+          const n = Number(fs)
+          if (!Number.isFinite(n) || n < 0) {
+            throw new Error("feeAmount must be a non-negative number")
+          }
+          feeInr = Math.round(n * 100) / 100
+        }
+      }
+      return {
+        type: "expense",
+        amount: amt,
+        category: body.category.trim() || "other",
+        creditCardAccountId: ccId,
+        feeAmount: feeInr,
+        date,
+        note,
+        tags,
+      }
+    }
     if (!body.accountId) {
-      throw new Error("expense requires accountId")
+      throw new Error("expense requires accountId or creditCardAccountId")
     }
     return {
       type: "expense",
@@ -538,6 +590,56 @@ function firstIdStringFromRecord(
     if (typeof v === "number" && Number.isFinite(v)) return String(v)
   }
   return undefined
+}
+
+const CREDIT_CARD_ACCOUNT_ID_KEYS = [
+  "creditCardAccountId",
+  "credit_card_account_id",
+  "creditCardId",
+  "credit_card_id",
+  "cardId",
+  "card_id",
+] as const
+
+/** Canonical credit card account id on a recent/ledger row (expense, transfer to bill, etc.). */
+export function getRecentTransactionCreditCardAccountId(tx: RecentTransaction): string {
+  const rec = tx as unknown as Record<string, unknown>
+  return (firstIdStringFromRecord(rec, CREDIT_CARD_ACCOUNT_ID_KEYS) ?? "").trim()
+}
+
+/** Card detail + entries filter: canonical `creditCardAccountId`, or ledger expense scoped to the card `accountId`. */
+export function matchesRecentTransactionCreditCard(
+  tx: RecentTransaction,
+  creditCardAccountId: string
+): boolean {
+  const id = creditCardAccountId.trim()
+  if (!id) return false
+  if (getRecentTransactionCreditCardAccountId(tx) === id) return true
+  return tx.type === "expense" && String(tx.accountId ?? "").trim() === id
+}
+
+export function getRecentTransactionCategoryLabel(tx: RecentTransaction): string {
+  const rec = tx as unknown as Record<string, unknown>
+  const cat =
+    typeof rec.category === "string"
+      ? rec.category.trim()
+      : typeof rec.categoryName === "string"
+        ? rec.categoryName.trim()
+        : ""
+  return cat
+}
+
+export function getRecentTransactionNote(tx: RecentTransaction): string {
+  const rec = tx as unknown as Record<string, unknown>
+  const n =
+    typeof rec.note === "string"
+      ? rec.note.trim()
+      : typeof rec.notes === "string"
+        ? rec.notes.trim()
+        : typeof rec.description === "string"
+          ? rec.description.trim()
+          : ""
+  return n
 }
 
 /** Prefer a human name when the primary title is a backend kind slug. */

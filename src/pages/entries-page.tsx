@@ -29,6 +29,7 @@ import type { TransactionType } from "@/lib/api/schemas"
 import type { RecentTransactionsQueryArg } from "@/store/api/base-api"
 import {
   isUdharRecentTransaction,
+  matchesRecentTransactionCreditCard,
   parseSignedAmountString,
   resolveUdharPersonDisplayName,
   type RecentTransaction,
@@ -152,6 +153,7 @@ export default function EntriesPage() {
   const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
   const addQuery = searchParams.get(ENTRIES_ADD_SEARCH_PARAM)
+  const creditCardFilterId = searchParams.get("creditCardAccountId")?.trim() ?? ""
 
   const [segment, setSegment] = useState<EntrySegment>("txns")
   /** Days to look back from today (`fromDate`); 0 = today only. Ignored when `useAllDaysRange`. */
@@ -321,10 +323,15 @@ export default function EntriesPage() {
     )
   }, [selectedUdharTx, udharTransactions, commitments])
 
-  const sortedServerList = useMemo(
-    () => [...recentTransactions].sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0)),
-    [recentTransactions]
-  )
+  const sortedServerList = useMemo(() => {
+    let list = [...recentTransactions].sort((a, b) =>
+      a.date < b.date ? 1 : a.date > b.date ? -1 : 0
+    )
+    if (creditCardFilterId) {
+      list = list.filter((tx) => matchesRecentTransactionCreditCard(tx, creditCardFilterId))
+    }
+    return list
+  }, [recentTransactions, creditCardFilterId])
 
   const displayList: RecentTransaction[] =
     segment === "udhar" ? udharTransactions : sortedServerList
@@ -455,6 +462,27 @@ export default function EntriesPage() {
             )
           })}
         </div>
+
+        {creditCardFilterId ? (
+          <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-border bg-muted/30 px-3 py-2 text-sm">
+            <span className="text-muted-foreground">Showing transactions for this credit card</span>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="h-8 shrink-0"
+              onClick={() => {
+                setSearchParams((prev) => {
+                  const next = new URLSearchParams(prev)
+                  next.delete("creditCardAccountId")
+                  return next
+                })
+              }}
+            >
+              Clear filter
+            </Button>
+          </div>
+        ) : null}
 
         <div className="grid min-h-[2.75rem] grid-cols-1 items-center gap-x-3 gap-y-1 sm:grid-cols-[1fr_auto] sm:items-start">
           <h1 className="min-h-[1.75rem] min-w-0 text-lg font-bold leading-tight tracking-tight text-foreground sm:pt-0.5">

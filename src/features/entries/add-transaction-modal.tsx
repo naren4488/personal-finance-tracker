@@ -1,15 +1,19 @@
-import { useEffect, useId, useMemo, useState } from "react"
+import { zodResolver } from "@hookform/resolvers/zod"
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react"
 import { useNavigate } from "react-router-dom"
-import { ChevronDown, CreditCard, Gem, Landmark, Tag, X } from "lucide-react"
+import { ChevronDown, CreditCard, Gem, Landmark, Plus, Tag, X } from "lucide-react"
+import { type UseFormReturn, useForm, useWatch } from "react-hook-form"
 import { toast } from "sonner"
+import { Badge } from "@/components/ui/badge"
 import { ToggleTile } from "@/components/toggle-tile"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Switch } from "@/components/ui/switch"
+import type { Account } from "@/lib/api/account-schemas"
 import { accountSelectLabel, filterActiveAccounts } from "@/lib/api/account-schemas"
-import { isCreditCardAccount } from "@/lib/api/credit-card-map"
+import { creditCardLimitInr, isCreditCardAccount } from "@/lib/api/credit-card-map"
 import { getErrorMessage } from "@/lib/api/errors"
 import { isLoanAccount } from "@/lib/api/loan-account-map"
 import { INCOME_SOURCE_OPTIONS } from "@/lib/api/transaction-schemas"
@@ -18,7 +22,12 @@ import {
   FORM_OVERLAY_FOOTER,
   FORM_OVERLAY_SCROLL_BODY,
 } from "@/lib/form-overlay-scroll"
-import type { TransactionType, TransferDestinationType } from "@/lib/api/schemas"
+import type {
+  CreateTransactionPayload,
+  TransactionType,
+  TransferDestinationType,
+} from "@/lib/api/schemas"
+import { formatCurrency } from "@/lib/format"
 import { assertSourceAccountCoversAmount } from "@/lib/validation/source-account-balance"
 import { cn } from "@/lib/utils"
 import {
@@ -41,6 +50,12 @@ import {
 import { selectLoanEmiAutoFill } from "@/store/loan-emi-selectors"
 import { clearSelectedLoanAccountId, setSelectedLoanAccountId } from "@/store/loan-emi-ui-slice"
 import { useAppDispatch, useAppSelector } from "@/store/hooks"
+import {
+  cardExpenseFormSchema,
+  parseNonNegativeFee,
+  parsePositiveAmount,
+  type CardExpenseFormValues,
+} from "@/lib/forms/credit-card-expense-schema"
 
 const TX_CATEGORIES = [
   "Food & dining",
@@ -88,6 +103,243 @@ function SelectChevron() {
       className="pointer-events-none absolute right-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground"
       aria-hidden
     />
+  )
+}
+
+/** Credit card detection: `kind` from API or legacy `type` field. */
+function isCreditCardAccountType(a: Account | undefined): boolean {
+  if (!a) return false
+  if (isCreditCardAccount(a)) return true
+  const t = String((a as Record<string, unknown>).type ?? "")
+    .toLowerCase()
+    .replace(/\s+/g, "_")
+  return t === "credit_card" || t === "creditcard"
+}
+
+type CreditCardExpenseFieldsProps = {
+  accounts: Account[]
+  accountId: string
+  onAccountIdChange: (id: string) => void
+  form: UseFormReturn<CardExpenseFormValues>
+}
+
+function CreditCardExpenseFields({
+  accounts,
+  accountId,
+  onAccountIdChange,
+  form,
+}: CreditCardExpenseFieldsProps) {
+  const [tagDraft, setTagDraft] = useState("")
+  const labelClass = "mb-1.5 block text-xs font-semibold text-foreground/80"
+  const fieldBase =
+    "flex h-10 w-full rounded-xl border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-0 disabled:cursor-not-allowed disabled:opacity-50"
+  const selectFieldClass = cn(fieldBase, "appearance-none pr-9")
+
+  const selectedCardId = useWatch({ control: form.control, name: "creditCardAccountId" }) ?? ""
+  const tags = useWatch({ control: form.control, name: "tags" }) ?? []
+  const selectedCard = useMemo(
+    () => (selectedCardId ? accounts.find((a) => a.id === selectedCardId) : undefined),
+    [accounts, selectedCardId]
+  )
+
+  const addTag = () => {
+    const next = tagDraft.trim()
+    if (!next) return
+    const cur = form.getValues("tags")
+    if (cur.includes(next)) {
+      setTagDraft("")
+      return
+    }
+    form.setValue("tags", [...cur, next], { shouldValidate: true })
+    setTagDraft("")
+  }
+
+  const removeTag = (t: string) => {
+    form.setValue(
+      "tags",
+      form.getValues("tags").filter((x) => x !== t),
+      { shouldValidate: true }
+    )
+  }
+
+  return (
+    <>
+      <section>
+        <Label htmlFor="at-cc-account" className={labelClass}>
+          Credit card
+        </Label>
+        <div className="relative">
+          <select
+            id="at-cc-account"
+            value={accountId}
+            onChange={(e) => {
+              const v = e.target.value
+              onAccountIdChange(v)
+            }}
+            className={cn(selectFieldClass, !accountId && "text-muted-foreground")}
+          >
+            <option value="">Select account</option>
+            {accounts.map((a) => (
+              <option key={a.id} value={a.id}>
+                {accountSelectLabel(a)}
+              </option>
+            ))}
+          </select>
+          <SelectChevron />
+        </div>
+        {form.formState.errors.creditCardAccountId && (
+          <p className="mt-1 text-xs text-destructive">
+            {form.formState.errors.creditCardAccountId.message}
+          </p>
+        )}
+      </section>
+
+      {selectedCard && isCreditCardAccount(selectedCard) ? (
+        <section>
+          <div className="flex items-center justify-between gap-3 rounded-xl border border-input bg-muted/20 px-3 py-3 text-sm">
+            <span className="text-muted-foreground">Credit limit</span>
+            <span className="font-bold tabular-nums text-foreground">
+              {formatCurrency(creditCardLimitInr(selectedCard))}
+            </span>
+          </div>
+        </section>
+      ) : null}
+
+      <section>
+        <Label htmlFor="at-cc-amount" className={cn(labelClass, "text-center")}>
+          Amount (₹)
+        </Label>
+        <Input
+          id="at-cc-amount"
+          type="text"
+          inputMode="decimal"
+          autoComplete="off"
+          placeholder="0.00"
+          {...form.register("amount")}
+          aria-invalid={!!form.formState.errors.amount}
+          className={cn(
+            fieldBase,
+            "h-14 bg-muted/20 text-center text-2xl font-bold tabular-nums text-primary/80 placeholder:text-primary/40"
+          )}
+        />
+        {form.formState.errors.amount && (
+          <p className="mt-1 text-center text-xs text-destructive">
+            {form.formState.errors.amount.message}
+          </p>
+        )}
+      </section>
+
+      <div className="grid grid-cols-2 gap-4">
+        <section>
+          <Label htmlFor="at-cc-category" className={labelClass}>
+            Category
+          </Label>
+          <Input
+            id="at-cc-category"
+            placeholder="e.g. food"
+            autoComplete="off"
+            {...form.register("category")}
+            className={cn(fieldBase, form.formState.errors.category && "border-destructive")}
+          />
+          {form.formState.errors.category && (
+            <p className="mt-1 text-xs text-destructive">
+              {form.formState.errors.category.message}
+            </p>
+          )}
+        </section>
+        <section>
+          <Label htmlFor="at-cc-date" className={labelClass}>
+            Date
+          </Label>
+          <Input
+            id="at-cc-date"
+            type="date"
+            {...form.register("date")}
+            className={cn(fieldBase, "scheme-light dark:scheme-dark")}
+          />
+          {form.formState.errors.date && (
+            <p className="mt-1 text-xs text-destructive">{form.formState.errors.date.message}</p>
+          )}
+        </section>
+      </div>
+
+      <section>
+        <Label htmlFor="at-cc-fee" className={labelClass}>
+          Fee amount (₹)
+        </Label>
+        <Input
+          id="at-cc-fee"
+          type="text"
+          inputMode="decimal"
+          autoComplete="off"
+          placeholder="0 (optional)"
+          {...form.register("feeAmount")}
+          className={fieldBase}
+        />
+        <p className="mt-1 text-xs text-muted-foreground">Leave empty for 0</p>
+      </section>
+
+      <section>
+        <Label htmlFor="at-cc-note" className={labelClass}>
+          Note
+        </Label>
+        <Input
+          id="at-cc-note"
+          placeholder="Optional"
+          autoComplete="off"
+          {...form.register("note")}
+          className={fieldBase}
+        />
+      </section>
+
+      <section>
+        <Label className={cn(labelClass, "flex items-center gap-1.5")}>
+          <Tag className="size-3.5" strokeWidth={2.5} aria-hidden />
+          Tags
+        </Label>
+        <div className="flex flex-wrap gap-2">
+          <Input
+            value={tagDraft}
+            onChange={(e) => setTagDraft(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault()
+                addTag()
+              }
+            }}
+            placeholder="Add tag"
+            className={cn(fieldBase, "min-w-32 flex-1")}
+          />
+          <Button
+            type="button"
+            variant="secondary"
+            size="sm"
+            className="h-10 shrink-0 rounded-xl"
+            onClick={addTag}
+            aria-label="Add tag"
+          >
+            <Plus className="size-4" />
+          </Button>
+        </div>
+        {tags.length > 0 && (
+          <div className="mt-2 flex flex-wrap gap-1.5">
+            {tags.map((t) => (
+              <Badge key={t} variant="secondary" className="gap-1 pr-1 font-normal">
+                {t}
+                <button
+                  type="button"
+                  className="rounded-full p-0.5 hover:bg-muted"
+                  aria-label={`Remove ${t}`}
+                  onClick={() => removeTag(t)}
+                >
+                  <X className="size-3" />
+                </button>
+              </Badge>
+            ))}
+          </div>
+        )}
+      </section>
+    </>
   )
 }
 
@@ -236,6 +488,61 @@ function AddTransactionModalMounted({
   const effectiveType: TransactionType = expenseFlow ? "expense" : txType
   const hasAccount = accounts.length > 0
 
+  const selectedAccount = useMemo(
+    () => (accountId ? accounts.find((a) => a.id === accountId) : undefined),
+    [accounts, accountId]
+  )
+  const isCreditCardExpenseMode =
+    effectiveType === "expense" && !!selectedAccount && isCreditCardAccountType(selectedAccount)
+
+  const ccExpenseForm = useForm<CardExpenseFormValues>({
+    resolver: zodResolver(cardExpenseFormSchema),
+    defaultValues: {
+      amount: "",
+      category: "",
+      creditCardAccountId: "",
+      feeAmount: "",
+      date: todayIsoDate(),
+      note: "",
+      tags: [],
+    },
+  })
+
+  const prevCcModeRef = useRef(false)
+  useEffect(() => {
+    const entered = isCreditCardExpenseMode && !prevCcModeRef.current
+    prevCcModeRef.current = isCreditCardExpenseMode
+    if (entered) {
+      ccExpenseForm.reset({
+        amount: amount || "",
+        category: category || "",
+        creditCardAccountId: accountId,
+        feeAmount: "",
+        date,
+        note,
+        tags: [...tags],
+      })
+    }
+  }, [isCreditCardExpenseMode, accountId, amount, category, date, note, tags, ccExpenseForm])
+
+  useEffect(() => {
+    if (isCreditCardExpenseMode && accountId) {
+      ccExpenseForm.setValue("creditCardAccountId", accountId)
+    }
+  }, [isCreditCardExpenseMode, accountId, ccExpenseForm])
+
+  const onIncomeExpenseAccountChange = useCallback(
+    (id: string) => {
+      setAccountId(id)
+      if (expenseFlow) return
+      const acc = accounts.find((a) => a.id === id)
+      if (acc && isCreditCardAccountType(acc) && txType !== "expense") {
+        setTxType("expense")
+      }
+    },
+    [accounts, expenseFlow, txType]
+  )
+
   const loanPrincipalStr =
     loanFieldOverride?.principal !== undefined
       ? loanFieldOverride.principal
@@ -355,9 +662,57 @@ function AddTransactionModalMounted({
     setTagPreset("")
   }
 
+  async function submitCreditCardExpense(values: CardExpenseFormValues) {
+    const amt = parsePositiveAmount(values.amount)
+    if (amt == null) return
+    const feeParsed = parseNonNegativeFee(values.feeAmount)
+    if (feeParsed === null) {
+      toast.error("Fee must be empty or a non-negative number")
+      return
+    }
+    const card = accounts.find((a) => a.id === values.creditCardAccountId)
+    if (!card) {
+      toast.error("Select a credit card")
+      return
+    }
+    if (!assertSourceAccountCoversAmount(card, amt)) return
+
+    const cardLabel = accountSelectLabel(card)
+    const payload: CreateTransactionPayload = {
+      type: "expense",
+      amount: amt,
+      category: values.category.trim(),
+      creditCardAccountId: values.creditCardAccountId,
+      paymentMethod: "card",
+      sourceName: cardLabel,
+      feeAmount: String(feeParsed),
+      paidOnBehalf: false,
+      scheduled: false,
+      date: values.date,
+      note: values.note,
+      tags: values.tags,
+      displayTitle: `Card · ${values.category.trim()}`,
+      accountName: cardLabel,
+    }
+
+    try {
+      await addTransaction(payload).unwrap()
+      toast.success(expenseFlow ? "Expense added" : "Transaction added")
+      dismiss()
+    } catch (err) {
+      console.error("[transactions] submit error", err)
+      toast.error(getErrorMessage(err))
+    }
+  }
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     if (!hasAccount) return
+
+    if (effectiveType === "expense" && isCreditCardExpenseMode) {
+      await ccExpenseForm.handleSubmit(submitCreditCardExpense)(e)
+      return
+    }
 
     let titleBase: string
     if (expenseFlow) {
@@ -1026,6 +1381,16 @@ function AddTransactionModalMounted({
                       </section>
                     </div>
                   </>
+                ) : isCreditCardExpenseMode ? (
+                  <CreditCardExpenseFields
+                    accounts={accounts}
+                    accountId={accountId}
+                    onAccountIdChange={(id) => {
+                      onIncomeExpenseAccountChange(id)
+                      ccExpenseForm.setValue("creditCardAccountId", id, { shouldValidate: true })
+                    }}
+                    form={ccExpenseForm}
+                  />
                 ) : (
                   <>
                     <section>
@@ -1147,7 +1512,7 @@ function AddTransactionModalMounted({
                         <select
                           id={accountIdField}
                           value={accountId}
-                          onChange={(e) => setAccountId(e.target.value)}
+                          onChange={(e) => onIncomeExpenseAccountChange(e.target.value)}
                           className={cn(selectFieldClass, !accountId && "text-muted-foreground")}
                         >
                           <option value="">Select account</option>
@@ -1163,7 +1528,7 @@ function AddTransactionModalMounted({
                   </>
                 )}
 
-                {effectiveType !== "transfer" ? (
+                {effectiveType !== "transfer" && !isCreditCardExpenseMode ? (
                   <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                     <label className="flex cursor-pointer items-start gap-2.5 rounded-xl border border-input bg-muted/5 px-3 py-2.5">
                       <input
@@ -1197,7 +1562,7 @@ function AddTransactionModalMounted({
                   </div>
                 ) : null}
 
-                {expenseFlow ? (
+                {expenseFlow && !isCreditCardExpenseMode ? (
                   <section>
                     <Label htmlFor="at-note" className={labelClass}>
                       Note
@@ -1211,7 +1576,7 @@ function AddTransactionModalMounted({
                       className={cn(fieldBase, "min-h-[3.5rem] resize-none py-2")}
                     />
                   </section>
-                ) : effectiveType === "transfer" ? null : (
+                ) : effectiveType === "transfer" || isCreditCardExpenseMode ? null : (
                   <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                     <section>
                       <Label htmlFor="at-desc" className={labelClass}>
@@ -1241,58 +1606,60 @@ function AddTransactionModalMounted({
                   </div>
                 )}
 
-                <section>
-                  <Label className={cn(labelClass, "flex items-center gap-1.5")}>
-                    <Tag className="size-3.5" strokeWidth={2.5} aria-hidden />
-                    Tags
-                  </Label>
-                  <div className="flex flex-wrap gap-2">
-                    <div className="relative min-w-0 flex-1 basis-[38%]">
-                      <select
-                        value={tagPreset}
-                        onChange={(e) => setTagPreset(e.target.value)}
-                        className={cn(selectFieldClass, !tagPreset && "text-muted-foreground")}
-                        aria-label="Select tag"
-                      >
-                        <option value="">
-                          {effectiveType === "transfer" ? "Select tag" : "Add tag…"}
-                        </option>
-                        {TX_CATEGORIES.map((c) => (
-                          <option key={c} value={c}>
-                            {c}
+                {effectiveType === "transfer" || !isCreditCardExpenseMode ? (
+                  <section>
+                    <Label className={cn(labelClass, "flex items-center gap-1.5")}>
+                      <Tag className="size-3.5" strokeWidth={2.5} aria-hidden />
+                      Tags
+                    </Label>
+                    <div className="flex flex-wrap gap-2">
+                      <div className="relative min-w-0 flex-1 basis-[38%]">
+                        <select
+                          value={tagPreset}
+                          onChange={(e) => setTagPreset(e.target.value)}
+                          className={cn(selectFieldClass, !tagPreset && "text-muted-foreground")}
+                          aria-label="Select tag"
+                        >
+                          <option value="">
+                            {effectiveType === "transfer" ? "Select tag" : "Add tag…"}
                           </option>
-                        ))}
-                      </select>
-                      <SelectChevron />
+                          {TX_CATEGORIES.map((c) => (
+                            <option key={c} value={c}>
+                              {c}
+                            </option>
+                          ))}
+                        </select>
+                        <SelectChevron />
+                      </div>
+                      <Input
+                        value={newTag}
+                        onChange={(e) => setNewTag(e.target.value)}
+                        placeholder={effectiveType === "transfer" ? "Add new tag" : "New tag"}
+                        className={cn(fieldBase, "min-w-24 flex-1")}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") {
+                            e.preventDefault()
+                            addTagFromInputs()
+                          }
+                        }}
+                      />
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        className="h-10 shrink-0 rounded-xl px-4 text-xs font-bold sm:px-5 sm:text-sm"
+                        aria-label="Add tag"
+                        onClick={addTagFromInputs}
+                      >
+                        Add Tag
+                      </Button>
                     </div>
-                    <Input
-                      value={newTag}
-                      onChange={(e) => setNewTag(e.target.value)}
-                      placeholder={effectiveType === "transfer" ? "Add new tag" : "New tag"}
-                      className={cn(fieldBase, "min-w-24 flex-1")}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter") {
-                          e.preventDefault()
-                          addTagFromInputs()
-                        }
-                      }}
-                    />
-                    <Button
-                      type="button"
-                      variant="secondary"
-                      className="h-10 shrink-0 rounded-xl px-4 text-xs font-bold sm:px-5 sm:text-sm"
-                      aria-label="Add tag"
-                      onClick={addTagFromInputs}
-                    >
-                      Add Tag
-                    </Button>
-                  </div>
-                  {tags.length > 0 && (
-                    <p className="mt-2 truncate text-xs font-medium text-muted-foreground">
-                      {tags.join(" · ")}
-                    </p>
-                  )}
-                </section>
+                    {tags.length > 0 && (
+                      <p className="mt-2 truncate text-xs font-medium text-muted-foreground">
+                        {tags.join(" · ")}
+                      </p>
+                    )}
+                  </section>
+                ) : null}
               </div>
 
               <div className={cn(FORM_OVERLAY_FOOTER, "px-5")}>
