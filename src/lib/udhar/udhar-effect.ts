@@ -68,6 +68,9 @@ function indicatesPaymentMadeExcessReceivable(rec: Record<string, unknown>): boo
 
 function normalizeEntryTypeToken(raw: string): UdharEntryTypeNorm | null {
   const t = raw.trim().toLowerCase().replace(/\s+/g, "_")
+  /** Backend ledger slugs — semantic meaning is in `title`, not `type`/`direction`/`signedAmount` sign. */
+  if (t === "person_lend") return "money_given"
+  if (t === "person_borrow") return "money_taken"
   if (t === "money_given" || t === "moneygiven" || t === "lent" || t === "given")
     return "money_given"
   if (t === "money_taken" || t === "moneytaken" || t === "borrowed" || t === "taken")
@@ -77,9 +80,11 @@ function normalizeEntryTypeToken(raw: string): UdharEntryTypeNorm | null {
   return null
 }
 
-/** Infer `money_*` / `payment_*` from slugs like `person_money_given`, `person_payment_received`. */
+/** Infer `money_*` / `payment_*` from slugs like `person_lend`, `person_payment_received`. */
 function inferEntryTypeFromSlug(hay: string): UdharEntryTypeNorm | null {
   const s = hay.toLowerCase()
+  if (s.includes("person_lend")) return "money_given"
+  if (s.includes("person_borrow")) return "money_taken"
   if (s.includes("payment_received") || s.includes("payment-received")) return "payment_received"
   if (s.includes("payment_made") || s.includes("payment-made")) return "payment_made"
   if (s.includes("money_given") || s.includes("money-given")) return "money_given"
@@ -116,6 +121,8 @@ export function extractUdharEntryType(tx: RecentTransaction): UdharEntryTypeNorm
 
   const title = typeof tx.title === "string" ? tx.title.trim() : ""
   if (title) {
+    const fromTitleToken = normalizeEntryTypeToken(title)
+    if (fromTitleToken) return fromTitleToken
     const fromTitle = inferEntryTypeFromSlug(title)
     if (fromTitle) return fromTitle
   }
@@ -136,8 +143,8 @@ export function extractUdharEntryType(tx: RecentTransaction): UdharEntryTypeNorm
 
 /**
  * Economic classification for Udhar UI (color + labels).
- * Does not use `signedAmount` for meaning when `entryType` / kind / slug / excess flags are available.
- * Temporary fallback: sign of `signedAmount` when type is unknown (positive → receivable, negative → payable).
+ * Does not use `signedAmount` for lend/borrow when `title` is `person_lend` / `person_borrow`.
+ * Fallback when type is unknown: sign of `signedAmount` (positive → receivable, negative → payable).
  */
 export function getUdharEffect(tx: RecentTransaction): UdharBalanceEffect {
   const rec = asRec(tx)

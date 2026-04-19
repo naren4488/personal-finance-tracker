@@ -1,11 +1,39 @@
 import { z } from "zod"
 
-/** One row from GET /transactions/udhar-summary — must match server ledger rollups. */
+/**
+ * One row from GET /transactions/udhar-summary — must match server ledger rollups.
+ *
+ * - `totalLent` / `totalBorrowed`: usually **outstanding** magnitudes (receivable / payable).
+ * - `receivableRemaining` / `payableRemaining`: optional explicit caps when the API sends them
+ *   or when gross vs paid components are present (see {@link normalizeBalanceRow}).
+ */
 export type UdharAccountPersonBalance = {
   personId: string
   totalLent: number
   totalBorrowed: number
   net: number
+  /** receivableBalance ≈ total_lent − total_received — use for payment_received caps when set. */
+  receivableRemaining?: number
+  /** payableBalance ≈ total_borrowed − total_paid — use for payment_made caps when set. */
+  payableRemaining?: number
+}
+
+/** Max receivable that can be settled with `payment_received` (never negative). */
+export function getReceivablePaymentCap(row: UdharAccountPersonBalance | undefined): number {
+  if (!row) return 0
+  if (row.receivableRemaining !== undefined && Number.isFinite(row.receivableRemaining)) {
+    return Math.max(0, row.receivableRemaining)
+  }
+  return Math.max(0, row.totalLent)
+}
+
+/** Max payable that can be settled with `payment_made` (never negative). */
+export function getPayablePaymentCap(row: UdharAccountPersonBalance | undefined): number {
+  if (!row) return 0
+  if (row.payableRemaining !== undefined && Number.isFinite(row.payableRemaining)) {
+    return Math.max(0, row.payableRemaining)
+  }
+  return Math.max(0, row.totalBorrowed)
 }
 
 function parseNumish(v: unknown): number {
@@ -58,7 +86,63 @@ function normalizeBalanceRow(raw: Record<string, unknown>): UdharAccountPersonBa
   }
 
   const net = hasNetField ? parseNumish(netFromApi) : totalLent - totalBorrowed
-  return { personId: pid, totalLent, totalBorrowed, net }
+
+  let receivableRemaining: number | undefined
+  let payableRemaining: number | undefined
+
+  const explicitReceivable =
+    raw.receivableRemaining ??
+    raw.receivable_remaining ??
+    raw.receivableBalance ??
+    raw.receivable_balance ??
+    raw.remainingReceivable ??
+    raw.remaining_receivable ??
+    raw.outstandingReceivable
+  if (explicitReceivable !== undefined && explicitReceivable !== null) {
+    receivableRemaining = parseNumish(explicitReceivable)
+  }
+
+  const explicitPayable =
+    raw.payableRemaining ??
+    raw.payable_remaining ??
+    raw.payableBalance ??
+    raw.payable_balance ??
+    raw.remainingPayable ??
+    raw.remaining_payable ??
+    raw.outstandingPayable
+  if (explicitPayable !== undefined && explicitPayable !== null) {
+    payableRemaining = parseNumish(explicitPayable)
+  }
+
+  const grossLent = raw.totalLentGross ?? raw.grossLent ?? raw.total_lent_gross ?? raw.gross_lent
+  const totalReceived = raw.totalReceived ?? raw.total_received ?? raw.paymentsReceived
+  if (
+    receivableRemaining === undefined &&
+    grossLent !== undefined &&
+    grossLent !== null &&
+    totalReceived !== undefined &&
+    totalReceived !== null
+  ) {
+    receivableRemaining = Math.max(0, parseNumish(grossLent) - parseNumish(totalReceived))
+  }
+
+  const grossBorrowed =
+    raw.totalBorrowedGross ?? raw.grossBorrowed ?? raw.total_borrowed_gross ?? raw.gross_borrowed
+  const totalPaid = raw.totalPaid ?? raw.total_paid ?? raw.paymentsMade
+  if (
+    payableRemaining === undefined &&
+    grossBorrowed !== undefined &&
+    grossBorrowed !== null &&
+    totalPaid !== undefined &&
+    totalPaid !== null
+  ) {
+    payableRemaining = Math.max(0, parseNumish(grossBorrowed) - parseNumish(totalPaid))
+  }
+
+  const base: UdharAccountPersonBalance = { personId: pid, totalLent, totalBorrowed, net }
+  if (receivableRemaining !== undefined) base.receivableRemaining = receivableRemaining
+  if (payableRemaining !== undefined) base.payableRemaining = payableRemaining
+  return base
 }
 
 const balanceRowSchema = z.record(z.string(), z.unknown())

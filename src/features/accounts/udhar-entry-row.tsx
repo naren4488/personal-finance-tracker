@@ -11,6 +11,7 @@ export function UdharEntryRow({
   amountMagnitudeInr,
   entryCount,
   statusLabel,
+  entryTypeLabel,
   onClick,
   onDelete,
 }: {
@@ -22,19 +23,25 @@ export function UdharEntryRow({
   /** Display magnitude only (≥ 0); typically `Math.abs(parseSignedAmountString(tx.signedAmount))`. */
   amountMagnitudeInr: number
   entryCount?: number
+  /** @deprecated prefer entryTypeLabel */
   statusLabel?: string
+  /** e.g. Lent / Borrowed / Received / Paid */
+  entryTypeLabel?: string
   onClick?: () => void
   /** Separate from row navigation — uses pill Delete like other entry lists. */
   onDelete?: () => void
 }) {
   const abs = Math.max(0, amountMagnitudeInr)
   const amountColor = udharEffectTextClassName(economicEffect)
+  const typeLabel = entryTypeLabel?.trim()
   const amountLabel =
     abs === 0
       ? formatCurrency(0)
-      : economicEffect === "receivable"
-        ? `Receivable ${formatCurrency(abs)}`
-        : `Payable ${formatCurrency(abs)}`
+      : typeLabel
+        ? `${typeLabel} · ${formatCurrency(abs)}`
+        : economicEffect === "receivable"
+          ? `Receivable ${formatCurrency(abs)}`
+          : `Payable ${formatCurrency(abs)}`
   const showDelete = Boolean(onDelete)
 
   return (
@@ -66,7 +73,9 @@ export function UdharEntryRow({
           <p className={cn("text-base font-bold tabular-nums tracking-tight", amountColor)}>
             {amountLabel}
           </p>
-          {statusLabel ? <p className="text-sm text-muted-foreground">{statusLabel}</p> : null}
+          {!typeLabel && statusLabel ? (
+            <p className="text-sm text-muted-foreground">{statusLabel}</p>
+          ) : null}
         </div>
       </div>
     </div>

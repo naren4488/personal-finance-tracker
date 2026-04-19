@@ -1300,6 +1300,7 @@ export const baseApi = createApi({
         { type: "Account", id: "LIST" },
         { type: "UdharSummary" },
         { type: "PersonLedger" },
+        { type: "Commitment", id: "LIST" },
         { type: "DashboardAnalytics", id: "LIST" },
         { type: "Dashboard", id: "HOME" },
       ],

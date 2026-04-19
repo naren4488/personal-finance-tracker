@@ -19,6 +19,7 @@ import { AddAccountSheet } from "@/features/accounts/add-account-sheet"
 import { AddUdharEntrySheet } from "@/features/accounts/add-udhar-entry-sheet"
 import { UdharDetailsModal } from "@/features/accounts/udhar-details-modal"
 import { UdharEntryRow } from "@/features/accounts/udhar-entry-row"
+import { getUdharEntryTypeLabel } from "@/lib/udhar/udhar-entry-labels"
 import { getUdharEffect } from "@/lib/udhar/udhar-effect"
 import { AddTransactionModal } from "@/features/entries/add-transaction-modal"
 import { RecentTransactionRow } from "@/features/entries/recent-transaction-row"
@@ -782,6 +783,7 @@ export default function EntriesPage() {
                       personName={resolveUdharPersonDisplayName(tx, commitments)}
                       economicEffect={getUdharEffect(tx)}
                       amountMagnitudeInr={Math.abs(parseSignedAmountString(tx.signedAmount))}
+                      entryTypeLabel={getUdharEntryTypeLabel(tx)}
                       onClick={() => setSelectedUdharTx(tx)}
                       onDelete={() => txDelete.requestDelete(tx)}
                     />

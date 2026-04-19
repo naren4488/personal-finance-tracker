@@ -12,11 +12,13 @@ import { getErrorMessage } from "@/lib/api/errors"
 import type { CreateUdharEntryRequest } from "@/lib/api/udhar-schemas"
 import { endUserSession } from "@/lib/auth/end-session"
 import { cn } from "@/lib/utils"
+import { validateUdharPaymentAgainstBalances } from "@/lib/udhar/udhar-payment-validation"
 import {
   useCreatePersonMutation,
   useCreateUdharEntryMutation,
   useGetAccountsQuery,
   useGetPeopleQuery,
+  useGetUdharAccountBalancesQuery,
 } from "@/store/api/base-api"
 import { useAppDispatch, useAppSelector } from "@/store/hooks"
 
@@ -52,6 +54,7 @@ export type UdharFormState = {
 }
 
 function initialFormState(): UdharFormState {
+  const d = todayIsoDate()
   return {
     personMode: "existing",
     selectedPersonId: "",
@@ -60,8 +63,8 @@ function initialFormState(): UdharFormState {
     entryType: "money_given",
     amount: "",
     accountId: "",
-    date: todayIsoDate(),
-    dueDate: "",
+    date: d,
+    dueDate: d,
     note: "",
   }
 }
@@ -115,6 +118,12 @@ function AddUdharEntrySheetMounted({ open, onOpenChange }: MountedProps) {
   const accountsListLoading = accountsLoading || accountsFetching
 
   const [form, setForm] = useState(() => initialFormState())
+
+  const { data: udharBalancesCached = [], refetch: refetchUdharBalances } =
+    useGetUdharAccountBalancesQuery(
+      { accountId: form.accountId },
+      { skip: !user || !form.accountId.trim() }
+    )
 
   const dismiss = useCallback(() => {
     onOpenChange(false)
@@ -170,6 +179,11 @@ function AddUdharEntrySheetMounted({ open, onOpenChange }: MountedProps) {
       toast.error("Enter a valid amount")
       return
     }
+    const amountInr = Number(n)
+    if (!Number.isFinite(amountInr) || amountInr <= 0) {
+      toast.error("Enter a valid amount")
+      return
+    }
     if (!form.accountId) {
       toast.error("Select an account")
       return
@@ -179,10 +193,26 @@ function AddUdharEntrySheetMounted({ open, onOpenChange }: MountedProps) {
       return
     }
 
+    /** Fresh caps from GET udhar-summary before any POST (best-effort vs concurrent edits). */
+    let balanceRows = udharBalancesCached
+    if (form.accountId.trim()) {
+      const refreshed = await refetchUdharBalances()
+      balanceRows = refreshed.data ?? udharBalancesCached
+    }
+
+    if (form.entryType === "payment_received" || form.entryType === "payment_made") {
+      const row = balanceRows.find((b) => b.personId === effectivePersonId)
+      const check = validateUdharPaymentAgainstBalances(form.entryType, amountInr, row)
+      if (!check.ok) {
+        toast.error(check.message)
+        return
+      }
+    }
+
     const payload: CreateUdharEntryRequest = {
       entryType: form.entryType,
       personId: effectivePersonId,
-      amount: String(Number(n)),
+      amount: String(Math.round(amountInr)),
       accountId: form.accountId,
       date: form.date,
       dueDate: form.dueDate,

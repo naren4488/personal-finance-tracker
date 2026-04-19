@@ -1,6 +1,6 @@
 import * as React from "react"
 
-import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog"
+import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog"
 import { FORM_OVERLAY_FOOTER, FORM_OVERLAY_SCROLL_BODY } from "@/lib/form-overlay-scroll"
 import { cn } from "@/lib/utils"
 
@@ -59,6 +59,9 @@ export function FormDialog({
           Visible title stays in `header` as <h2>; this duplicate is sr-only for AT.
         */}
         <DialogTitle className="sr-only">{accessibilityTitle}</DialogTitle>
+        <DialogDescription className="sr-only">
+          Use the form below; footer actions save or dismiss this dialog.
+        </DialogDescription>
         <div className="shrink-0">{header}</div>
 
         {formProps ? (

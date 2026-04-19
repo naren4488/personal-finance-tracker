@@ -3,6 +3,7 @@ import { X } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { TransactionEntryDeleteButton } from "@/features/entries/transaction-entry-delete-button"
 import { aggregateUdharLedgerEntries } from "@/lib/udhar/udhar-totals"
+import { getUdharEntryTypeLabel } from "@/lib/udhar/udhar-entry-labels"
 import { getUdharEffect, udharEffectTextClassName } from "@/lib/udhar/udhar-effect"
 import {
   inferUdharPersonName,
@@ -101,12 +102,15 @@ export function UdharDetailsModal({
           {entries.map((tx) => {
             const effect = getUdharEffect(tx)
             const absAmt = Math.abs(parseSignedAmountString(tx.signedAmount))
+            const typeLabel = getUdharEntryTypeLabel(tx)
             const amountLabel =
               absAmt === 0
                 ? formatCurrency(0)
-                : effect === "receivable"
-                  ? `Receivable ${formatCurrency(absAmt)}`
-                  : `Payable ${formatCurrency(absAmt)}`
+                : typeLabel
+                  ? `${typeLabel} · ${formatCurrency(absAmt)}`
+                  : effect === "receivable"
+                    ? `Receivable ${formatCurrency(absAmt)}`
+                    : `Payable ${formatCurrency(absAmt)}`
             const canDelete = Boolean(onDeleteEntry && String(tx.id ?? "").trim())
 
             return (

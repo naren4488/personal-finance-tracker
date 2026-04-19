@@ -929,6 +929,9 @@ export function isUdharRecentTransaction(tx: RecentTransaction): boolean {
 }
 
 export function udharDirectionLabel(tx: RecentTransaction): "given" | "taken" {
+  const slug = tx.title.trim().toLowerCase()
+  if (slug === "person_lend") return "given"
+  if (slug === "person_borrow") return "taken"
   const n = parseSignedAmountString(tx.signedAmount)
   if (n < 0) return "given"
   if (n > 0) return "taken"
