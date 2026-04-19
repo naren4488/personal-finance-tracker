@@ -1,4 +1,5 @@
 import { z } from "zod"
+import type { AuthUser } from "@/lib/api/auth-schemas"
 
 /** Full user row from GET/PUT `/users/me` `data.user`. */
 export const profileUserSchema = z
@@ -57,9 +58,8 @@ export function buildUpdateProfileBody(input: {
   salaryDay: number
   monthlySalary: string
 }): UpdateProfileRequest {
-  const salary = input.monthlySalary.trim() || "0"
-  const num = Number(salary.replace(/,/g, ""))
-  const monthlySalary = Number.isFinite(num) ? num.toFixed(2) : "0.00"
+  /** API expects `monthlySalary` as a string (not a JSON number). */
+  const monthlySalary = input.monthlySalary.trim().replace(/,/g, "") || "0"
   return {
     name: input.name.trim(),
     phoneNumber: input.phoneNumber.trim(),
@@ -67,6 +67,17 @@ export function buildUpdateProfileBody(input: {
     company: input.company.trim(),
     salaryDay: input.salaryDay,
     monthlySalary,
+  }
+}
+
+/** Merge GET/PUT `/users/me` profile fields into Redux `AuthUser` for immediate UI refresh. */
+export function mergeAuthUserWithProfile(user: AuthUser, profile: ProfileUser): AuthUser {
+  return {
+    ...user,
+    ...profile,
+    id: user.id,
+    email: profile.email?.trim() ? profile.email.trim() : user.email,
+    name: profile.name?.trim() ? profile.name.trim() : user.name,
   }
 }
 
@@ -106,6 +117,23 @@ const deleteAccountSuccessSchema = z.object({
   success: z.literal(true),
   message: z.string(),
 })
+
+/**
+ * Optional server validation map: `{ errors: { phoneNumber: ["…"] } }` or string values.
+ * Used for inline field hints after PUT /users/me failures.
+ */
+export function parseProfileFieldErrorsFromApiData(data: unknown): Record<string, string> | null {
+  if (!data || typeof data !== "object") return null
+  const o = data as Record<string, unknown>
+  const raw = o.errors
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null
+  const out: Record<string, string> = {}
+  for (const [k, v] of Object.entries(raw as Record<string, unknown>)) {
+    if (typeof v === "string" && v.trim()) out[k] = v.trim()
+    else if (Array.isArray(v) && typeof v[0] === "string") out[k] = v[0]
+  }
+  return Object.keys(out).length > 0 ? out : null
+}
 
 export function parseDeleteAccountSuccess(
   raw: unknown

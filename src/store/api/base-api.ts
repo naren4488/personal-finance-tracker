@@ -321,7 +321,7 @@ export const baseApi = createApi({
         }
         return { data: parsed.user }
       },
-      invalidatesTags: ["User"],
+      invalidatesTags: (result) => (result ? [{ type: "User", id: result.id }] : []),
     }),
 
     deleteMe: build.mutation<{ message: string }, void>({

@@ -9,9 +9,11 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Skeleton } from "@/components/ui/skeleton"
 import type { AuthUser } from "@/lib/api/auth-schemas"
-import { getErrorMessage } from "@/lib/api/errors"
+import { getErrorMessage, isFetchBaseQueryError } from "@/lib/api/errors"
 import {
   buildUpdateProfileBody,
+  mergeAuthUserWithProfile,
+  parseProfileFieldErrorsFromApiData,
   profileUserToFormDefaults,
   type ProfileUser,
   type UpdateProfileRequest,
@@ -102,6 +104,7 @@ function ProfileForm({
   const dispatch = useAppDispatch()
   const [name, setName] = useState(initialName)
   const [draft, setDraft] = useState<ProfileDraft>(initialDraft)
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({})
 
   const email = user.email ?? ""
   const displayInitials = name.trim()
@@ -115,6 +118,8 @@ function ProfileForm({
   }
 
   async function handleSaveProfile() {
+    if (isSaving) return
+    setFieldErrors({})
     const trimmed = name.trim()
     if (!trimmed) {
       toast.error("Name is required")
@@ -140,8 +145,7 @@ function ProfileForm({
     })
     try {
       const updated = await updateMe(body).unwrap()
-      console.log("[profile] PUT /users/me success — updated user:", updated)
-      dispatch(setUser({ ...user, ...updated } as AuthUser))
+      dispatch(setUser(mergeAuthUserWithProfile(user, updated)))
       const next = profileUserToFormDefaults(updated)
       setName(next.name || trimmed)
       setDraft({
@@ -160,6 +164,10 @@ function ProfileForm({
       })
       toast.success("Profile saved")
     } catch (err) {
+      if (isFetchBaseQueryError(err) && err.data && typeof err.data === "object") {
+        const fe = parseProfileFieldErrorsFromApiData(err.data)
+        if (fe) setFieldErrors(fe)
+      }
       toast.error(getErrorMessage(err))
     }
   }
@@ -170,15 +178,10 @@ function ProfileForm({
   }
 
   async function handleSignOut() {
-    console.log("Logging out...")
-    console.log("Logout request sent")
     try {
-      const res = await logout().unwrap()
-      console.log("Logout success:", res)
+      await logout().unwrap()
       clearSessionAndRedirect()
     } catch (error) {
-      console.error("Logout error:", error)
-      console.error("Logout failed", error)
       toast.error(getErrorMessage(error))
       clearSessionAndRedirect()
     }
@@ -207,7 +210,7 @@ function ProfileForm({
 
   return (
     <>
-      <Card className="rounded-2xl border-border/80 shadow-sm">
+      <Card className="rounded-2xl border-border/80 bg-card text-card-foreground shadow-sm">
         <CardHeader className="border-b border-border/50 pb-4">
           <div className="flex gap-4">
             <div className="relative shrink-0">
@@ -243,7 +246,11 @@ function ProfileForm({
                 onChange={(e) => setName(e.target.value)}
                 className="h-11 rounded-xl bg-muted/40"
                 autoComplete="name"
+                aria-invalid={Boolean(fieldErrors.name)}
               />
+              {fieldErrors.name ? (
+                <p className="text-xs text-destructive">{fieldErrors.name}</p>
+              ) : null}
             </div>
             <div className="space-y-2">
               <Label htmlFor="profile-phone">Phone</Label>
@@ -255,7 +262,11 @@ function ProfileForm({
                 className="h-11 rounded-xl bg-muted/40"
                 inputMode="tel"
                 autoComplete="tel"
+                aria-invalid={Boolean(fieldErrors.phoneNumber)}
               />
+              {fieldErrors.phoneNumber ? (
+                <p className="text-xs text-destructive">{fieldErrors.phoneNumber}</p>
+              ) : null}
             </div>
           </div>
           <div className="space-y-2">
@@ -274,7 +285,7 @@ function ProfileForm({
         </CardContent>
       </Card>
 
-      <Card className="rounded-2xl border-border/80 shadow-sm">
+      <Card className="rounded-2xl border-border/80 bg-card text-card-foreground shadow-sm">
         <CardHeader>
           <CardTitle className="text-base">Income settings</CardTitle>
         </CardHeader>
@@ -305,7 +316,11 @@ function ProfileForm({
                 onChange={(e) => updateDraft("company", e.target.value)}
                 placeholder="Company name"
                 className="h-11 rounded-xl bg-muted/40"
+                aria-invalid={Boolean(fieldErrors.company)}
               />
+              {fieldErrors.company ? (
+                <p className="text-xs text-destructive">{fieldErrors.company}</p>
+              ) : null}
             </div>
             <div className="space-y-2">
               <Label htmlFor="profile-salary-day">Salary day (1–31)</Label>
@@ -317,20 +332,30 @@ function ProfileForm({
                 value={draft.salaryDay}
                 onChange={(e) => updateDraft("salaryDay", e.target.value)}
                 className="h-11 rounded-xl bg-muted/40"
+                aria-invalid={Boolean(fieldErrors.salaryDay)}
               />
+              {fieldErrors.salaryDay ? (
+                <p className="text-xs text-destructive">{String(fieldErrors.salaryDay)}</p>
+              ) : null}
             </div>
           </div>
           <div className="space-y-2">
             <Label htmlFor="profile-salary">Monthly salary (₹)</Label>
             <Input
               id="profile-salary"
-              type="number"
-              min={0}
+              inputMode="decimal"
               value={draft.monthlySalary}
               onChange={(e) => updateDraft("monthlySalary", e.target.value)}
               className="h-11 rounded-xl bg-muted/40"
+              aria-invalid={Boolean(fieldErrors.monthlySalary)}
             />
+            {fieldErrors.monthlySalary ? (
+              <p className="text-xs text-destructive">{fieldErrors.monthlySalary}</p>
+            ) : null}
           </div>
+          {fieldErrors.incomeType ? (
+            <p className="text-xs text-destructive">{fieldErrors.incomeType}</p>
+          ) : null}
         </CardContent>
       </Card>
 
