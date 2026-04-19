@@ -1,4 +1,4 @@
-import { createElement, useEffect, useState } from "react"
+import { createElement, useEffect, useMemo, useState } from "react"
 import { Link, useNavigate } from "react-router-dom"
 import { toast } from "sonner"
 import {
@@ -24,8 +24,33 @@ import { getErrorMessage } from "@/lib/api/errors"
 import { getDashboardAccountDisplay } from "@/lib/api/dashboard-account-display"
 import type { Account } from "@/lib/api/account-schemas"
 import type { DashboardAccountPreview } from "@/lib/api/dashboard-home-schemas"
-import { formatCurrency, formatDate } from "@/lib/format"
-import { useGetAccountsQuery, useGetDashboardQuery } from "@/store/api/base-api"
+import {
+  buildHorizonBounds,
+  commitmentToScheduled,
+  filterByHorizon,
+  filterMoneyFlowByHorizon,
+  formatYyyyMmDd,
+  isDateInHorizon,
+  incomeTxToMoneyFlowRow,
+  mergeMoneyFlowDedupe,
+  mergeScheduledItems,
+  incomingBucket,
+  outgoingBucket,
+  scheduledToPayRow,
+  scheduledToReceiveRow,
+  sortMoneyFlowRows,
+  supplementCreditCardItems,
+  supplementLoanEmiItems,
+  type MoneyFlowRow,
+} from "@/lib/home-money-overview"
+import { formatCurrency, formatDayMonthShort } from "@/lib/format"
+import {
+  useGetAccountsQuery,
+  useGetCommitmentsQuery,
+  useGetDashboardQuery,
+  useGetRecentTransactionsQuery,
+} from "@/store/api/base-api"
+import { useAppSelector } from "@/store/hooks"
 import { cn } from "@/lib/utils"
 
 const DEFAULT_RECENT_LIMIT = 5
@@ -59,6 +84,7 @@ function accountKindBadgeLabel(kind: string): string {
 
 export default function HomePage() {
   const navigate = useNavigate()
+  const user = useAppSelector((s) => s.auth.user)
   const [horizonDays, setHorizonDays] = useState(7)
   const [recentLimit, setRecentLimit] = useState(DEFAULT_RECENT_LIMIT)
   const [commitmentOpen, setCommitmentOpen] = useState(false)
@@ -73,6 +99,97 @@ export default function HomePage() {
   } = useGetDashboardQuery({ days: horizonDays, recentLimit })
 
   const { data: accounts = [] } = useGetAccountsQuery()
+  const { data: commitments = [] } = useGetCommitmentsQuery(undefined, { skip: !user })
+
+  const incomeDateRange = useMemo(() => {
+    const { start, end } = buildHorizonBounds(horizonDays)
+    const lookback = new Date(start)
+    lookback.setDate(lookback.getDate() - 45)
+    return { fromDate: formatYyyyMmDd(lookback), toDate: formatYyyyMmDd(end) }
+  }, [horizonDays])
+
+  const { data: incomeTransactions = [] } = useGetRecentTransactionsQuery(
+    {
+      type: "income",
+      limit: 400,
+      fromDate: incomeDateRange.fromDate,
+      toDate: incomeDateRange.toDate,
+    },
+    { skip: !user }
+  )
+
+  const payableCommitmentItems = useMemo(() => {
+    const { start, end } = buildHorizonBounds(horizonDays)
+    return commitments
+      .filter(
+        (c) => c.status.toLowerCase() === "pending" && c.direction.toLowerCase() === "payable"
+      )
+      .map(commitmentToScheduled)
+      .filter((c) => isDateInHorizon(c.dueDate, start, end))
+  }, [commitments, horizonDays])
+
+  const receivableCommitmentItems = useMemo(() => {
+    const { start, end } = buildHorizonBounds(horizonDays)
+    return commitments
+      .filter(
+        (c) => c.status.toLowerCase() === "pending" && c.direction.toLowerCase() === "receivable"
+      )
+      .map(commitmentToScheduled)
+      .filter((c) => isDateInHorizon(c.dueDate, start, end))
+  }, [commitments, horizonDays])
+
+  const outgoingRows = useMemo(() => {
+    if (!dashboard) {
+      return { udhar: [] as MoneyFlowRow[], loan: [] as MoneyFlowRow[], card: [] as MoneyFlowRow[] }
+    }
+    const { start, end } = buildHorizonBounds(horizonDays)
+    const merged = mergeScheduledItems(dashboard.toBePaid.items, payableCommitmentItems)
+    let inHorizon = filterByHorizon(merged, start, end)
+    const loanSup = supplementLoanEmiItems(accounts, end, inHorizon)
+    const cardSup = supplementCreditCardItems(accounts, end, [...inHorizon, ...loanSup])
+    inHorizon = mergeScheduledItems(inHorizon, [...loanSup, ...cardSup])
+
+    const udhar: typeof inHorizon = []
+    const loan: typeof inHorizon = []
+    const card: typeof inHorizon = []
+    for (const it of inHorizon) {
+      const b = outgoingBucket(it)
+      if (b === "udhar_borrow") udhar.push(it)
+      else if (b === "loan_emi") loan.push(it)
+      else card.push(it)
+    }
+    return {
+      udhar: sortMoneyFlowRows(udhar.map(scheduledToPayRow)),
+      loan: sortMoneyFlowRows(loan.map(scheduledToPayRow)),
+      card: sortMoneyFlowRows(card.map(scheduledToPayRow)),
+    }
+  }, [dashboard, horizonDays, payableCommitmentItems, accounts])
+
+  const incomingRows = useMemo(() => {
+    if (!dashboard) {
+      return { udhar: [] as MoneyFlowRow[], income: [] as MoneyFlowRow[] }
+    }
+    const { start, end } = buildHorizonBounds(horizonDays)
+    const merged = mergeScheduledItems(dashboard.incomingMoney.items, receivableCommitmentItems)
+    const inHorizon = filterByHorizon(merged, start, end)
+    const udharItems = inHorizon.filter((it) => incomingBucket(it) === "udhar_lent")
+    const schedIncome = inHorizon.filter((it) => incomingBucket(it) === "income")
+
+    const udharDetail = sortMoneyFlowRows(udharItems.map(scheduledToReceiveRow))
+
+    const schedIncomeRows = schedIncome.map(scheduledToReceiveRow)
+    const txRows = incomeTransactions
+      .map(incomeTxToMoneyFlowRow)
+      .filter((r): r is MoneyFlowRow => r != null)
+    const txInHorizon = filterMoneyFlowByHorizon(txRows, start, end)
+
+    const incomeDetail = sortMoneyFlowRows(
+      mergeMoneyFlowDedupe([...schedIncomeRows, ...txInHorizon])
+    )
+
+    return { udhar: udharDetail, income: incomeDetail }
+  }, [dashboard, horizonDays, receivableCommitmentItems, incomeTransactions])
+
   const txDelete = useDeleteTransactionFlow()
 
   useEffect(() => {
@@ -193,46 +310,73 @@ export default function HomePage() {
 
         {!showSkeleton && dashboard ? (
           <>
-            <HorizonSection
-              title="To be paid by"
+            <MoneyFlowGroupedSection
+              title="To Be Paid by Me"
               variant="pay"
               total={dashboard.toBePaid.total}
-              items={dashboard.toBePaid.items}
               horizonDays={horizonDays}
               onHorizonDaysChange={setHorizonDays}
               emptyCopy={`No payments due in the next ${horizonDays} day${horizonDays === 1 ? "" : "s"}.`}
+              subsections={[
+                {
+                  heading: "Borrowed Udhar",
+                  rows: outgoingRows.udhar,
+                  dateHint: "due",
+                  chip: "To pay",
+                },
+                { heading: "Loan EMI", rows: outgoingRows.loan, dateHint: "due", chip: "EMI" },
+                {
+                  heading: "Credit card bills",
+                  rows: outgoingRows.card,
+                  dateHint: "due",
+                  chip: "Bill",
+                },
+              ]}
             />
 
-            <HorizonSection
-              title="Incoming money"
+            <MoneyFlowGroupedSection
+              title="Incoming Money"
               variant="receive"
               total={dashboard.incomingMoney.total}
-              items={dashboard.incomingMoney.items}
               horizonDays={horizonDays}
               onHorizonDaysChange={setHorizonDays}
               emptyCopy={`No expected incoming in the next ${horizonDays} day${horizonDays === 1 ? "" : "s"}.`}
+              subsections={[
+                {
+                  heading: "Lent Udhar",
+                  rows: incomingRows.udhar,
+                  dateHint: "expect",
+                  chip: "To receive",
+                },
+                {
+                  heading: "Salary / Income",
+                  rows: incomingRows.income,
+                  dateHint: "expect",
+                  chip: "Income",
+                },
+              ]}
             />
 
             <div className="grid grid-cols-3 gap-2">
-              <Card className="rounded-2xl border-border/60 py-3 shadow-sm">
+              <Card className="rounded-2xl border-border/60 bg-card py-3 shadow-sm">
                 <CardContent className="space-y-1 px-3 pt-0">
-                  <Users className="size-5 text-emerald-600" aria-hidden />
+                  <Users className="size-5 text-emerald-600 dark:text-emerald-400" aria-hidden />
                   <p className="text-[10px] font-medium text-muted-foreground">To receive</p>
-                  <p className="text-sm font-bold tabular-nums text-emerald-600">
+                  <p className="text-sm font-bold tabular-nums text-emerald-600 dark:text-emerald-400">
                     {formatCurrency(dashboard.stats.toReceive)}
                   </p>
                 </CardContent>
               </Card>
-              <Card className="rounded-2xl border-border/60 py-3 shadow-sm">
+              <Card className="rounded-2xl border-border/60 bg-card py-3 shadow-sm">
                 <CardContent className="space-y-1 px-3 pt-0">
-                  <CreditCard className="size-5 text-destructive" aria-hidden />
+                  <CreditCard className="size-5 text-destructive dark:text-red-400" aria-hidden />
                   <p className="text-[10px] font-medium text-muted-foreground">CC outstanding</p>
-                  <p className="text-sm font-bold tabular-nums text-destructive">
+                  <p className="text-sm font-bold tabular-nums text-destructive dark:text-red-400">
                     {formatCurrency(dashboard.stats.cardOutstanding)}
                   </p>
                 </CardContent>
               </Card>
-              <Card className="rounded-2xl border-border/60 py-3 shadow-sm">
+              <Card className="rounded-2xl border-border/60 bg-card py-3 shadow-sm">
                 <CardContent className="space-y-1 px-3 pt-0">
                   <Landmark className="size-5 text-primary" aria-hidden />
                   <p className="text-[10px] font-medium text-muted-foreground">Active loans</p>
@@ -370,46 +514,44 @@ function MetricCell({
   )
 }
 
-function HorizonSection({
+function MoneyFlowGroupedSection({
   title,
   variant,
   total,
-  items,
   horizonDays,
   onHorizonDaysChange,
   emptyCopy,
+  subsections,
 }: {
   title: string
   variant: "pay" | "receive"
   total: number
-  items: {
-    id: string
-    title: string
-    amount: number
-    dueDate: string
-    kind: string
-    status: string
-  }[]
   horizonDays: number
   onHorizonDaysChange: (d: number) => void
   emptyCopy: string
+  subsections: { heading: string; rows: MoneyFlowRow[]; dateHint: "due" | "expect"; chip: string }[]
 }) {
   const isPay = variant === "pay"
-  const accent = isPay ? "text-destructive" : "text-emerald-600"
+  const accent = isPay ? "text-destructive" : "text-emerald-600 dark:text-emerald-400"
   const chipActive = isPay
     ? "bg-destructive text-destructive-foreground"
-    : "bg-emerald-600 text-white"
+    : "bg-emerald-600 text-white dark:bg-emerald-700"
+
+  const anyRows = subsections.some((s) => s.rows.length > 0)
 
   return (
     <Card
       className={cn(
-        "rounded-2xl border shadow-sm",
-        isPay ? "border-destructive/20 bg-white" : "border-emerald-200/60 bg-white"
+        "rounded-2xl border bg-card text-card-foreground shadow-sm",
+        isPay ? "border-destructive/25" : "border-emerald-500/30 dark:border-emerald-800/50"
       )}
     >
       <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0 pb-2">
         <CardTitle
-          className={cn("text-sm font-bold", isPay ? "text-destructive" : "text-emerald-700")}
+          className={cn(
+            "text-sm font-bold",
+            isPay ? "text-destructive" : "text-emerald-700 dark:text-emerald-400"
+          )}
         >
           {title}
         </CardTitle>
@@ -439,7 +581,7 @@ function HorizonSection({
               type="number"
               min={1}
               max={365}
-              className="h-8 w-14 rounded-lg px-2 text-center text-xs tabular-nums"
+              className="h-8 w-14 rounded-lg border-border bg-background px-2 text-center text-xs tabular-nums text-foreground"
               value={horizonDays}
               onChange={(e) => {
                 const raw = e.target.value
@@ -452,28 +594,58 @@ function HorizonSection({
             <span className="text-[10px] text-muted-foreground">days</span>
           </div>
         </div>
-        {items.length === 0 ? (
-          <p className="text-center text-sm text-muted-foreground py-4">{emptyCopy}</p>
+        {!anyRows ? (
+          <p className="py-4 text-center text-sm text-muted-foreground">{emptyCopy}</p>
         ) : (
-          <ul className="space-y-2">
-            {items.map((it) => (
-              <li
-                key={it.id}
-                className="flex items-center justify-between gap-2 rounded-xl border border-border/50 bg-muted/20 px-3 py-2"
-              >
-                <div className="min-w-0">
-                  <p className="truncate text-xs font-semibold">{it.title}</p>
-                  <p className="text-[10px] text-muted-foreground">
-                    {it.dueDate && it.dueDate !== "—" ? formatDate(it.dueDate) : it.dueDate}
-                    {it.kind ? ` · ${it.kind}` : ""}
+          <div className="space-y-4">
+            {subsections.map((sub) => (
+              <div key={sub.heading} className="space-y-2">
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                  {sub.heading}
+                </p>
+                {sub.rows.length === 0 ? (
+                  <p className="rounded-xl border border-dashed border-border/70 bg-muted/30 px-3 py-2 text-center text-[11px] text-muted-foreground dark:bg-muted/20">
+                    None in this window.
                   </p>
-                </div>
-                <span className={cn("shrink-0 text-xs font-bold tabular-nums", accent)}>
-                  {formatCurrency(it.amount)}
-                </span>
-              </li>
+                ) : (
+                  <ul className="space-y-1.5">
+                    {sub.rows.map((row) => (
+                      <li
+                        key={row.id}
+                        className="rounded-xl border border-border/60 bg-muted/20 px-3 py-2.5 dark:bg-muted/10"
+                      >
+                        <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1 text-xs">
+                          <span className="min-w-0 flex-1 font-semibold text-foreground">
+                            {row.title}
+                          </span>
+                          <span className="shrink-0 text-muted-foreground" aria-hidden>
+                            →
+                          </span>
+                          <span className={cn("shrink-0 font-bold tabular-nums", accent)}>
+                            {formatCurrency(row.amount)}
+                          </span>
+                          <span className="shrink-0 text-muted-foreground" aria-hidden>
+                            →
+                          </span>
+                          <span className="shrink-0 text-muted-foreground">
+                            {sub.dateHint === "due"
+                              ? "Due "
+                              : sub.chip === "Income"
+                                ? "Expected "
+                                : ""}
+                            {formatDayMonthShort(row.date)}
+                          </span>
+                          <span className="ml-auto shrink-0 rounded-full bg-muted px-2 py-0.5 text-[10px] font-semibold text-muted-foreground">
+                            {sub.chip}
+                          </span>
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
             ))}
-          </ul>
+          </div>
         )}
       </CardContent>
     </Card>

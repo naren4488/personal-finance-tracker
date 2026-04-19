@@ -17,3 +17,13 @@ export function formatDate(date: string | Date): string {
     year: "numeric",
   }).format(d)
 }
+
+/** e.g. "12 Apr" — for compact money-flow rows (ISO `YYYY-MM-DD`). */
+export function formatDayMonthShort(isoDate: string): string {
+  const d = new Date(`${isoDate.slice(0, 10)}T12:00:00`)
+  if (!Number.isFinite(d.getTime())) return isoDate
+  return new Intl.DateTimeFormat("en-IN", {
+    day: "numeric",
+    month: "short",
+  }).format(d)
+}
