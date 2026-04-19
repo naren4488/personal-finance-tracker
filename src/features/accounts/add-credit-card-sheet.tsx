@@ -4,7 +4,6 @@ import { ChevronDown, X } from "lucide-react"
 import { toast } from "sonner"
 import { FormDialog } from "@/components/form-dialog"
 import { Button } from "@/components/ui/button"
-import { DialogTitle } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { BILLING_DAY_OPTIONS } from "@/lib/billing-day-options"
@@ -133,13 +132,12 @@ function AddCreditCardSheetMounted({ open, onOpenChange }: MountedProps) {
     <FormDialog
       open={open}
       onOpenChange={onOpenChange}
+      accessibilityTitle="Add Credit Card"
       header={
         <header className="flex shrink-0 items-center justify-between gap-2 border-b border-border px-5 py-4">
-          <DialogTitle asChild>
-            <h2 id={titleId} className="text-base font-bold text-primary sm:text-lg">
-              Add Credit Card
-            </h2>
-          </DialogTitle>
+          <h2 id={titleId} className="text-base font-bold text-primary sm:text-lg">
+            Add Credit Card
+          </h2>
           <Button
             type="button"
             variant="ghost"

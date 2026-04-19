@@ -4,7 +4,6 @@ import { ChevronDown, X } from "lucide-react"
 import { toast } from "sonner"
 import { FormDialog } from "@/components/form-dialog"
 import { Button } from "@/components/ui/button"
-import { DialogTitle } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { loanTypeLabelToApiSlug, type CreateAccountRequest } from "@/lib/api/account-schemas"
@@ -159,13 +158,12 @@ function AddLoanSheetMounted({ open, onOpenChange }: MountedProps) {
     <FormDialog
       open={open}
       onOpenChange={onOpenChange}
+      accessibilityTitle="Add Loan"
       header={
         <header className="flex shrink-0 items-center justify-between gap-2 border-b border-border px-5 py-4">
-          <DialogTitle asChild>
-            <h2 id={titleId} className="text-base font-bold text-primary sm:text-lg">
-              Add Loan
-            </h2>
-          </DialogTitle>
+          <h2 id={titleId} className="text-base font-bold text-primary sm:text-lg">
+            Add Loan
+          </h2>
           <Button
             type="button"
             variant="ghost"

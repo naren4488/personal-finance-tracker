@@ -20,14 +20,23 @@ export const RecentTransactionRow = memo(function RecentTransactionRow({
   tx,
   accounts,
   onDelete,
+  className,
 }: {
   tx: RecentTransaction
   accounts?: Account[]
   /** When set, shows Delete chip (same behavior for income, expense, udhar-shaped rows, etc.). */
   onDelete?: (tx: RecentTransaction) => void
+  className?: string
 }) {
   if (tx.type === "transfer" && accounts && accounts.length > 0) {
-    return <TransferTransactionRow tx={tx} accounts={accounts} onDelete={onDelete} />
+    return (
+      <TransferTransactionRow
+        tx={tx}
+        accounts={accounts}
+        onDelete={onDelete}
+        className={className}
+      />
+    )
   }
 
   const n = parseSignedAmountString(tx.signedAmount)
@@ -40,7 +49,12 @@ export const RecentTransactionRow = memo(function RecentTransactionRow({
   const showDelete = Boolean(onDelete && String(tx.id ?? "").trim())
 
   return (
-    <div className="flex items-center justify-between gap-3 rounded-2xl border border-border/80 bg-card px-4 py-3.5 shadow-sm">
+    <div
+      className={cn(
+        "flex items-center justify-between gap-3 rounded-2xl border border-border/80 bg-card px-4 py-3.5 shadow-sm",
+        className
+      )}
+    >
       <div className="min-w-0 flex-1">
         <p className="truncate text-[15px] font-bold leading-tight text-[#111827] dark:text-foreground">
           {tx.title}

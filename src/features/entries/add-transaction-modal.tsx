@@ -8,7 +8,7 @@ import { FormDialog } from "@/components/form-dialog"
 import { Badge } from "@/components/ui/badge"
 import { ToggleTile } from "@/components/toggle-tile"
 import { Button } from "@/components/ui/button"
-import { DialogDescription, DialogTitle } from "@/components/ui/dialog"
+import { DialogDescription } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -27,9 +27,11 @@ import { INCOME_SOURCE_OPTIONS } from "@/lib/api/transaction-schemas"
 import { FORM_OVERLAY_FILL_BODY, FORM_OVERLAY_SCROLL_BODY } from "@/lib/form-overlay-scroll"
 import type {
   CreateTransactionPayload,
+  Transaction,
   TransactionType,
   TransferDestinationType,
 } from "@/lib/api/schemas"
+import { ACCOUNTS_HIGHLIGHT_TX } from "@/features/accounts/accounts-route"
 import { formatCurrency } from "@/lib/format"
 import { assertSourceAccountCoversAmount } from "@/lib/validation/source-account-balance"
 import { cn } from "@/lib/utils"
@@ -124,6 +126,8 @@ type CreditCardExpenseFieldsProps = {
   accountId: string
   onAccountIdChange: (id: string) => void
   form: UseFormReturn<CardExpenseFormValues>
+  optionalDescription: string
+  onOptionalDescriptionChange: (v: string) => void
 }
 
 function CreditCardExpenseFields({
@@ -131,6 +135,8 @@ function CreditCardExpenseFields({
   accountId,
   onAccountIdChange,
   form,
+  optionalDescription,
+  onOptionalDescriptionChange,
 }: CreditCardExpenseFieldsProps) {
   const [tagDraft, setTagDraft] = useState("")
   const labelClass = "mb-1.5 block text-xs font-semibold text-foreground/80"
@@ -287,6 +293,19 @@ function CreditCardExpenseFields({
       </div>
 
       <section>
+        <Label htmlFor="at-cc-desc-opt" className={labelClass}>
+          Description <span className="font-normal text-muted-foreground">(optional)</span>
+        </Label>
+        <Input
+          id="at-cc-desc-opt"
+          value={optionalDescription}
+          onChange={(e) => onOptionalDescriptionChange(e.target.value)}
+          placeholder="Short description"
+          className={fieldBase}
+        />
+      </section>
+
+      <section>
         <Label htmlFor="at-cc-fee" className={labelClass}>
           Fee amount (₹)
         </Label>
@@ -399,6 +418,12 @@ export type AddTransactionModalProps = {
   onOpenAddAccount?: () => void
   transferPaymentPreset?: TransferPaymentPreset | null
   accountsReturnPath?: string
+  /** Prefill Pay From / card when opening from account context (`?accountId=`). */
+  prefillAccountId?: string | null
+  /** After success: `navigate(replace)` (e.g. back to `/accounts?...`). */
+  successNavigateTo?: string | null
+  /** Called after a successful POST before the modal closes (e.g. skip parent cleanup). */
+  onTransactionSuccess?: () => void
 }
 
 type MountedProps = {
@@ -409,6 +434,9 @@ type MountedProps = {
   onOpenAddAccount?: () => void
   transferPaymentPreset: TransferPaymentPreset | null
   accountsReturnPath?: string
+  prefillAccountId: string | null
+  successNavigateTo: string | null
+  onTransactionSuccess?: () => void
 }
 
 function AddTransactionModalMounted({
@@ -419,6 +447,9 @@ function AddTransactionModalMounted({
   onOpenAddAccount,
   transferPaymentPreset,
   accountsReturnPath,
+  prefillAccountId = null,
+  successNavigateTo = null,
+  onTransactionSuccess,
 }: MountedProps) {
   const lockTransferPayment = transferPaymentPreset != null
   const titleId = useId()
@@ -490,6 +521,11 @@ function AddTransactionModalMounted({
     transferPaymentPreset?.kind === "loan_emi" ? transferPaymentPreset.loanAccountId : ""
   )
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("account")
+  /** Bank / cash / wallet for "Account / UPI"; credit cards only for "Credit Card". */
+  const incomeExpensePayFromOptions = useMemo(
+    () => (paymentMethod === "account" ? transferSourceAccounts : creditCardAccounts),
+    [paymentMethod, transferSourceAccounts, creditCardAccounts]
+  )
   const [paidOnBehalf, setPaidOnBehalf] = useState(false)
   const [scheduleUpcoming, setScheduleUpcoming] = useState(false)
   const [note, setNote] = useState("")
@@ -667,6 +703,63 @@ function AddTransactionModalMounted({
     onOpenChange(false)
   }
 
+  const completeAfterSuccess = useCallback(
+    (toastMsg: string, created?: Transaction | null) => {
+      toast.success(toastMsg)
+      onTransactionSuccess?.()
+      const dest = successNavigateTo?.trim()
+      if (dest) {
+        try {
+          const u = new URL(dest, window.location.origin)
+          const tid = created?.id != null ? String(created.id).trim() : ""
+          if (tid) u.searchParams.set(ACCOUNTS_HIGHLIGHT_TX, tid)
+          navigate(`${u.pathname}${u.search}`, { replace: true })
+        } catch {
+          navigate(dest, { replace: true })
+        }
+      }
+      onOpenChange(false)
+    },
+    [navigate, onOpenChange, onTransactionSuccess, successNavigateTo]
+  )
+
+  const prefillAppliedRef = useRef(false)
+  useEffect(() => {
+    if (!open) {
+      prefillAppliedRef.current = false
+      return
+    }
+    const raw = prefillAccountId?.trim()
+    if (!raw) return
+    const bank = transferSourceAccounts.some((a) => a.id === raw)
+    const card = creditCardAccounts.some((a) => a.id === raw)
+    if (!bank && !card) return
+    if (prefillAppliedRef.current) return
+    prefillAppliedRef.current = true
+    queueMicrotask(() => {
+      setAccountId(raw)
+      setPaymentMethod(card ? "card" : "account")
+      if (card && !expenseFlow) setTxType("expense")
+    })
+  }, [open, prefillAccountId, transferSourceAccounts, creditCardAccounts, expenseFlow])
+
+  useEffect(() => {
+    if (!open || expenseFlow) return
+    if (effectiveType !== "income" && effectiveType !== "expense") return
+    if (isCreditCardExpenseMode) return
+    if (!accountId) return
+    if (incomeExpensePayFromOptions.some((a) => a.id === accountId)) return
+    queueMicrotask(() => setAccountId(""))
+  }, [
+    open,
+    expenseFlow,
+    effectiveType,
+    isCreditCardExpenseMode,
+    paymentMethod,
+    incomeExpensePayFromOptions,
+    accountId,
+  ])
+
   useEffect(() => {
     if (!isError || !error) return
     const msg = getErrorMessage(error)
@@ -703,6 +796,7 @@ function AddTransactionModalMounted({
     if (!assertSourceAccountCoversAmount(card, amt)) return
 
     const cardLabel = accountSelectLabel(card)
+    const mergedNote = [description.trim(), values.note.trim()].filter(Boolean).join(" — ")
     const payload: CreateTransactionPayload = {
       type: "expense",
       amount: amt,
@@ -714,16 +808,15 @@ function AddTransactionModalMounted({
       paidOnBehalf: false,
       scheduled: false,
       date: values.date,
-      note: values.note,
+      note: mergedNote,
       tags: values.tags,
       displayTitle: `Card · ${values.category.trim()}`,
       accountName: cardLabel,
     }
 
     try {
-      await addTransaction(payload).unwrap()
-      toast.success(expenseFlow ? "Expense added" : "Transaction added")
-      dismiss()
+      const created = await addTransaction(payload).unwrap()
+      completeAfterSuccess(expenseFlow ? "Expense added" : "Transaction added", created)
     } catch (err) {
       console.error("[transactions] submit error", err)
       toast.error(getErrorMessage(err))
@@ -741,19 +834,18 @@ function AddTransactionModalMounted({
 
     let titleBase: string
     if (expenseFlow) {
-      titleBase = note.trim()
+      titleBase = note.trim() || description.trim()
       if (!titleBase) {
-        toast.error("Add a note (what was this for?)")
+        toast.error("Add a note or description")
         return
       }
     } else if (effectiveType === "transfer") {
-      titleBase = note.trim() || "Transfer"
+      titleBase = [description.trim(), note.trim()].filter(Boolean).join(" · ") || "Transfer"
     } else {
-      titleBase = description.trim()
-      if (!titleBase) {
-        toast.error("Add a description")
-        return
-      }
+      titleBase =
+        description.trim() ||
+        note.trim() ||
+        (effectiveType === "expense" ? category.trim() || "Expense" : "Income")
     }
 
     if (effectiveType !== "transfer") {
@@ -835,11 +927,7 @@ function AddTransactionModalMounted({
     }
 
     const displayTitle = [titleBase, ...tags].filter(Boolean).join(" · ")
-    const noteForApi = expenseFlow
-      ? note.trim()
-      : effectiveType === "transfer"
-        ? note.trim()
-        : [description.trim(), note.trim()].filter(Boolean).join(" — ")
+    const noteForApi = [description.trim(), note.trim()].filter(Boolean).join(" — ")
 
     const payload = {
       type: effectiveType,
@@ -883,15 +971,15 @@ function AddTransactionModalMounted({
     console.log("[add-transaction] submit — CreateTransactionPayload:", payload)
 
     try {
-      await addTransaction(payload).unwrap()
-      toast.success(
+      const created = await addTransaction(payload).unwrap()
+      completeAfterSuccess(
         expenseFlow
           ? "Expense added"
           : effectiveType === "transfer"
             ? "Transfer added"
-            : "Transaction added"
+            : "Transaction added",
+        created
       )
-      dismiss()
     } catch (err) {
       console.error("[transactions] submit error", err)
       toast.error(getErrorMessage(err))
@@ -910,14 +998,13 @@ function AddTransactionModalMounted({
     <FormDialog
       open={open}
       onOpenChange={onOpenChange}
+      accessibilityTitle={modalTitle}
       header={
         <header className="shrink-0 border-b border-border/80 bg-card px-5 py-4">
           <div className="flex items-center justify-between gap-2">
-            <DialogTitle asChild>
-              <h2 id={titleId} className="text-base font-bold text-primary sm:text-lg">
-                {modalTitle}
-              </h2>
-            </DialogTitle>
+            <h2 id={titleId} className="text-base font-bold text-primary sm:text-lg">
+              {modalTitle}
+            </h2>
             <Button
               type="button"
               variant="ghost"
@@ -1340,6 +1427,19 @@ function AddTransactionModalMounted({
                 </>
               )}
 
+              <section>
+                <Label htmlFor="at-transfer-description" className={labelClass}>
+                  Description <span className="font-normal text-muted-foreground">(optional)</span>
+                </Label>
+                <Input
+                  id="at-transfer-description"
+                  value={description}
+                  onChange={(e) => setDescription(e.target.value)}
+                  placeholder="Short label for this transfer"
+                  className={fieldBase}
+                />
+              </section>
+
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
                 <section>
                   <Label htmlFor="at-amount-transfer" className={labelClass}>
@@ -1408,13 +1508,15 @@ function AddTransactionModalMounted({
             </>
           ) : isCreditCardExpenseMode ? (
             <CreditCardExpenseFields
-              accounts={accounts}
+              accounts={creditCardAccounts}
               accountId={accountId}
               onAccountIdChange={(id) => {
                 onIncomeExpenseAccountChange(id)
                 ccExpenseForm.setValue("creditCardAccountId", id, { shouldValidate: true })
               }}
               form={ccExpenseForm}
+              optionalDescription={description}
+              onOptionalDescriptionChange={setDescription}
             />
           ) : (
             <>
@@ -1534,7 +1636,7 @@ function AddTransactionModalMounted({
                     className={cn(selectFieldClass, !accountId && "text-muted-foreground")}
                   >
                     <option value="">Select account</option>
-                    {accounts.map((a) => (
+                    {incomeExpensePayFromOptions.map((a) => (
                       <option key={a.id} value={a.id}>
                         {accountSelectLabel(a)}
                       </option>
@@ -1579,24 +1681,38 @@ function AddTransactionModalMounted({
           ) : null}
 
           {expenseFlow && !isCreditCardExpenseMode ? (
-            <section>
-              <Label htmlFor="at-note" className={labelClass}>
-                Note
-              </Label>
-              <textarea
-                id="at-note"
-                rows={2}
-                placeholder="What was this for?"
-                value={note}
-                onChange={(e) => setNote(e.target.value)}
-                className={cn(fieldBase, "min-h-[3.5rem] resize-none py-2")}
-              />
-            </section>
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <section>
+                <Label htmlFor="at-exp-flow-desc" className={labelClass}>
+                  Description <span className="font-normal text-muted-foreground">(optional)</span>
+                </Label>
+                <Input
+                  id="at-exp-flow-desc"
+                  value={description}
+                  onChange={(e) => setDescription(e.target.value)}
+                  placeholder="Short description"
+                  className={fieldBase}
+                />
+              </section>
+              <section>
+                <Label htmlFor="at-note" className={labelClass}>
+                  Note
+                </Label>
+                <textarea
+                  id="at-note"
+                  rows={2}
+                  placeholder="What was this for?"
+                  value={note}
+                  onChange={(e) => setNote(e.target.value)}
+                  className={cn(fieldBase, "min-h-[3.5rem] resize-none py-2")}
+                />
+              </section>
+            </div>
           ) : effectiveType === "transfer" || isCreditCardExpenseMode ? null : (
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <section>
                 <Label htmlFor="at-desc" className={labelClass}>
-                  Description
+                  Description <span className="font-normal text-muted-foreground">(optional)</span>
                 </Label>
                 <Input
                   id="at-desc"
@@ -1690,6 +1806,9 @@ export function AddTransactionModal({
   onOpenAddAccount,
   transferPaymentPreset = null,
   accountsReturnPath,
+  prefillAccountId = null,
+  successNavigateTo = null,
+  onTransactionSuccess,
 }: AddTransactionModalProps) {
   if (!open) return null
   const typeKey = expenseFlow ? "expense" : initialType
@@ -1700,9 +1819,10 @@ export function AddTransactionModal({
           : transferPaymentPreset.loanAccountId
       }`
     : "none"
+  const prefillKey = prefillAccountId?.trim() || "none"
   return (
     <AddTransactionModalMounted
-      key={`${typeKey}-${presetKey}`}
+      key={`${typeKey}-${presetKey}-${prefillKey}`}
       open={open}
       expenseFlow={expenseFlow}
       initialType={expenseFlow ? "expense" : initialType}
@@ -1710,6 +1830,9 @@ export function AddTransactionModal({
       onOpenAddAccount={onOpenAddAccount}
       transferPaymentPreset={transferPaymentPreset}
       accountsReturnPath={accountsReturnPath}
+      prefillAccountId={prefillAccountId}
+      successNavigateTo={successNavigateTo}
+      onTransactionSuccess={onTransactionSuccess}
     />
   )
 }

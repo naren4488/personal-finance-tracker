@@ -20,9 +20,12 @@ import {
   type AccountsSegmentId,
 } from "@/features/accounts/accounts-mock-data"
 import {
+  ACCOUNTS_HIGHLIGHT_TX,
+  ACCOUNTS_URL_ACCOUNT,
   ACCOUNTS_URL_CARD,
   ACCOUNTS_URL_LOAN,
   applyAccountsDetailSearch,
+  buildAccountsDetailPath,
 } from "@/features/accounts/accounts-route"
 import { CreditCardDetailView } from "@/features/accounts/credit-card-detail-view"
 import { CreditCardList } from "@/features/accounts/credit-card-list"
@@ -77,8 +80,12 @@ export default function AccountsPage() {
   const [searchParams, setSearchParams] = useSearchParams()
   const loanQ = searchParams.get(ACCOUNTS_URL_LOAN)
   const cardQ = searchParams.get(ACCOUNTS_URL_CARD)
+  const accountQ = searchParams.get(ACCOUNTS_URL_ACCOUNT)
+  const highlightTxQ = searchParams.get(ACCOUNTS_HIGHLIGHT_TX)
   const prevDetailLoanRef = useRef<string | null>(null)
   const prevDetailCardRef = useRef<string | null>(null)
+  const prevDetailAccountRef = useRef<string | null>(null)
+  const transferSuccessSkipExitRef = useRef(false)
   const [segment, setSegment] = useState<AccountsSegmentId>("accounts")
   const [udharOpen, setUdharOpen] = useState(false)
   const [addAccountOpen, setAddAccountOpen] = useState(false)
@@ -157,11 +164,12 @@ export default function AccountsPage() {
       if (selectedAccount && String(selectedAccount.id) === id) {
         setSelectedAccount(null)
         setAccountDetailStartInEdit(false)
+        applyAccountsDetailSearch(setSearchParams, null)
       }
     } catch (e) {
       toast.error(getErrorMessage(e) || "Failed to delete")
     }
-  }, [deleteAccount, pendingListDeleteAccount, selectedAccount])
+  }, [deleteAccount, pendingListDeleteAccount, selectedAccount, setSearchParams])
 
   const confirmDeletePerson = useCallback(async () => {
     if (!pendingDeletePerson) return
@@ -230,11 +238,12 @@ export default function AccountsPage() {
     }
   }, [loansError, loansQueryError, navigate])
 
-  /** Deep link: `/accounts?loan=` / `?card=` → correct tab before paint. */
+  /** Deep link: `/accounts?loan=` / `?card=` / `?account=` → correct tab before paint. */
   useLayoutEffect(() => {
     if (loanQ) setSegment("loans")
     else if (cardQ) setSegment("cards")
-  }, [loanQ, cardQ])
+    else if (accountQ) setSegment("accounts")
+  }, [loanQ, cardQ, accountQ])
 
   /** Keep loan/card detail selection aligned with URL (back/forward, bookmarks, invalid id cleanup). */
   useEffect(() => {
@@ -291,6 +300,34 @@ export default function AccountsPage() {
   ])
 
   const normalAccounts = useMemo(() => filterNormalAccounts(apiAccounts ?? []), [apiAccounts])
+
+  /** Normal account detail: `?account=` (return from Add Transaction). */
+  useEffect(() => {
+    if (loanQ || cardQ) return
+    if (accountQ) {
+      prevDetailAccountRef.current = accountQ
+      if (accountsLoading) return
+      const acc = normalAccounts.find((a) => String(a.id) === accountQ)
+      if (acc) {
+        setSelectedLoan(null)
+        setSelectedCreditCard(null)
+        setLoanDetailVisible(false)
+        setCardDetailVisible(false)
+        setCardInlineSpendOpen(false)
+        setSelectedAccount((prev) => (prev && String(prev.id) === accountQ ? prev : acc))
+        setAccountDetailStartInEdit(false)
+      } else {
+        setSelectedAccount(null)
+        applyAccountsDetailSearch(setSearchParams, null)
+      }
+      return
+    }
+    const hadAccountInUrl = prevDetailAccountRef.current
+    prevDetailAccountRef.current = null
+    if (hadAccountInUrl) {
+      setSelectedAccount(null)
+    }
+  }, [accountQ, loanQ, cardQ, normalAccounts, accountsLoading, setSearchParams])
 
   const peopleAccountId = useMemo(() => {
     if (normalAccounts.length === 0) return ""
@@ -498,7 +535,10 @@ export default function AccountsPage() {
           setTransferModalOpen(v)
           if (!v) {
             const kind = transferPreset?.kind
+            const skipExit = transferSuccessSkipExitRef.current
+            transferSuccessSkipExitRef.current = false
             setTransferPreset(null)
+            if (skipExit) return
             if (kind === "loan_emi") exitToLoansList()
             else if (kind === "credit_card_bill") exitToCardsList()
           }
@@ -506,6 +546,19 @@ export default function AccountsPage() {
         initialType="transfer"
         transferPaymentPreset={transferPreset}
         accountsReturnPath="/accounts"
+        successNavigateTo={
+          transferPreset?.kind === "loan_emi"
+            ? buildAccountsDetailPath({ kind: "loan", id: transferPreset.loanAccountId })
+            : transferPreset?.kind === "credit_card_bill"
+              ? buildAccountsDetailPath({
+                  kind: "card",
+                  id: transferPreset.creditCardAccountId,
+                })
+              : null
+        }
+        onTransactionSuccess={() => {
+          transferSuccessSkipExitRef.current = true
+        }}
       />
       {selectedAccount ? (
         <AccountDetailView
@@ -515,6 +568,7 @@ export default function AccountsPage() {
             if (!v) {
               setSelectedAccount(null)
               setAccountDetailStartInEdit(false)
+              applyAccountsDetailSearch(setSearchParams, null)
             }
           }}
           account={resolvedSelectedAccount}
@@ -526,6 +580,18 @@ export default function AccountsPage() {
           onAccountDeleted={() => {
             setSelectedAccount(null)
             setAccountDetailStartInEdit(false)
+            applyAccountsDetailSearch(setSearchParams, null)
+          }}
+          highlightTransactionId={highlightTxQ}
+          onHighlightTransactionConsumed={() => {
+            setSearchParams(
+              (prev) => {
+                const p = new URLSearchParams(prev)
+                p.delete(ACCOUNTS_HIGHLIGHT_TX)
+                return p
+              },
+              { replace: true }
+            )
           }}
         />
       ) : null}
@@ -576,11 +642,20 @@ export default function AccountsPage() {
                     const p = new URLSearchParams(prev)
                     if (id === "loans") {
                       p.delete(ACCOUNTS_URL_CARD)
+                      p.delete(ACCOUNTS_URL_ACCOUNT)
+                      p.delete(ACCOUNTS_HIGHLIGHT_TX)
                     } else if (id === "cards") {
                       p.delete(ACCOUNTS_URL_LOAN)
+                      p.delete(ACCOUNTS_URL_ACCOUNT)
+                      p.delete(ACCOUNTS_HIGHLIGHT_TX)
+                    } else if (id === "accounts") {
+                      p.delete(ACCOUNTS_URL_LOAN)
+                      p.delete(ACCOUNTS_URL_CARD)
                     } else {
                       p.delete(ACCOUNTS_URL_LOAN)
                       p.delete(ACCOUNTS_URL_CARD)
+                      p.delete(ACCOUNTS_URL_ACCOUNT)
+                      p.delete(ACCOUNTS_HIGHLIGHT_TX)
                     }
                     return p
                   },
@@ -874,11 +949,19 @@ export default function AccountsPage() {
                           setAccountDetailStartInEdit(false)
                           setAccountDetailOpenNonce((n) => n + 1)
                           setSelectedAccount(a)
+                          applyAccountsDetailSearch(setSearchParams, {
+                            kind: "account",
+                            id: String(a.id),
+                          })
                         }}
                         onEdit={() => {
                           setAccountDetailStartInEdit(true)
                           setAccountDetailOpenNonce((n) => n + 1)
                           setSelectedAccount(a)
+                          applyAccountsDetailSearch(setSearchParams, {
+                            kind: "account",
+                            id: String(a.id),
+                          })
                         }}
                         onAdjust={() => setAdjustBalanceAccount(a)}
                         onDelete={() => setPendingListDeleteAccount(a)}

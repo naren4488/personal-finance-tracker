@@ -1,12 +1,14 @@
 import * as React from "react"
 
-import { Dialog, DialogContent } from "@/components/ui/dialog"
+import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog"
 import { FORM_OVERLAY_FOOTER, FORM_OVERLAY_SCROLL_BODY } from "@/lib/form-overlay-scroll"
 import { cn } from "@/lib/utils"
 
 export type FormDialogProps = {
   open: boolean
   onOpenChange: (open: boolean) => void
+  /** Announced to assistive tech; must match the visible heading in `header`. */
+  accessibilityTitle: string
   header: React.ReactNode
   /** Scrollable body — use inner wrappers for field spacing. */
   children: React.ReactNode
@@ -27,6 +29,7 @@ export type FormDialogProps = {
 export function FormDialog({
   open,
   onOpenChange,
+  accessibilityTitle,
   header,
   children,
   footer,
@@ -51,6 +54,11 @@ export function FormDialog({
           contentClassName
         )}
       >
+        {/*
+          Radix requires DialogTitle as a direct child of DialogContent for a11y.
+          Visible title stays in `header` as <h2>; this duplicate is sr-only for AT.
+        */}
+        <DialogTitle className="sr-only">{accessibilityTitle}</DialogTitle>
         <div className="shrink-0">{header}</div>
 
         {formProps ? (

@@ -3,7 +3,6 @@ import { Banknote, Building2, Landmark, type LucideIcon, Smartphone, Wallet, X }
 import { toast } from "sonner"
 import { FormDialog } from "@/components/form-dialog"
 import { Button } from "@/components/ui/button"
-import { DialogTitle } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
@@ -196,6 +195,7 @@ function AddAccountSheetMounted({ open, onOpenChange }: MountedProps) {
     <FormDialog
       open={open}
       onOpenChange={onOpenChange}
+      accessibilityTitle="Add Account"
       contentClassName="sm:rounded-3xl lg:max-w-xl"
       formProps={{ onSubmit: handleSubmit }}
       footerClassName="border-t border-border/80 bg-card/95 py-3 backdrop-blur-md supports-backdrop-filter:bg-card/90 sm:px-6 sm:py-4"
@@ -215,11 +215,9 @@ function AddAccountSheetMounted({ open, onOpenChange }: MountedProps) {
       header={
         <header className="shrink-0 border-b border-border/80 bg-card/95 px-4 py-3 backdrop-blur-sm sm:px-6 sm:py-4">
           <div className="flex items-start justify-between gap-3">
-            <DialogTitle asChild>
-              <h2 id={titleId} className="text-lg font-bold tracking-tight text-primary sm:text-xl">
-                Add Account
-              </h2>
-            </DialogTitle>
+            <h2 id={titleId} className="text-lg font-bold tracking-tight text-primary sm:text-xl">
+              Add Account
+            </h2>
             <Button
               type="button"
               variant="ghost"

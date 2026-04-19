@@ -4,7 +4,6 @@ import { Scale, X } from "lucide-react"
 import { toast } from "sonner"
 import { FormDialog } from "@/components/form-dialog"
 import { Button } from "@/components/ui/button"
-import { DialogTitle } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import type { Account } from "@/lib/api/account-schemas"
@@ -145,14 +144,13 @@ function AdjustBalanceSheetMounted({ open, account, onOpenChange }: MountedProps
     <FormDialog
       open={open}
       onOpenChange={onOpenChange}
+      accessibilityTitle="Adjust balance"
       header={
         <header className="flex shrink-0 items-start justify-between gap-2 border-b border-border px-4 py-2.5">
           <div className="min-w-0">
-            <DialogTitle asChild>
-              <h2 id={titleId} className="text-base font-bold text-primary sm:text-lg">
-                Adjust balance
-              </h2>
-            </DialogTitle>
+            <h2 id={titleId} className="text-base font-bold text-primary sm:text-lg">
+              Adjust balance
+            </h2>
             <p className="mt-0.5 truncate text-sm text-muted-foreground">{accountName}</p>
           </div>
           <Button

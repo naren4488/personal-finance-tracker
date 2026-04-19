@@ -14,10 +14,12 @@ export const TransferTransactionRow = memo(function TransferTransactionRow({
   tx,
   accounts,
   onDelete,
+  className,
 }: {
   tx: RecentTransaction
   accounts: Account[]
   onDelete?: (tx: RecentTransaction) => void
+  className?: string
 }) {
   const { fromLabel, toLabel } = getTransferRouteLabels(tx, accounts)
   const route = `${fromLabel} → ${toLabel}`
@@ -29,7 +31,12 @@ export const TransferTransactionRow = memo(function TransferTransactionRow({
   const showDelete = Boolean(onDelete && String(tx.id ?? "").trim())
 
   return (
-    <div className="flex w-full items-center justify-between gap-3 rounded-2xl border border-border/80 bg-card px-4 py-3.5 text-left shadow-sm">
+    <div
+      className={cn(
+        "flex w-full items-center justify-between gap-3 rounded-2xl border border-border/80 bg-card px-4 py-3.5 text-left shadow-sm",
+        className
+      )}
+    >
       <div className="min-w-0 flex-1">
         <p className="truncate text-[15px] font-bold leading-tight text-[#111827] dark:text-foreground">
           Transfer

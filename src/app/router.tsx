@@ -11,6 +11,7 @@ const EntriesPage = lazy(() => import("@/pages/entries-page"))
 const AccountsPage = lazy(() => import("@/pages/accounts-page"))
 const AnalyticsPage = lazy(() => import("@/pages/analytics-page"))
 const ProfilePage = lazy(() => import("@/pages/profile-page"))
+const AddTransactionPage = lazy(() => import("@/pages/add-transaction-page"))
 const LoginPage = lazy(() => import("@/pages/login-page"))
 const RegisterPage = lazy(() => import("@/pages/register-page"))
 
@@ -38,6 +39,7 @@ export const router = createBrowserRouter([
     children: [
       { index: true, element: suspense(<HomePage />) },
       { path: "entries", element: suspense(<EntriesPage />) },
+      { path: "transactions/add", element: suspense(<AddTransactionPage />) },
       { path: "accounts", element: suspense(<AccountsPage />) },
       { path: "analytics", element: suspense(<AnalyticsPage />) },
       { path: "profile", element: suspense(<ProfilePage />) },

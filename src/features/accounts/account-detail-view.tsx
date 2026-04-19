@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useLayoutEffect, useMemo, useState } from "react"
 import { useNavigate } from "react-router-dom"
 import { Archive, ArrowLeft, Banknote, Check, Pencil, Scale, Trash2, X } from "lucide-react"
 import { toast } from "sonner"
@@ -82,6 +82,8 @@ export function AccountDetailView({
   initialEditing = false,
   onAccountDeleted,
   onAdjustBalance,
+  highlightTransactionId,
+  onHighlightTransactionConsumed,
 }: {
   open: boolean
   onOpenChange: (open: boolean) => void
@@ -93,6 +95,8 @@ export function AccountDetailView({
   onAccountDeleted?: () => void
   /** Opens adjust-balance sheet (POST /accounts/:id/adjustments). */
   onAdjustBalance?: () => void
+  highlightTransactionId?: string | null
+  onHighlightTransactionConsumed?: () => void
 }) {
   const navigate = useNavigate()
   const user = useAppSelector((s) => s.auth.user)
@@ -237,6 +241,16 @@ export function AccountDetailView({
       .sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0))
       .slice(0, 100)
   }, [account, recentTransactions])
+
+  useLayoutEffect(() => {
+    if (!open || !account || !highlightTransactionId?.trim()) return
+    const id = highlightTransactionId.trim()
+    const el = document.getElementById(`account-tx-${id}`)
+    if (!el) return
+    el.scrollIntoView({ block: "nearest", behavior: "smooth" })
+    const t = window.setTimeout(() => onHighlightTransactionConsumed?.(), 2200)
+    return () => window.clearTimeout(t)
+  }, [open, account, highlightTransactionId, accountTxs, onHighlightTransactionConsumed])
 
   if (!open || !account) return null
 
@@ -409,7 +423,10 @@ export function AccountDetailView({
                 type="button"
                 variant="outline"
                 className="mt-4 h-11 w-full rounded-xl border-border font-semibold"
-                onClick={() => comingSoon("Add transaction")}
+                onClick={() => {
+                  if (!account?.id) return
+                  navigate(`/transactions/add?accountId=${encodeURIComponent(String(account.id))}`)
+                }}
               >
                 Add Transaction
               </Button>
@@ -456,15 +473,24 @@ export function AccountDetailView({
                 </p>
               ) : (
                 <ul className="flex list-none flex-col gap-2" aria-label="Account transactions">
-                  {accountTxs.map((tx) => (
-                    <li key={tx.id}>
-                      <RecentTransactionRow
-                        tx={tx}
-                        accounts={accountsForRows}
-                        onDelete={txDelete.requestDelete}
-                      />
-                    </li>
-                  ))}
+                  {accountTxs.map((tx) => {
+                    const hid = highlightTransactionId?.trim()
+                    const isNew = Boolean(hid && String(tx.id) === hid)
+                    return (
+                      <li key={tx.id} id={`account-tx-${String(tx.id)}`}>
+                        <RecentTransactionRow
+                          tx={tx}
+                          accounts={accountsForRows}
+                          onDelete={txDelete.requestDelete}
+                          className={
+                            isNew
+                              ? "ring-2 ring-primary/60 ring-offset-2 ring-offset-background"
+                              : undefined
+                          }
+                        />
+                      </li>
+                    )
+                  })}
                 </ul>
               )}
             </div>

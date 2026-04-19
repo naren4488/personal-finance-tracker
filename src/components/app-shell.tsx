@@ -23,7 +23,11 @@ const tabs = [
 export function AppShell() {
   const { pathname } = useLocation()
   const navigate = useNavigate()
-  const showFab = pathname !== "/analytics" && pathname !== "/accounts" && pathname !== "/profile"
+  const showFab =
+    pathname !== "/analytics" &&
+    pathname !== "/accounts" &&
+    pathname !== "/profile" &&
+    !pathname.startsWith("/transactions/")
 
   function handleFabClick() {
     if (pathname === "/entries") {
