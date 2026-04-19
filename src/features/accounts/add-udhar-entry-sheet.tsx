@@ -1,16 +1,17 @@
-import { useCallback, useEffect, useId, useMemo, useState } from "react"
+import { useCallback, useId, useMemo, useState } from "react"
 import { useNavigate } from "react-router-dom"
 import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, ChevronDown, X } from "lucide-react"
 import { toast } from "sonner"
+import { FormDialog } from "@/components/form-dialog"
 import { ToggleTile } from "@/components/toggle-tile"
 import { Button } from "@/components/ui/button"
+import { DialogTitle } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { accountSelectLabel, filterActiveAccounts } from "@/lib/api/account-schemas"
 import { getErrorMessage } from "@/lib/api/errors"
 import type { CreateUdharEntryRequest } from "@/lib/api/udhar-schemas"
 import { endUserSession } from "@/lib/auth/end-session"
-import { FORM_OVERLAY_FOOTER, FORM_OVERLAY_SCROLL_BODY } from "@/lib/form-overlay-scroll"
 import { cn } from "@/lib/utils"
 import {
   useCreatePersonMutation,
@@ -85,13 +86,14 @@ function isAuthTokenRequiredMessage(message: string): boolean {
 }
 
 type MountedProps = {
+  open: boolean
   onOpenChange: (open: boolean) => void
 }
 
 /**
  * Renders only while the sheet is open. Unmounting clears form state without useEffect resets.
  */
-function AddUdharEntrySheetMounted({ onOpenChange }: MountedProps) {
+function AddUdharEntrySheetMounted({ open, onOpenChange }: MountedProps) {
   const titleId = useId()
   const selectPersonId = useId()
   const navigate = useNavigate()
@@ -116,24 +118,8 @@ function AddUdharEntrySheetMounted({ onOpenChange }: MountedProps) {
   const [form, setForm] = useState(() => initialFormState())
 
   const dismiss = useCallback(() => {
-    document.body.style.overflow = ""
     onOpenChange(false)
   }, [onOpenChange])
-
-  useEffect(() => {
-    function onKey(e: KeyboardEvent) {
-      if (e.key === "Escape") dismiss()
-    }
-    window.addEventListener("keydown", onKey)
-    return () => window.removeEventListener("keydown", onKey)
-  }, [dismiss])
-
-  useEffect(() => {
-    document.body.style.overflow = "hidden"
-    return () => {
-      document.body.style.overflow = ""
-    }
-  }, [])
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -226,26 +212,16 @@ function AddUdharEntrySheetMounted({ onOpenChange }: MountedProps) {
     "h-9 rounded-xl border border-border bg-card px-3 text-sm text-foreground shadow-sm outline-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/50"
 
   return (
-    <div className="fixed inset-0 z-50 flex min-h-0 max-h-dvh items-center justify-center overflow-hidden p-2 pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:p-4">
-      <button
-        type="button"
-        className="absolute inset-0 bg-black/50 backdrop-blur-[2px]"
-        aria-label="Close overlay"
-        onClick={dismiss}
-      />
-      <div
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby={titleId}
-        className={cn(
-          "relative flex min-h-0 max-h-[min(calc(100dvh-1.25rem-env(safe-area-inset-bottom)),92dvh)] w-full max-w-lg flex-col overflow-hidden rounded-2xl border border-border bg-card shadow-2xl sm:max-h-[min(92dvh,calc(100dvh-2rem))]",
-          "animate-in fade-in zoom-in-95 duration-200"
-        )}
-      >
+    <FormDialog
+      open={open}
+      onOpenChange={onOpenChange}
+      header={
         <header className="flex shrink-0 items-start justify-between gap-2 border-b border-border px-4 py-2.5">
-          <h2 id={titleId} className="text-base font-bold text-primary sm:text-lg">
-            Add Udhar Entry
-          </h2>
+          <DialogTitle asChild>
+            <h2 id={titleId} className="text-base font-bold text-primary sm:text-lg">
+              Add Udhar Entry
+            </h2>
+          </DialogTitle>
           <Button
             type="button"
             variant="ghost"
@@ -257,226 +233,214 @@ function AddUdharEntrySheetMounted({ onOpenChange }: MountedProps) {
             <X className="size-5" strokeWidth={2} />
           </Button>
         </header>
-
-        <form onSubmit={handleSubmit} className="flex min-h-0 flex-1 flex-col overflow-hidden">
-          <div className={cn(FORM_OVERLAY_SCROLL_BODY, "space-y-2 px-4 py-2")}>
-            <section>
-              <Label className="mb-0.5 block text-xs font-bold text-primary">Type</Label>
-              <div className="grid grid-cols-2 gap-1.5">
-                {ENTRY_TYPES.map(({ id, label, Icon }) => (
-                  <ToggleTile
-                    key={id}
-                    selected={form.entryType === id}
-                    onClick={() => setForm((f) => ({ ...f, entryType: id }))}
-                  >
-                    <Icon className="size-4 shrink-0" strokeWidth={2.25} aria-hidden />
-                    <span>{label}</span>
-                  </ToggleTile>
-                ))}
-              </div>
-            </section>
-
-            <section>
-              <div className="mb-0.5 flex items-center justify-between gap-2">
-                <Label className="text-xs font-bold text-primary">Person</Label>
-                {form.personMode === "existing" ? (
-                  <button
-                    type="button"
-                    className="text-xs font-semibold text-primary hover:underline"
-                    onClick={() =>
-                      setForm((f) => ({ ...f, personMode: "new", selectedPersonId: "" }))
-                    }
-                  >
-                    + Add New
-                  </button>
-                ) : (
-                  <button
-                    type="button"
-                    className="text-xs font-semibold text-primary hover:underline"
-                    onClick={() =>
-                      setForm((f) => ({
-                        ...f,
-                        personMode: "existing",
-                        personName: "",
-                        personPhone: "",
-                      }))
-                    }
-                  >
-                    Select Existing
-                  </button>
-                )}
-              </div>
-
-              {form.personMode === "existing" ? (
-                <div className="space-y-1.5">
-                  {peopleListLoading ? (
-                    <p className="text-xs text-muted-foreground">Loading…</p>
-                  ) : null}
-                  <div className="relative">
-                    <select
-                      id={selectPersonId}
-                      value={form.selectedPersonId}
-                      disabled={peopleListLoading && people.length === 0}
-                      onChange={(e) => setForm((f) => ({ ...f, selectedPersonId: e.target.value }))}
-                      className={cn(
-                        fieldClass,
-                        "w-full appearance-none pr-9",
-                        "disabled:cursor-not-allowed disabled:opacity-60",
-                        !form.selectedPersonId && "text-muted-foreground"
-                      )}
-                    >
-                      <option value="">Select person</option>
-                      {people.map((p) => (
-                        <option key={p.id} value={p.id}>
-                          {p.name}
-                          {p.phoneNumber?.trim() ? ` · ${p.phoneNumber}` : ""}
-                        </option>
-                      ))}
-                    </select>
-                    <SelectChevron />
-                  </div>
-                </div>
-              ) : (
-                <div className="grid grid-cols-2 gap-1.5">
-                  <Input
-                    placeholder="Person's name"
-                    value={form.personName}
-                    onChange={(e) => setForm((f) => ({ ...f, personName: e.target.value }))}
-                    className="rounded-xl border-border bg-muted/50 px-3 text-sm h-9"
-                    autoComplete="name"
-                  />
-                  <Input
-                    type="tel"
-                    placeholder="Phone (optional)"
-                    value={form.personPhone}
-                    onChange={(e) => setForm((f) => ({ ...f, personPhone: e.target.value }))}
-                    className="rounded-xl border-border bg-muted/50 px-3 text-sm h-9"
-                    autoComplete="tel"
-                  />
-                </div>
-              )}
-            </section>
-
-            <section>
-              <Label htmlFor="udhar-amount" className="mb-0.5 block text-xs font-bold text-primary">
-                Amount (₹)
-              </Label>
-              <Input
-                id="udhar-amount"
-                inputMode="numeric"
-                placeholder="0"
-                value={form.amount}
-                onChange={(e) =>
-                  setForm((f) => ({ ...f, amount: e.target.value.replace(/[^\d]/g, "") }))
-                }
-                className="h-12 rounded-xl border-border bg-muted/60 text-center text-2xl font-semibold tabular-nums text-primary/80 placeholder:text-primary/40"
-              />
-            </section>
-
-            <section>
-              <Label
-                htmlFor="udhar-account"
-                className="mb-0.5 block text-xs font-bold text-primary"
+      }
+      formProps={{ onSubmit: handleSubmit }}
+      footer={
+        <Button
+          type="submit"
+          disabled={isCreatingPerson || isUdharSubmitting}
+          className="h-10 w-full rounded-xl bg-[hsl(230_22%_62%)] text-sm font-bold text-white hover:bg-[hsl(230_22%_56%)] disabled:opacity-60 sm:h-11 sm:text-base"
+        >
+          {isCreatingPerson ? "Saving…" : isUdharSubmitting ? "Submitting…" : "Add Entry"}
+        </Button>
+      }
+    >
+      <div className="space-y-2 px-4 py-2">
+        <section>
+          <Label className="mb-0.5 block text-xs font-bold text-primary">Type</Label>
+          <div className="grid grid-cols-2 gap-1.5">
+            {ENTRY_TYPES.map(({ id, label, Icon }) => (
+              <ToggleTile
+                key={id}
+                selected={form.entryType === id}
+                onClick={() => setForm((f) => ({ ...f, entryType: id }))}
               >
-                Account
-              </Label>
+                <Icon className="size-4 shrink-0" strokeWidth={2.25} aria-hidden />
+                <span>{label}</span>
+              </ToggleTile>
+            ))}
+          </div>
+        </section>
+
+        <section>
+          <div className="mb-0.5 flex items-center justify-between gap-2">
+            <Label className="text-xs font-bold text-primary">Person</Label>
+            {form.personMode === "existing" ? (
+              <button
+                type="button"
+                className="text-xs font-semibold text-primary hover:underline"
+                onClick={() => setForm((f) => ({ ...f, personMode: "new", selectedPersonId: "" }))}
+              >
+                + Add New
+              </button>
+            ) : (
+              <button
+                type="button"
+                className="text-xs font-semibold text-primary hover:underline"
+                onClick={() =>
+                  setForm((f) => ({
+                    ...f,
+                    personMode: "existing",
+                    personName: "",
+                    personPhone: "",
+                  }))
+                }
+              >
+                Select Existing
+              </button>
+            )}
+          </div>
+
+          {form.personMode === "existing" ? (
+            <div className="space-y-1.5">
+              {peopleListLoading ? <p className="text-xs text-muted-foreground">Loading…</p> : null}
               <div className="relative">
-                {accountsListLoading ? (
-                  <p className="text-xs text-muted-foreground">Loading accounts…</p>
-                ) : accounts.length === 0 ? (
-                  <p className="text-xs text-muted-foreground">
-                    Add an account first to link this entry.
-                  </p>
-                ) : null}
                 <select
-                  id="udhar-account"
-                  value={form.accountId}
-                  disabled={accountsListLoading || accounts.length === 0}
-                  onChange={(e) => setForm((f) => ({ ...f, accountId: e.target.value }))}
+                  id={selectPersonId}
+                  value={form.selectedPersonId}
+                  disabled={peopleListLoading && people.length === 0}
+                  onChange={(e) => setForm((f) => ({ ...f, selectedPersonId: e.target.value }))}
                   className={cn(
                     fieldClass,
                     "w-full appearance-none pr-9",
-                    !form.accountId && "text-muted-foreground",
-                    "disabled:cursor-not-allowed disabled:opacity-60"
+                    "disabled:cursor-not-allowed disabled:opacity-60",
+                    !form.selectedPersonId && "text-muted-foreground"
                   )}
                 >
-                  <option value="">Select account</option>
-                  {accounts.map((a) => (
-                    <option key={a.id} value={a.id}>
-                      {accountSelectLabel(a)}
+                  <option value="">Select person</option>
+                  {people.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.name}
+                      {p.phoneNumber?.trim() ? ` · ${p.phoneNumber}` : ""}
                     </option>
                   ))}
                 </select>
                 <SelectChevron />
               </div>
-            </section>
-
-            <div className="grid grid-cols-2 gap-2">
-              <section>
-                <Label htmlFor="udhar-date" className="mb-0.5 block text-xs font-bold text-primary">
-                  Date
-                </Label>
-                <Input
-                  id="udhar-date"
-                  type="date"
-                  value={form.date}
-                  onChange={(e) => setForm((f) => ({ ...f, date: e.target.value }))}
-                  className={cn(fieldClass, "scheme-light dark:scheme-dark")}
-                />
-              </section>
-              <section>
-                <Label
-                  htmlFor="udhar-due-date"
-                  className="mb-0.5 block text-xs font-bold text-primary"
-                >
-                  Due date
-                </Label>
-                <Input
-                  id="udhar-due-date"
-                  type="date"
-                  value={form.dueDate}
-                  onChange={(e) => setForm((f) => ({ ...f, dueDate: e.target.value }))}
-                  className={cn(fieldClass, "scheme-light dark:scheme-dark")}
-                />
-              </section>
             </div>
-
-            <section>
-              <Label htmlFor="udhar-note" className="mb-0.5 block text-xs font-bold text-primary">
-                Note <span className="font-normal text-muted-foreground">(optional)</span>
-              </Label>
-              <textarea
-                id="udhar-note"
-                rows={2}
-                placeholder="What was this for?"
-                value={form.note}
-                onChange={(e) => setForm((f) => ({ ...f, note: e.target.value }))}
-                className={cn(
-                  "min-h-9 w-full resize-none rounded-xl border border-border bg-card px-3 py-1.5 text-sm text-foreground shadow-sm outline-none",
-                  "placeholder:text-muted-foreground/80",
-                  "focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/50"
-                )}
+          ) : (
+            <div className="grid grid-cols-2 gap-1.5">
+              <Input
+                placeholder="Person's name"
+                value={form.personName}
+                onChange={(e) => setForm((f) => ({ ...f, personName: e.target.value }))}
+                className="rounded-xl border-border bg-muted/50 px-3 text-sm h-9"
+                autoComplete="name"
               />
-            </section>
-          </div>
+              <Input
+                type="tel"
+                placeholder="Phone (optional)"
+                value={form.personPhone}
+                onChange={(e) => setForm((f) => ({ ...f, personPhone: e.target.value }))}
+                className="rounded-xl border-border bg-muted/50 px-3 text-sm h-9"
+                autoComplete="tel"
+              />
+            </div>
+          )}
+        </section>
 
-          <div className={cn(FORM_OVERLAY_FOOTER, "px-4")}>
-            <Button
-              type="submit"
-              disabled={isCreatingPerson || isUdharSubmitting}
-              className="h-10 w-full rounded-xl bg-[hsl(230_22%_62%)] text-sm font-bold text-white hover:bg-[hsl(230_22%_56%)] disabled:opacity-60 sm:h-11 sm:text-base"
+        <section>
+          <Label htmlFor="udhar-amount" className="mb-0.5 block text-xs font-bold text-primary">
+            Amount (₹)
+          </Label>
+          <Input
+            id="udhar-amount"
+            inputMode="numeric"
+            placeholder="0"
+            value={form.amount}
+            onChange={(e) =>
+              setForm((f) => ({ ...f, amount: e.target.value.replace(/[^\d]/g, "") }))
+            }
+            className="h-12 rounded-xl border-border bg-muted/60 text-center text-2xl font-semibold tabular-nums text-primary/80 placeholder:text-primary/40"
+          />
+        </section>
+
+        <section>
+          <Label htmlFor="udhar-account" className="mb-0.5 block text-xs font-bold text-primary">
+            Account
+          </Label>
+          <div className="relative">
+            {accountsListLoading ? (
+              <p className="text-xs text-muted-foreground">Loading accounts…</p>
+            ) : accounts.length === 0 ? (
+              <p className="text-xs text-muted-foreground">
+                Add an account first to link this entry.
+              </p>
+            ) : null}
+            <select
+              id="udhar-account"
+              value={form.accountId}
+              disabled={accountsListLoading || accounts.length === 0}
+              onChange={(e) => setForm((f) => ({ ...f, accountId: e.target.value }))}
+              className={cn(
+                fieldClass,
+                "w-full appearance-none pr-9",
+                !form.accountId && "text-muted-foreground",
+                "disabled:cursor-not-allowed disabled:opacity-60"
+              )}
             >
-              {isCreatingPerson ? "Saving…" : isUdharSubmitting ? "Submitting…" : "Add Entry"}
-            </Button>
+              <option value="">Select account</option>
+              {accounts.map((a) => (
+                <option key={a.id} value={a.id}>
+                  {accountSelectLabel(a)}
+                </option>
+              ))}
+            </select>
+            <SelectChevron />
           </div>
-        </form>
+        </section>
+
+        <div className="grid grid-cols-2 gap-2">
+          <section>
+            <Label htmlFor="udhar-date" className="mb-0.5 block text-xs font-bold text-primary">
+              Date
+            </Label>
+            <Input
+              id="udhar-date"
+              type="date"
+              value={form.date}
+              onChange={(e) => setForm((f) => ({ ...f, date: e.target.value }))}
+              className={cn(fieldClass, "scheme-light dark:scheme-dark")}
+            />
+          </section>
+          <section>
+            <Label htmlFor="udhar-due-date" className="mb-0.5 block text-xs font-bold text-primary">
+              Due date
+            </Label>
+            <Input
+              id="udhar-due-date"
+              type="date"
+              value={form.dueDate}
+              onChange={(e) => setForm((f) => ({ ...f, dueDate: e.target.value }))}
+              className={cn(fieldClass, "scheme-light dark:scheme-dark")}
+            />
+          </section>
+        </div>
+
+        <section>
+          <Label htmlFor="udhar-note" className="mb-0.5 block text-xs font-bold text-primary">
+            Note <span className="font-normal text-muted-foreground">(optional)</span>
+          </Label>
+          <textarea
+            id="udhar-note"
+            rows={2}
+            placeholder="What was this for?"
+            value={form.note}
+            onChange={(e) => setForm((f) => ({ ...f, note: e.target.value }))}
+            className={cn(
+              "min-h-9 w-full resize-none rounded-xl border border-border bg-card px-3 py-1.5 text-sm text-foreground shadow-sm outline-none",
+              "placeholder:text-muted-foreground/80",
+              "focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/50"
+            )}
+          />
+        </section>
       </div>
-    </div>
+    </FormDialog>
   )
 }
 
 /** Wrapper has no hooks — mounted subtree owns form state and resets on unmount when `open` is false. */
 export function AddUdharEntrySheet({ open, onOpenChange }: AddUdharEntrySheetProps) {
   if (!open) return null
-  return <AddUdharEntrySheetMounted onOpenChange={onOpenChange} />
+  return <AddUdharEntrySheetMounted open={open} onOpenChange={onOpenChange} />
 }

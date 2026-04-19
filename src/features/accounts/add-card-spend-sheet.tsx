@@ -4,8 +4,10 @@ import { useNavigate } from "react-router-dom"
 import { ChevronDown, Plus, X } from "lucide-react"
 import { useForm, useWatch } from "react-hook-form"
 import { toast } from "sonner"
+import { FormDialog } from "@/components/form-dialog"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import { DialogTitle } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import type { Account } from "@/lib/api/account-schemas"
@@ -18,7 +20,6 @@ import {
 import { getErrorMessage } from "@/lib/api/errors"
 import type { CreateTransactionPayload } from "@/lib/api/schemas"
 import { endUserSession } from "@/lib/auth/end-session"
-import { FORM_OVERLAY_FOOTER, FORM_OVERLAY_SCROLL_BODY } from "@/lib/form-overlay-scroll"
 import { formatCurrency } from "@/lib/format"
 import { cn } from "@/lib/utils"
 import { useAddTransactionMutation, useGetCreditCardsQuery } from "@/store/api/base-api"
@@ -68,13 +69,15 @@ export type AddCardSpendSheetProps = {
 
 export function AddCardSpendSheet({ open, onOpenChange, account }: AddCardSpendSheetProps) {
   if (!open) return null
-  return <AddCardSpendSheetInner defaultAccount={account} onOpenChange={onOpenChange} />
+  return <AddCardSpendSheetInner open={open} defaultAccount={account} onOpenChange={onOpenChange} />
 }
 
 function AddCardSpendSheetInner({
+  open,
   defaultAccount,
   onOpenChange,
 }: {
+  open: boolean
   defaultAccount: Account | null
   onOpenChange: (open: boolean) => void
 }) {
@@ -111,22 +114,6 @@ function AddCardSpendSheetInner({
   const dismiss = useCallback(() => {
     onOpenChange(false)
   }, [onOpenChange])
-
-  useEffect(() => {
-    function onKey(e: KeyboardEvent) {
-      if (e.key === "Escape") dismiss()
-    }
-    window.addEventListener("keydown", onKey)
-    return () => window.removeEventListener("keydown", onKey)
-  }, [dismiss])
-
-  useEffect(() => {
-    const prev = document.body.style.overflow
-    document.body.style.overflow = "hidden"
-    return () => {
-      document.body.style.overflow = prev
-    }
-  }, [])
 
   useEffect(() => {
     if (!defaultAccount?.id) return
@@ -237,26 +224,17 @@ function AddCardSpendSheetInner({
   const lb = "mb-0.5 block text-[10px] font-bold text-primary sm:text-xs"
 
   return (
-    <div className="fixed inset-0 z-70 flex min-h-0 max-h-dvh items-center justify-center overflow-hidden p-2 pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:p-4">
-      <button
-        type="button"
-        className="absolute inset-0 bg-black/50 backdrop-blur-[2px]"
-        aria-label="Close overlay"
-        onClick={dismiss}
-      />
-      <div
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby={titleId}
-        className={cn(
-          "relative flex min-h-0 max-h-[min(calc(100dvh-1.25rem-env(safe-area-inset-bottom)),92dvh)] w-full max-w-xl flex-col overflow-hidden rounded-2xl border border-border bg-card shadow-2xl sm:max-h-[min(92dvh,calc(100dvh-2rem))]",
-          "animate-in fade-in zoom-in-95 duration-200"
-        )}
-      >
+    <FormDialog
+      open={open}
+      onOpenChange={onOpenChange}
+      contentClassName="max-w-xl"
+      header={
         <header className="flex shrink-0 items-start justify-between gap-2 border-b border-border px-4 py-2.5 sm:px-4">
-          <h2 id={titleId} className="text-base font-bold text-primary sm:text-lg">
-            Add Card Spend
-          </h2>
+          <DialogTitle asChild>
+            <h2 id={titleId} className="text-base font-bold text-primary sm:text-lg">
+              Add Card Spend
+            </h2>
+          </DialogTitle>
           <Button
             type="button"
             variant="ghost"
@@ -268,225 +246,212 @@ function AddCardSpendSheetInner({
             <X className="size-5" strokeWidth={2} />
           </Button>
         </header>
-
-        <form
-          onSubmit={form.handleSubmit(onValid)}
-          className="flex min-h-0 flex-1 flex-col overflow-hidden"
+      }
+      formProps={{ onSubmit: form.handleSubmit(onValid) }}
+      footer={
+        <Button
+          type="submit"
+          disabled={isSubmitting || cardsLoading || creditCards.length === 0}
+          className="h-10 w-full rounded-xl bg-[hsl(230_22%_62%)] text-sm font-bold text-white hover:bg-[hsl(230_22%_56%)] sm:h-11 sm:text-base"
         >
-          <input type="hidden" name="type" value="expense" readOnly aria-hidden />
+          {isSubmitting ? "Saving…" : "Add Card Spend"}
+        </Button>
+      }
+    >
+      <input type="hidden" name="type" value="expense" readOnly aria-hidden />
 
-          <div
-            className={cn(FORM_OVERLAY_SCROLL_BODY, "space-y-3 px-4 py-3 sm:space-y-3.5 sm:py-4")}
-          >
-            <section>
-              <Label htmlFor={cardId} className={lb}>
-                Credit card
-              </Label>
-              <div className="relative">
-                <select
-                  id={cardId}
-                  disabled={cardsLoading || creditCards.length === 0}
-                  {...form.register("creditCardAccountId")}
+      <div className="space-y-3 px-4 py-3 sm:space-y-3.5 sm:py-4">
+        <section>
+          <Label htmlFor={cardId} className={lb}>
+            Credit card
+          </Label>
+          <div className="relative">
+            <select
+              id={cardId}
+              disabled={cardsLoading || creditCards.length === 0}
+              {...form.register("creditCardAccountId")}
+              className={cn(
+                fieldBase,
+                "appearance-none pr-8",
+                !selectedCardId && "text-muted-foreground"
+              )}
+            >
+              <option value="">{cardsLoading ? "Loading cards…" : "Select credit card"}</option>
+              {creditCards.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {cardSpendSelectLabel(c)}
+                </option>
+              ))}
+            </select>
+            <SelectChevron compact />
+          </div>
+          {form.formState.errors.creditCardAccountId && (
+            <p className="mt-1 text-xs text-destructive">
+              {form.formState.errors.creditCardAccountId.message}
+            </p>
+          )}
+        </section>
+
+        {selectedCard && (
+          <section>
+            <div className="space-y-2 rounded-xl border border-border/80 bg-muted/40 px-3 py-3 text-sm">
+              <div className="flex items-center justify-between gap-3">
+                <span className="text-muted-foreground">Available credit</span>
+                <span
                   className={cn(
-                    fieldBase,
-                    "appearance-none pr-8",
-                    !selectedCardId && "text-muted-foreground"
+                    "font-bold tabular-nums",
+                    !limitKnown && "text-muted-foreground",
+                    limitKnown && available < 0 && "text-destructive",
+                    limitKnown && available >= 0 && "text-foreground"
                   )}
                 >
-                  <option value="">{cardsLoading ? "Loading cards…" : "Select credit card"}</option>
-                  {creditCards.map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {cardSpendSelectLabel(c)}
-                    </option>
-                  ))}
-                </select>
-                <SelectChevron compact />
+                  {limitKnown ? formatCurrency(available) : "—"}
+                </span>
               </div>
-              {form.formState.errors.creditCardAccountId && (
-                <p className="mt-1 text-xs text-destructive">
-                  {form.formState.errors.creditCardAccountId.message}
-                </p>
-              )}
-            </section>
+              <div className="flex items-center justify-between gap-3 border-t border-border/60 pt-2 text-xs sm:text-sm">
+                <span className="text-muted-foreground">Used</span>
+                <span className="font-semibold tabular-nums text-foreground">
+                  {formatCurrency(used)}
+                </span>
+              </div>
+            </div>
+          </section>
+        )}
 
-            {selectedCard && (
-              <section>
-                <div className="space-y-2 rounded-xl border border-border/80 bg-muted/40 px-3 py-3 text-sm">
-                  <div className="flex items-center justify-between gap-3">
-                    <span className="text-muted-foreground">Available credit</span>
-                    <span
-                      className={cn(
-                        "font-bold tabular-nums",
-                        !limitKnown && "text-muted-foreground",
-                        limitKnown && available < 0 && "text-destructive",
-                        limitKnown && available >= 0 && "text-foreground"
-                      )}
-                    >
-                      {limitKnown ? formatCurrency(available) : "—"}
-                    </span>
-                  </div>
-                  <div className="flex items-center justify-between gap-3 border-t border-border/60 pt-2 text-xs sm:text-sm">
-                    <span className="text-muted-foreground">Used</span>
-                    <span className="font-semibold tabular-nums text-foreground">
-                      {formatCurrency(used)}
-                    </span>
-                  </div>
-                </div>
-              </section>
+        <section>
+          <Label htmlFor={amountId} className={lb}>
+            Amount (₹)
+          </Label>
+          <Input
+            id={amountId}
+            type="text"
+            inputMode="decimal"
+            autoComplete="off"
+            placeholder="0.00"
+            aria-invalid={!!form.formState.errors.amount}
+            {...form.register("amount")}
+            className={cn(
+              "h-12 rounded-xl border-2 border-primary bg-card px-3 text-center text-lg font-bold tabular-nums shadow-sm sm:h-14 sm:text-xl",
+              "focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-primary/30"
             )}
+          />
+          {form.formState.errors.amount && (
+            <p className="mt-1 text-xs text-destructive">{form.formState.errors.amount.message}</p>
+          )}
+        </section>
 
-            <section>
-              <Label htmlFor={amountId} className={lb}>
-                Amount (₹)
-              </Label>
-              <Input
-                id={amountId}
-                type="text"
-                inputMode="decimal"
-                autoComplete="off"
-                placeholder="0.00"
-                aria-invalid={!!form.formState.errors.amount}
-                {...form.register("amount")}
-                className={cn(
-                  "h-12 rounded-xl border-2 border-primary bg-card px-3 text-center text-lg font-bold tabular-nums shadow-sm sm:h-14 sm:text-xl",
-                  "focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-primary/30"
-                )}
-              />
-              {form.formState.errors.amount && (
-                <p className="mt-1 text-xs text-destructive">
-                  {form.formState.errors.amount.message}
-                </p>
-              )}
-            </section>
+        <section>
+          <Label htmlFor={categoryId} className={lb}>
+            Category
+          </Label>
+          <Input
+            id={categoryId}
+            placeholder="e.g. food"
+            autoComplete="off"
+            aria-invalid={!!form.formState.errors.category}
+            {...form.register("category")}
+            className={fieldBase}
+          />
+          {form.formState.errors.category && (
+            <p className="mt-1 text-xs text-destructive">
+              {form.formState.errors.category.message}
+            </p>
+          )}
+        </section>
 
-            <section>
-              <Label htmlFor={categoryId} className={lb}>
-                Category
-              </Label>
-              <Input
-                id={categoryId}
-                placeholder="e.g. food"
-                autoComplete="off"
-                aria-invalid={!!form.formState.errors.category}
-                {...form.register("category")}
-                className={fieldBase}
-              />
-              {form.formState.errors.category && (
-                <p className="mt-1 text-xs text-destructive">
-                  {form.formState.errors.category.message}
-                </p>
-              )}
-            </section>
+        <section>
+          <Label htmlFor={feeId} className={lb}>
+            Fee amount (₹)
+          </Label>
+          <Input
+            id={feeId}
+            type="text"
+            inputMode="decimal"
+            autoComplete="off"
+            placeholder="0 (optional)"
+            {...form.register("feeAmount")}
+            className={fieldBase}
+          />
+          <p className="mt-1 text-[10px] text-muted-foreground sm:text-[11px]">Leave empty for 0</p>
+        </section>
 
-            <section>
-              <Label htmlFor={feeId} className={lb}>
-                Fee amount (₹)
-              </Label>
-              <Input
-                id={feeId}
-                type="text"
-                inputMode="decimal"
-                autoComplete="off"
-                placeholder="0 (optional)"
-                {...form.register("feeAmount")}
-                className={fieldBase}
-              />
-              <p className="mt-1 text-[10px] text-muted-foreground sm:text-[11px]">
-                Leave empty for 0
-              </p>
-            </section>
+        <section>
+          <Label htmlFor={dateId} className={lb}>
+            Date
+          </Label>
+          <Input
+            id={dateId}
+            type="date"
+            aria-invalid={!!form.formState.errors.date}
+            {...form.register("date")}
+            className={fieldBase}
+          />
+          {form.formState.errors.date && (
+            <p className="mt-1 text-xs text-destructive">{form.formState.errors.date.message}</p>
+          )}
+        </section>
 
-            <section>
-              <Label htmlFor={dateId} className={lb}>
-                Date
-              </Label>
-              <Input
-                id={dateId}
-                type="date"
-                aria-invalid={!!form.formState.errors.date}
-                {...form.register("date")}
-                className={fieldBase}
-              />
-              {form.formState.errors.date && (
-                <p className="mt-1 text-xs text-destructive">
-                  {form.formState.errors.date.message}
-                </p>
-              )}
-            </section>
+        <section>
+          <Label htmlFor={noteId} className={lb}>
+            Note
+          </Label>
+          <Input
+            id={noteId}
+            placeholder="Optional"
+            autoComplete="off"
+            {...form.register("note")}
+            className={fieldBase}
+          />
+        </section>
 
-            <section>
-              <Label htmlFor={noteId} className={lb}>
-                Note
-              </Label>
-              <Input
-                id={noteId}
-                placeholder="Optional"
-                autoComplete="off"
-                {...form.register("note")}
-                className={fieldBase}
-              />
-            </section>
-
-            <section>
-              <Label htmlFor={tagInputId} className={lb}>
-                Tags
-              </Label>
-              <div className="flex flex-wrap gap-2">
-                <Input
-                  id={tagInputId}
-                  value={tagDraft}
-                  onChange={(e) => setTagDraft(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") {
-                      e.preventDefault()
-                      addTag()
-                    }
-                  }}
-                  placeholder="Add tag"
-                  className={cn(fieldBase, "min-w-32 flex-1")}
-                />
-                <Button
-                  type="button"
-                  variant="secondary"
-                  size="sm"
-                  className="h-9 shrink-0 rounded-xl sm:h-10"
-                  onClick={addTag}
-                  aria-label="Add tag"
-                >
-                  <Plus className="size-4" />
-                </Button>
-              </div>
-              {tags.length > 0 && (
-                <div className="mt-2 flex flex-wrap gap-1.5">
-                  {tags.map((t) => (
-                    <Badge key={t} variant="secondary" className="gap-1 pr-1 font-normal">
-                      {t}
-                      <button
-                        type="button"
-                        className="rounded-full p-0.5 hover:bg-muted"
-                        aria-label={`Remove ${t}`}
-                        onClick={() => removeTag(t)}
-                      >
-                        <X className="size-3" />
-                      </button>
-                    </Badge>
-                  ))}
-                </div>
-              )}
-            </section>
-          </div>
-
-          <div className={FORM_OVERLAY_FOOTER}>
+        <section>
+          <Label htmlFor={tagInputId} className={lb}>
+            Tags
+          </Label>
+          <div className="flex flex-wrap gap-2">
+            <Input
+              id={tagInputId}
+              value={tagDraft}
+              onChange={(e) => setTagDraft(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault()
+                  addTag()
+                }
+              }}
+              placeholder="Add tag"
+              className={cn(fieldBase, "min-w-32 flex-1")}
+            />
             <Button
-              type="submit"
-              disabled={isSubmitting || cardsLoading || creditCards.length === 0}
-              className="h-10 w-full rounded-xl bg-[hsl(230_22%_62%)] text-sm font-bold text-white hover:bg-[hsl(230_22%_56%)] sm:h-11 sm:text-base"
+              type="button"
+              variant="secondary"
+              size="sm"
+              className="h-9 shrink-0 rounded-xl sm:h-10"
+              onClick={addTag}
+              aria-label="Add tag"
             >
-              {isSubmitting ? "Saving…" : "Add Card Spend"}
+              <Plus className="size-4" />
             </Button>
           </div>
-        </form>
+          {tags.length > 0 && (
+            <div className="mt-2 flex flex-wrap gap-1.5">
+              {tags.map((t) => (
+                <Badge key={t} variant="secondary" className="gap-1 pr-1 font-normal">
+                  {t}
+                  <button
+                    type="button"
+                    className="rounded-full p-0.5 hover:bg-muted"
+                    aria-label={`Remove ${t}`}
+                    onClick={() => removeTag(t)}
+                  >
+                    <X className="size-3" />
+                  </button>
+                </Badge>
+              ))}
+            </div>
+          )}
+        </section>
       </div>
-    </div>
+    </FormDialog>
   )
 }

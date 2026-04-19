@@ -4,9 +4,11 @@ import { useNavigate } from "react-router-dom"
 import { ChevronDown, CreditCard, Gem, Landmark, Plus, Tag, X } from "lucide-react"
 import { type UseFormReturn, useForm, useWatch } from "react-hook-form"
 import { toast } from "sonner"
+import { FormDialog } from "@/components/form-dialog"
 import { Badge } from "@/components/ui/badge"
 import { ToggleTile } from "@/components/toggle-tile"
 import { Button } from "@/components/ui/button"
+import { DialogDescription, DialogTitle } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -22,11 +24,7 @@ import {
 import { getErrorMessage } from "@/lib/api/errors"
 import { isLoanAccount } from "@/lib/api/loan-account-map"
 import { INCOME_SOURCE_OPTIONS } from "@/lib/api/transaction-schemas"
-import {
-  FORM_OVERLAY_FILL_BODY,
-  FORM_OVERLAY_FOOTER,
-  FORM_OVERLAY_SCROLL_BODY,
-} from "@/lib/form-overlay-scroll"
+import { FORM_OVERLAY_FILL_BODY, FORM_OVERLAY_SCROLL_BODY } from "@/lib/form-overlay-scroll"
 import type {
   CreateTransactionPayload,
   TransactionType,
@@ -404,6 +402,7 @@ export type AddTransactionModalProps = {
 }
 
 type MountedProps = {
+  open: boolean
   onOpenChange: (open: boolean) => void
   expenseFlow: boolean
   initialType: TransactionType
@@ -413,6 +412,7 @@ type MountedProps = {
 }
 
 function AddTransactionModalMounted({
+  open,
   onOpenChange,
   expenseFlow,
   initialType,
@@ -907,747 +907,570 @@ function AddTransactionModalMounted({
         : "Paying from"
 
   return (
-    <div className="fixed inset-0 z-60 flex min-h-0 max-h-dvh items-center justify-center overflow-hidden p-2 pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:p-4">
-      <button
-        type="button"
-        className="absolute inset-0 bg-black/50 backdrop-blur-[2px]"
-        aria-label="Close overlay"
-        onClick={dismiss}
-      />
-      <div
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby={titleId}
-        className={cn(
-          "relative flex min-h-0 max-h-[min(calc(100dvh-1.25rem-env(safe-area-inset-bottom)),92dvh)] w-full max-w-lg flex-col overflow-hidden rounded-2xl border border-border bg-card shadow-2xl sm:max-h-[min(92dvh,calc(100dvh-2rem))]",
-          "animate-in fade-in zoom-in-95 duration-200"
-        )}
-      >
-        <header className="flex shrink-0 items-center justify-between gap-2 border-b border-border px-5 py-4">
-          <h2 id={titleId} className="text-base font-bold text-primary sm:text-lg">
-            {modalTitle}
-          </h2>
+    <FormDialog
+      open={open}
+      onOpenChange={onOpenChange}
+      header={
+        <header className="shrink-0 border-b border-border/80 bg-card px-5 py-4">
+          <div className="flex items-center justify-between gap-2">
+            <DialogTitle asChild>
+              <h2 id={titleId} className="text-base font-bold text-primary sm:text-lg">
+                {modalTitle}
+              </h2>
+            </DialogTitle>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8 shrink-0 rounded-full text-muted-foreground hover:bg-muted hover:text-foreground"
+              aria-label="Close"
+              onClick={dismiss}
+            >
+              <X className="size-4" strokeWidth={2.5} />
+            </Button>
+          </div>
+          <DialogDescription className="mt-2 text-center text-xs leading-relaxed text-muted-foreground sm:text-sm">
+            Log income, expenses, or transfers in one place.
+          </DialogDescription>
+        </header>
+      }
+      formProps={
+        !isLoading && !isError && hasAccount
+          ? { id: "add-transaction-form", onSubmit: handleSubmit }
+          : undefined
+      }
+      footer={
+        !isLoading && !isError && hasAccount ? (
+          <Button
+            form="add-transaction-form"
+            type="submit"
+            disabled={
+              isSubmitting ||
+              (effectiveType === "transfer" &&
+                transferDestinationType === "credit_card_bill" &&
+                isCreditCardPaymentDisabled)
+            }
+            className="h-10 w-full rounded-xl bg-[hsl(230_22%_62%)] text-sm font-bold text-white hover:bg-[hsl(230_22%_56%)] disabled:opacity-60 sm:h-11 sm:text-base"
+          >
+            {isSubmitting ? "Saving…" : submitLabel}
+          </Button>
+        ) : null
+      }
+    >
+      {isLoading && (
+        <div className={cn(FORM_OVERLAY_FILL_BODY, "justify-center px-5 py-5")}>
+          <div className="space-y-4">
+            <Skeleton className="h-14 w-full rounded-xl" />
+            <Skeleton className="h-10 w-full rounded-xl" />
+            <Skeleton className="h-10 w-full rounded-xl" />
+          </div>
+        </div>
+      )}
+
+      {isError && !isLoading && (
+        <div
+          className={cn(
+            FORM_OVERLAY_FILL_BODY,
+            "items-center justify-center gap-4 px-5 py-5 text-center"
+          )}
+        >
+          <p className="text-sm font-medium text-destructive">{getErrorMessage(error)}</p>
           <Button
             type="button"
-            variant="ghost"
-            size="icon"
-            className="h-8 w-8 shrink-0 rounded-full text-muted-foreground hover:bg-muted hover:text-foreground"
-            aria-label="Close"
-            onClick={dismiss}
+            variant="outline"
+            className="h-10 rounded-xl px-6"
+            onClick={() => refetch()}
           >
-            <X className="size-4" strokeWidth={2.5} />
+            Retry
           </Button>
-        </header>
+        </div>
+      )}
 
-        <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
-          {isLoading && (
-            <div className={cn(FORM_OVERLAY_FILL_BODY, "justify-center px-5 py-5")}>
-              <div className="space-y-4">
-                <Skeleton className="h-14 w-full rounded-xl" />
-                <Skeleton className="h-10 w-full rounded-xl" />
-                <Skeleton className="h-10 w-full rounded-xl" />
+      {!isLoading && !isError && accounts.length === 0 && (
+        <div className={cn(FORM_OVERLAY_FILL_BODY, "justify-center px-5 py-5")}>
+          <NoAccountsEmptyState
+            onAddAccount={() => {
+              dismiss()
+              if (onOpenAddAccount) onOpenAddAccount()
+              else navigate(accountsReturnPath ?? "/accounts")
+            }}
+          />
+        </div>
+      )}
+
+      {!isLoading && !isError && hasAccount && (
+        <div className={cn(FORM_OVERLAY_SCROLL_BODY, "space-y-4 px-5 py-5")}>
+          {!expenseFlow && !lockTransferPayment && (
+            <section>
+              <Label className={labelClass}>Type</Label>
+              <div className="grid grid-cols-3 gap-3">
+                {(
+                  [
+                    { id: "expense" as const, label: "Expense" },
+                    { id: "income" as const, label: "Income" },
+                    { id: "transfer" as const, label: "Transfer" },
+                  ] as const
+                ).map(({ id, label }) => (
+                  <ToggleTile
+                    key={id}
+                    selected={txType === id}
+                    onClick={() => {
+                      setTxType(id)
+                    }}
+                    className={cn(
+                      "h-10",
+                      txType === id &&
+                        id === "expense" &&
+                        "border-primary bg-sky-50 text-destructive dark:bg-primary/10 dark:text-destructive",
+                      txType === id &&
+                        id === "income" &&
+                        "border-primary bg-sky-50 text-income dark:bg-primary/10",
+                      txType === id &&
+                        id === "transfer" &&
+                        "border-primary bg-sky-50 text-primary dark:bg-primary/15"
+                    )}
+                  >
+                    <span className="font-medium">{label}</span>
+                  </ToggleTile>
+                ))}
               </div>
-            </div>
+            </section>
           )}
 
-          {isError && !isLoading && (
-            <div
-              className={cn(
-                FORM_OVERLAY_FILL_BODY,
-                "items-center justify-center gap-4 px-5 py-5 text-center"
-              )}
-            >
-              <p className="text-sm font-medium text-destructive">{getErrorMessage(error)}</p>
-              <Button
-                type="button"
-                variant="outline"
-                className="h-10 rounded-xl px-6"
-                onClick={() => refetch()}
-              >
-                Retry
-              </Button>
-            </div>
-          )}
-
-          {!isLoading && !isError && accounts.length === 0 && (
-            <div className={cn(FORM_OVERLAY_FILL_BODY, "justify-center px-5 py-5")}>
-              <NoAccountsEmptyState
-                onAddAccount={() => {
-                  dismiss()
-                  if (onOpenAddAccount) onOpenAddAccount()
-                  else navigate(accountsReturnPath ?? "/accounts")
-                }}
-              />
-            </div>
-          )}
-
-          {!isLoading && !isError && hasAccount && (
-            <form
-              id="add-transaction-form"
-              onSubmit={handleSubmit}
-              className="flex min-h-0 flex-1 flex-col overflow-hidden"
-            >
-              <div className={cn(FORM_OVERLAY_SCROLL_BODY, "space-y-4 px-5 py-5")}>
-                {!expenseFlow && !lockTransferPayment && (
-                  <section>
-                    <Label className={labelClass}>Type</Label>
-                    <div className="grid grid-cols-3 gap-3">
-                      {(
-                        [
-                          { id: "expense" as const, label: "Expense" },
-                          { id: "income" as const, label: "Income" },
-                          { id: "transfer" as const, label: "Transfer" },
-                        ] as const
-                      ).map(({ id, label }) => (
-                        <ToggleTile
-                          key={id}
-                          selected={txType === id}
-                          onClick={() => {
-                            setTxType(id)
-                          }}
-                          className={cn(
-                            "h-10",
-                            txType === id &&
-                              id === "expense" &&
-                              "border-primary bg-sky-50 text-destructive dark:bg-primary/10 dark:text-destructive",
-                            txType === id &&
-                              id === "income" &&
-                              "border-primary bg-sky-50 text-income dark:bg-primary/10",
-                            txType === id &&
-                              id === "transfer" &&
-                              "border-primary bg-sky-50 text-primary dark:bg-primary/15"
-                          )}
-                        >
-                          <span className="font-medium">{label}</span>
-                        </ToggleTile>
+          {effectiveType === "transfer" ? (
+            <>
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <section>
+                  <Label htmlFor={accountIdField} className={labelClass}>
+                    {fromAccountLabel}
+                  </Label>
+                  <div className="relative">
+                    <select
+                      id={accountIdField}
+                      value={
+                        transferDestinationType === "credit_card_bill"
+                          ? accountId || creditCardPayment.fromAccountId || ""
+                          : accountId
+                      }
+                      onChange={(e) => {
+                        const v = e.target.value
+                        setAccountId(v)
+                        if (toAccountId === v) setToAccountId("")
+                      }}
+                      className={cn(selectFieldClass, !accountId && "text-muted-foreground")}
+                    >
+                      <option value="">Select account</option>
+                      {transferSourceAccounts.map((a) => (
+                        <option key={a.id} value={a.id}>
+                          {accountSelectLabel(a)}
+                        </option>
                       ))}
+                    </select>
+                    <SelectChevron />
+                  </div>
+                </section>
+                <section>
+                  <Label htmlFor={transferDestinationTypeId} className={labelClass}>
+                    Destination type
+                  </Label>
+                  <div className="relative">
+                    <select
+                      id={transferDestinationTypeId}
+                      value={transferDestinationType}
+                      onChange={(e) => {
+                        const v = e.target.value as TransferDestinationType
+                        setTransferDestinationType(v)
+                        resetTransferDependentState()
+                      }}
+                      disabled={lockTransferPayment}
+                      className={cn(
+                        selectFieldClass,
+                        lockTransferPayment && "cursor-not-allowed opacity-80"
+                      )}
+                      aria-label="Transfer destination"
+                    >
+                      <option value="account">Account</option>
+                      <option value="credit_card_bill">Credit card bill</option>
+                      <option value="loan_emi">Loan payment</option>
+                    </select>
+                    <SelectChevron />
+                  </div>
+                </section>
+              </div>
+
+              {transferDestinationType === "account" ? (
+                <section>
+                  <Label htmlFor={toAccountIdField} className={labelClass}>
+                    To account
+                  </Label>
+                  <div className="relative">
+                    <select
+                      id={toAccountIdField}
+                      value={toAccountId}
+                      onChange={(e) => setToAccountId(e.target.value)}
+                      className={cn(selectFieldClass, !toAccountId && "text-muted-foreground")}
+                    >
+                      <option value="">Select account</option>
+                      {transferSourceAccounts
+                        .filter((a) => a.id !== accountId)
+                        .map((a) => (
+                          <option key={a.id} value={a.id}>
+                            {accountSelectLabel(a)}
+                          </option>
+                        ))}
+                    </select>
+                    <SelectChevron />
+                  </div>
+                </section>
+              ) : transferDestinationType === "credit_card_bill" ? (
+                <>
+                  <section>
+                    <Label htmlFor={creditCardAccountFieldId} className={labelClass}>
+                      Credit card
+                    </Label>
+                    <div className="relative">
+                      <select
+                        id={creditCardAccountFieldId}
+                        value={creditCardAccountId}
+                        onChange={(e) => {
+                          const v = e.target.value
+                          setCreditCardAccountId(v)
+                          setToAccountId(v)
+                          const selectedCard = creditCardSelectOptions.find((card) => card.id === v)
+                          const selectedRecord = selectedCard as Record<string, unknown> | undefined
+                          const linkedRepaymentAccountId =
+                            selectedRecord &&
+                            typeof selectedRecord.linkedRepaymentAccountId === "string"
+                              ? selectedRecord.linkedRepaymentAccountId
+                              : ""
+                          if (linkedRepaymentAccountId) {
+                            setAccountId(linkedRepaymentAccountId)
+                          }
+                        }}
+                        disabled={
+                          lockTransferPayment && transferPaymentPreset?.kind === "credit_card_bill"
+                        }
+                        className={cn(
+                          selectFieldClass,
+                          !creditCardAccountId && "text-muted-foreground",
+                          lockTransferPayment &&
+                            transferPaymentPreset?.kind === "credit_card_bill" &&
+                            "cursor-not-allowed opacity-80"
+                        )}
+                      >
+                        <option value="">
+                          {creditCardSelectOptions.length === 0
+                            ? "No credit cards — add in Accounts"
+                            : "Select card"}
+                        </option>
+                        {creditCardSelectOptions.map((a) => (
+                          <option key={a.id} value={a.id}>
+                            {accountSelectLabel(a)}
+                          </option>
+                        ))}
+                      </select>
+                      <SelectChevron />
                     </div>
                   </section>
-                )}
-
-                {effectiveType === "transfer" ? (
-                  <>
-                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2  items-center ">
+                    <div className="flex h-10 mt-6 items-center justify-between gap-2  rounded-xl border border-input bg-muted/20 px-3">
+                      <span className="text-sm font-semibold text-primary ">
+                        Pay Minimum Amount
+                      </span>
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs font-medium text-muted-foreground">
+                          {creditCardPayment.isMinimumPaymentEnabled ? "Yes" : "No"}
+                        </span>
+                        <Switch
+                          checked={creditCardPayment.isMinimumPaymentEnabled}
+                          onCheckedChange={(on) => {
+                            dispatch(setIsMinimumPaymentEnabled(on))
+                            if (!on) setMinimumAmountText("")
+                          }}
+                          aria-label="Pay minimum amount"
+                        />
+                      </div>
+                    </div>
+                    {creditCardPayment.isMinimumPaymentEnabled ? (
                       <section>
-                        <Label htmlFor={accountIdField} className={labelClass}>
-                          {fromAccountLabel}
+                        <Label htmlFor="at-minimum-due-transfer" className={labelClass}>
+                          Minimum amount
                         </Label>
-                        <div className="relative">
-                          <select
-                            id={accountIdField}
-                            value={
-                              transferDestinationType === "credit_card_bill"
-                                ? accountId || creditCardPayment.fromAccountId || ""
-                                : accountId
+                        <Input
+                          id="at-minimum-due-transfer"
+                          inputMode="decimal"
+                          placeholder="0.00"
+                          value={minimumAmountText}
+                          onChange={(e) => {
+                            const next = sanitizeDecimalInput(e.target.value)
+                            setMinimumAmountText(next)
+                            const parsed = Number(next)
+                            if (next.trim() === "" || !Number.isFinite(parsed)) {
+                              dispatch(setMinimumAmount(null))
+                              return
                             }
-                            onChange={(e) => {
-                              const v = e.target.value
-                              setAccountId(v)
-                              if (toAccountId === v) setToAccountId("")
-                            }}
-                            className={cn(selectFieldClass, !accountId && "text-muted-foreground")}
-                          >
-                            <option value="">Select account</option>
-                            {transferSourceAccounts.map((a) => (
-                              <option key={a.id} value={a.id}>
-                                {accountSelectLabel(a)}
-                              </option>
-                            ))}
-                          </select>
-                          <SelectChevron />
-                        </div>
+                            dispatch(setMinimumAmount(parsed))
+                          }}
+                          className={cn(fieldBase, "font-medium tabular-nums")}
+                        />
                       </section>
-                      <section>
-                        <Label htmlFor={transferDestinationTypeId} className={labelClass}>
-                          Destination type
-                        </Label>
-                        <div className="relative">
-                          <select
-                            id={transferDestinationTypeId}
-                            value={transferDestinationType}
-                            onChange={(e) => {
-                              const v = e.target.value as TransferDestinationType
-                              setTransferDestinationType(v)
-                              resetTransferDependentState()
-                            }}
-                            disabled={lockTransferPayment}
-                            className={cn(
-                              selectFieldClass,
-                              lockTransferPayment && "cursor-not-allowed opacity-80"
-                            )}
-                            aria-label="Transfer destination"
-                          >
-                            <option value="account">Account</option>
-                            <option value="credit_card_bill">Credit card bill</option>
-                            <option value="loan_emi">Loan payment</option>
-                          </select>
-                          <SelectChevron />
-                        </div>
-                      </section>
-                    </div>
-
-                    {transferDestinationType === "account" ? (
-                      <section>
-                        <Label htmlFor={toAccountIdField} className={labelClass}>
-                          To account
-                        </Label>
-                        <div className="relative">
-                          <select
-                            id={toAccountIdField}
-                            value={toAccountId}
-                            onChange={(e) => setToAccountId(e.target.value)}
-                            className={cn(
-                              selectFieldClass,
-                              !toAccountId && "text-muted-foreground"
-                            )}
-                          >
-                            <option value="">Select account</option>
-                            {transferSourceAccounts
-                              .filter((a) => a.id !== accountId)
-                              .map((a) => (
-                                <option key={a.id} value={a.id}>
-                                  {accountSelectLabel(a)}
-                                </option>
-                              ))}
-                          </select>
-                          <SelectChevron />
-                        </div>
-                      </section>
-                    ) : transferDestinationType === "credit_card_bill" ? (
-                      <>
-                        <section>
-                          <Label htmlFor={creditCardAccountFieldId} className={labelClass}>
-                            Credit card
-                          </Label>
-                          <div className="relative">
-                            <select
-                              id={creditCardAccountFieldId}
-                              value={creditCardAccountId}
-                              onChange={(e) => {
-                                const v = e.target.value
-                                setCreditCardAccountId(v)
-                                setToAccountId(v)
-                                const selectedCard = creditCardSelectOptions.find(
-                                  (card) => card.id === v
-                                )
-                                const selectedRecord = selectedCard as
-                                  | Record<string, unknown>
-                                  | undefined
-                                const linkedRepaymentAccountId =
-                                  selectedRecord &&
-                                  typeof selectedRecord.linkedRepaymentAccountId === "string"
-                                    ? selectedRecord.linkedRepaymentAccountId
-                                    : ""
-                                if (linkedRepaymentAccountId) {
-                                  setAccountId(linkedRepaymentAccountId)
-                                }
-                              }}
-                              disabled={
-                                lockTransferPayment &&
-                                transferPaymentPreset?.kind === "credit_card_bill"
-                              }
-                              className={cn(
-                                selectFieldClass,
-                                !creditCardAccountId && "text-muted-foreground",
-                                lockTransferPayment &&
-                                  transferPaymentPreset?.kind === "credit_card_bill" &&
-                                  "cursor-not-allowed opacity-80"
-                              )}
-                            >
-                              <option value="">
-                                {creditCardSelectOptions.length === 0
-                                  ? "No credit cards — add in Accounts"
-                                  : "Select card"}
-                              </option>
-                              {creditCardSelectOptions.map((a) => (
-                                <option key={a.id} value={a.id}>
-                                  {accountSelectLabel(a)}
-                                </option>
-                              ))}
-                            </select>
-                            <SelectChevron />
-                          </div>
-                        </section>
-                        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2  items-center ">
-                          <div className="flex h-10 mt-6 items-center justify-between gap-2  rounded-xl border border-input bg-muted/20 px-3">
-                            <span className="text-sm font-semibold text-primary ">
-                              Pay Minimum Amount
-                            </span>
-                            <div className="flex items-center gap-2">
-                              <span className="text-xs font-medium text-muted-foreground">
-                                {creditCardPayment.isMinimumPaymentEnabled ? "Yes" : "No"}
-                              </span>
-                              <Switch
-                                checked={creditCardPayment.isMinimumPaymentEnabled}
-                                onCheckedChange={(on) => {
-                                  dispatch(setIsMinimumPaymentEnabled(on))
-                                  if (!on) setMinimumAmountText("")
-                                }}
-                                aria-label="Pay minimum amount"
-                              />
-                            </div>
-                          </div>
-                          {creditCardPayment.isMinimumPaymentEnabled ? (
-                            <section>
-                              <Label htmlFor="at-minimum-due-transfer" className={labelClass}>
-                                Minimum amount
-                              </Label>
-                              <Input
-                                id="at-minimum-due-transfer"
-                                inputMode="decimal"
-                                placeholder="0.00"
-                                value={minimumAmountText}
-                                onChange={(e) => {
-                                  const next = sanitizeDecimalInput(e.target.value)
-                                  setMinimumAmountText(next)
-                                  const parsed = Number(next)
-                                  if (next.trim() === "" || !Number.isFinite(parsed)) {
-                                    dispatch(setMinimumAmount(null))
-                                    return
-                                  }
-                                  dispatch(setMinimumAmount(parsed))
-                                }}
-                                className={cn(fieldBase, "font-medium tabular-nums")}
-                              />
-                            </section>
-                          ) : null}
-                        </div>
-                      </>
-                    ) : (
-                      <>
-                        <section>
-                          <Label htmlFor={loanAccountFieldId} className={labelClass}>
-                            Loan account
-                          </Label>
-                          <div className="relative">
-                            <select
-                              id={loanAccountFieldId}
-                              value={loanAccountId}
-                              onChange={(e) => {
-                                const v = e.target.value
-                                setLoanAccountId(v)
-                                setToAccountId(v)
-                                const selected = loanSelectOptions.find((loan) => loan.id === v)
-                                const selectedRecord = selected as
-                                  | Record<string, unknown>
-                                  | undefined
-                                const linkedRepaymentAccountId =
-                                  selectedRecord &&
-                                  typeof selectedRecord.linkedRepaymentAccountId === "string"
-                                    ? selectedRecord.linkedRepaymentAccountId
-                                    : ""
-                                if (linkedRepaymentAccountId) {
-                                  setAccountId(linkedRepaymentAccountId)
-                                }
-                                setLoanFieldOverride(null)
-                              }}
-                              disabled={
-                                lockTransferPayment && transferPaymentPreset?.kind === "loan_emi"
-                              }
-                              className={cn(
-                                selectFieldClass,
-                                !loanAccountId && "text-muted-foreground",
-                                lockTransferPayment &&
-                                  transferPaymentPreset?.kind === "loan_emi" &&
-                                  "cursor-not-allowed opacity-80"
-                              )}
-                            >
-                              <option value="">
-                                {loanSelectOptions.length === 0
-                                  ? "No loans — add in Accounts"
-                                  : "Select loan"}
-                              </option>
-                              {loanSelectOptions.map((a) => {
-                                return (
-                                  <option key={a.id} value={a.id}>
-                                    {accountSelectLabel(a)}
-                                  </option>
-                                )
-                              })}
-                            </select>
-                            <SelectChevron />
-                          </div>
-                        </section>
-
-                        {loanAccountId ? (
-                          <div className="space-y-1.5 rounded-xl border border-input bg-muted/20 p-4 text-xs">
-                            <div className="flex items-center justify-between gap-2">
-                              <span className="text-muted-foreground">EMI total</span>
-                              <span className="font-semibold tabular-nums text-foreground">
-                                {formatInr2(loanEmiAutoFill.emiTotal)}
-                              </span>
-                            </div>
-                            <div className="flex items-center justify-between gap-2">
-                              <span className="text-muted-foreground">EMI interest</span>
-                              <span className="font-semibold tabular-nums text-foreground">
-                                {formatInr2(loanEmiAutoFill.emiInterest)}
-                              </span>
-                            </div>
-                            <div className="flex items-center justify-between gap-2">
-                              <span className="text-muted-foreground">EMI principal</span>
-                              <span className="font-semibold tabular-nums text-foreground">
-                                {formatInr2(loanEmiAutoFill.emiPrincipal)}
-                              </span>
-                            </div>
-                            {loanEmiAutoFill.lastPaymentDate ? (
-                              <div className="border-t border-border/50 pt-2">
-                                <span className="text-muted-foreground">
-                                  Last payment: {loanEmiAutoFill.lastPaymentDate}
-                                </span>
-                              </div>
-                            ) : null}
-                          </div>
-                        ) : null}
-
-                        <div className="grid grid-cols-2 gap-4">
-                          <section>
-                            <Label htmlFor={loanPrincipalFieldId} className={labelClass}>
-                              Principal (payment)
-                            </Label>
-                            <Input
-                              id={loanPrincipalFieldId}
-                              inputMode="decimal"
-                              placeholder="0.00"
-                              value={loanPrincipalStr}
-                              onChange={(e) =>
-                                setLoanFieldOverride((o) => ({
-                                  ...(o ?? {}),
-                                  principal: sanitizeDecimalInput(e.target.value),
-                                }))
-                              }
-                              className={cn(fieldBase, "tabular-nums")}
-                            />
-                          </section>
-                          <section>
-                            <Label htmlFor={loanInterestFieldId} className={labelClass}>
-                              Interest (payment)
-                            </Label>
-                            <Input
-                              id={loanInterestFieldId}
-                              inputMode="decimal"
-                              placeholder="0.00"
-                              value={loanInterestStr}
-                              onChange={(e) =>
-                                setLoanFieldOverride((o) => ({
-                                  ...(o ?? {}),
-                                  interest: sanitizeDecimalInput(e.target.value),
-                                }))
-                              }
-                              className={cn(fieldBase, "tabular-nums")}
-                            />
-                          </section>
-                        </div>
-                      </>
-                    )}
-
-                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-                      <section>
-                        <Label htmlFor="at-amount-transfer" className={labelClass}>
-                          Amount (₹)
-                        </Label>
-                        {transferDestinationType === "loan_emi" ? (
-                          <Input
-                            id="at-amount-transfer"
-                            readOnly
-                            value={formatInr2(loanTotalInr)}
-                            className={cn(
-                              fieldBase,
-                              "bg-muted/40 text-center font-semibold tabular-nums text-muted-foreground"
-                            )}
-                          />
-                        ) : transferDestinationType === "credit_card_bill" ? (
-                          <Input
-                            id="at-amount-transfer"
-                            readOnly
-                            value={formatInr2(creditCardPayment.paymentAmount)}
-                            placeholder="0.00"
-                            className={cn(
-                              fieldBase,
-                              "bg-muted/40 text-center font-semibold tabular-nums text-muted-foreground placeholder:text-muted-foreground/60"
-                            )}
-                          />
-                        ) : (
-                          <Input
-                            id="at-amount-transfer"
-                            inputMode="numeric"
-                            placeholder="0"
-                            value={amount}
-                            onChange={(e) => setAmount(e.target.value.replace(/[^\d]/g, ""))}
-                            className={cn(
-                              fieldBase,
-                              "bg-muted/20 text-center font-semibold tabular-nums text-primary/80 placeholder:text-primary/40"
-                            )}
-                          />
+                    ) : null}
+                  </div>
+                </>
+              ) : (
+                <>
+                  <section>
+                    <Label htmlFor={loanAccountFieldId} className={labelClass}>
+                      Loan account
+                    </Label>
+                    <div className="relative">
+                      <select
+                        id={loanAccountFieldId}
+                        value={loanAccountId}
+                        onChange={(e) => {
+                          const v = e.target.value
+                          setLoanAccountId(v)
+                          setToAccountId(v)
+                          const selected = loanSelectOptions.find((loan) => loan.id === v)
+                          const selectedRecord = selected as Record<string, unknown> | undefined
+                          const linkedRepaymentAccountId =
+                            selectedRecord &&
+                            typeof selectedRecord.linkedRepaymentAccountId === "string"
+                              ? selectedRecord.linkedRepaymentAccountId
+                              : ""
+                          if (linkedRepaymentAccountId) {
+                            setAccountId(linkedRepaymentAccountId)
+                          }
+                          setLoanFieldOverride(null)
+                        }}
+                        disabled={lockTransferPayment && transferPaymentPreset?.kind === "loan_emi"}
+                        className={cn(
+                          selectFieldClass,
+                          !loanAccountId && "text-muted-foreground",
+                          lockTransferPayment &&
+                            transferPaymentPreset?.kind === "loan_emi" &&
+                            "cursor-not-allowed opacity-80"
                         )}
-                      </section>
-                      <section>
-                        <Label htmlFor="at-date-transfer" className={labelClass}>
-                          Date
-                        </Label>
-                        <Input
-                          id="at-date-transfer"
-                          type="date"
-                          value={date}
-                          onChange={(e) => setDate(e.target.value)}
-                          className={cn(fieldBase, "scheme-light dark:scheme-dark")}
-                        />
-                      </section>
-                      <section>
-                        <Label htmlFor="at-transfer-note-grid" className={labelClass}>
-                          Note
-                        </Label>
-                        <Input
-                          id="at-transfer-note-grid"
-                          placeholder="Optional note"
-                          value={note}
-                          onChange={(e) => setNote(e.target.value)}
-                          className={fieldBase}
-                        />
-                      </section>
+                      >
+                        <option value="">
+                          {loanSelectOptions.length === 0
+                            ? "No loans — add in Accounts"
+                            : "Select loan"}
+                        </option>
+                        {loanSelectOptions.map((a) => {
+                          return (
+                            <option key={a.id} value={a.id}>
+                              {accountSelectLabel(a)}
+                            </option>
+                          )
+                        })}
+                      </select>
+                      <SelectChevron />
                     </div>
-                  </>
-                ) : isCreditCardExpenseMode ? (
-                  <CreditCardExpenseFields
-                    accounts={accounts}
-                    accountId={accountId}
-                    onAccountIdChange={(id) => {
-                      onIncomeExpenseAccountChange(id)
-                      ccExpenseForm.setValue("creditCardAccountId", id, { shouldValidate: true })
-                    }}
-                    form={ccExpenseForm}
-                  />
-                ) : (
-                  <>
+                  </section>
+
+                  {loanAccountId ? (
+                    <div className="space-y-1.5 rounded-xl border border-input bg-muted/20 p-4 text-xs">
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="text-muted-foreground">EMI total</span>
+                        <span className="font-semibold tabular-nums text-foreground">
+                          {formatInr2(loanEmiAutoFill.emiTotal)}
+                        </span>
+                      </div>
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="text-muted-foreground">EMI interest</span>
+                        <span className="font-semibold tabular-nums text-foreground">
+                          {formatInr2(loanEmiAutoFill.emiInterest)}
+                        </span>
+                      </div>
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="text-muted-foreground">EMI principal</span>
+                        <span className="font-semibold tabular-nums text-foreground">
+                          {formatInr2(loanEmiAutoFill.emiPrincipal)}
+                        </span>
+                      </div>
+                      {loanEmiAutoFill.lastPaymentDate ? (
+                        <div className="border-t border-border/50 pt-2">
+                          <span className="text-muted-foreground">
+                            Last payment: {loanEmiAutoFill.lastPaymentDate}
+                          </span>
+                        </div>
+                      ) : null}
+                    </div>
+                  ) : null}
+
+                  <div className="grid grid-cols-2 gap-4">
                     <section>
-                      <Label htmlFor="at-amount" className={cn(labelClass, "text-center")}>
-                        Amount (₹)
+                      <Label htmlFor={loanPrincipalFieldId} className={labelClass}>
+                        Principal (payment)
                       </Label>
                       <Input
-                        id="at-amount"
-                        inputMode="numeric"
-                        placeholder="0"
-                        value={amount}
-                        onChange={(e) => setAmount(e.target.value.replace(/[^\d]/g, ""))}
-                        className={cn(
-                          fieldBase,
-                          "h-14 bg-muted/20 text-center text-2xl font-bold tabular-nums text-primary/80 placeholder:text-primary/40"
-                        )}
+                        id={loanPrincipalFieldId}
+                        inputMode="decimal"
+                        placeholder="0.00"
+                        value={loanPrincipalStr}
+                        onChange={(e) =>
+                          setLoanFieldOverride((o) => ({
+                            ...(o ?? {}),
+                            principal: sanitizeDecimalInput(e.target.value),
+                          }))
+                        }
+                        className={cn(fieldBase, "tabular-nums")}
                       />
                     </section>
-
-                    <div className="grid grid-cols-2 gap-4">
-                      <section>
-                        {effectiveType === "income" ? (
-                          <>
-                            <Label htmlFor={incomeSourceId} className={labelClass}>
-                              Income source
-                            </Label>
-                            <div className="relative">
-                              <select
-                                id={incomeSourceId}
-                                value={incomeSource}
-                                onChange={(e) => setIncomeSource(e.target.value)}
-                                className={selectFieldClass}
-                              >
-                                {INCOME_SOURCE_OPTIONS.map(({ value, label }) => (
-                                  <option key={value} value={value}>
-                                    {label}
-                                  </option>
-                                ))}
-                              </select>
-                              <SelectChevron />
-                            </div>
-                          </>
-                        ) : (
-                          <>
-                            <Label htmlFor={categoryId} className={labelClass}>
-                              Category
-                            </Label>
-                            <div className="relative">
-                              <select
-                                id={categoryId}
-                                value={category}
-                                onChange={(e) => setCategory(e.target.value)}
-                                className={cn(
-                                  selectFieldClass,
-                                  !category && "text-muted-foreground"
-                                )}
-                              >
-                                <option value="">Select category</option>
-                                {TX_CATEGORIES.map((c) => (
-                                  <option key={c} value={c}>
-                                    {c}
-                                  </option>
-                                ))}
-                              </select>
-                              <SelectChevron />
-                            </div>
-                          </>
-                        )}
-                      </section>
-                      <section>
-                        <Label htmlFor="at-date" className={labelClass}>
-                          Date
-                        </Label>
-                        <Input
-                          id="at-date"
-                          type="date"
-                          value={date}
-                          onChange={(e) => setDate(e.target.value)}
-                          className={cn(fieldBase, "scheme-light dark:scheme-dark")}
-                        />
-                      </section>
-                    </div>
-
                     <section>
-                      <Label className={labelClass}>Payment Method</Label>
-                      <div className="grid grid-cols-2 gap-2">
-                        <ToggleTile
-                          selected={paymentMethod === "account"}
-                          onClick={() => setPaymentMethod("account")}
-                          className="h-10"
-                        >
-                          <CreditCard
-                            className="size-4 shrink-0 text-primary"
-                            strokeWidth={2}
-                            aria-hidden
-                          />
-                          <span className="font-medium">Account / UPI</span>
-                        </ToggleTile>
-                        <ToggleTile
-                          selected={paymentMethod === "card"}
-                          onClick={() => setPaymentMethod("card")}
-                          className="h-10"
-                        >
-                          <Gem
-                            className="size-4 shrink-0 text-primary"
-                            strokeWidth={2}
-                            aria-hidden
-                          />
-                          <span className="font-medium">Credit Card</span>
-                        </ToggleTile>
-                      </div>
+                      <Label htmlFor={loanInterestFieldId} className={labelClass}>
+                        Interest (payment)
+                      </Label>
+                      <Input
+                        id={loanInterestFieldId}
+                        inputMode="decimal"
+                        placeholder="0.00"
+                        value={loanInterestStr}
+                        onChange={(e) =>
+                          setLoanFieldOverride((o) => ({
+                            ...(o ?? {}),
+                            interest: sanitizeDecimalInput(e.target.value),
+                          }))
+                        }
+                        className={cn(fieldBase, "tabular-nums")}
+                      />
                     </section>
+                  </div>
+                </>
+              )}
 
-                    <section>
-                      <Label htmlFor={accountIdField} className={labelClass}>
-                        {fromAccountLabel}
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+                <section>
+                  <Label htmlFor="at-amount-transfer" className={labelClass}>
+                    Amount (₹)
+                  </Label>
+                  {transferDestinationType === "loan_emi" ? (
+                    <Input
+                      id="at-amount-transfer"
+                      readOnly
+                      value={formatInr2(loanTotalInr)}
+                      className={cn(
+                        fieldBase,
+                        "bg-muted/40 text-center font-semibold tabular-nums text-muted-foreground"
+                      )}
+                    />
+                  ) : transferDestinationType === "credit_card_bill" ? (
+                    <Input
+                      id="at-amount-transfer"
+                      readOnly
+                      value={formatInr2(creditCardPayment.paymentAmount)}
+                      placeholder="0.00"
+                      className={cn(
+                        fieldBase,
+                        "bg-muted/40 text-center font-semibold tabular-nums text-muted-foreground placeholder:text-muted-foreground/60"
+                      )}
+                    />
+                  ) : (
+                    <Input
+                      id="at-amount-transfer"
+                      inputMode="numeric"
+                      placeholder="0"
+                      value={amount}
+                      onChange={(e) => setAmount(e.target.value.replace(/[^\d]/g, ""))}
+                      className={cn(
+                        fieldBase,
+                        "bg-muted/20 text-center font-semibold tabular-nums text-primary/80 placeholder:text-primary/40"
+                      )}
+                    />
+                  )}
+                </section>
+                <section>
+                  <Label htmlFor="at-date-transfer" className={labelClass}>
+                    Date
+                  </Label>
+                  <Input
+                    id="at-date-transfer"
+                    type="date"
+                    value={date}
+                    onChange={(e) => setDate(e.target.value)}
+                    className={cn(fieldBase, "scheme-light dark:scheme-dark")}
+                  />
+                </section>
+                <section>
+                  <Label htmlFor="at-transfer-note-grid" className={labelClass}>
+                    Note
+                  </Label>
+                  <Input
+                    id="at-transfer-note-grid"
+                    placeholder="Optional note"
+                    value={note}
+                    onChange={(e) => setNote(e.target.value)}
+                    className={fieldBase}
+                  />
+                </section>
+              </div>
+            </>
+          ) : isCreditCardExpenseMode ? (
+            <CreditCardExpenseFields
+              accounts={accounts}
+              accountId={accountId}
+              onAccountIdChange={(id) => {
+                onIncomeExpenseAccountChange(id)
+                ccExpenseForm.setValue("creditCardAccountId", id, { shouldValidate: true })
+              }}
+              form={ccExpenseForm}
+            />
+          ) : (
+            <>
+              <section>
+                <Label htmlFor="at-amount" className={cn(labelClass, "text-center")}>
+                  Amount (₹)
+                </Label>
+                <Input
+                  id="at-amount"
+                  inputMode="numeric"
+                  placeholder="0"
+                  value={amount}
+                  onChange={(e) => setAmount(e.target.value.replace(/[^\d]/g, ""))}
+                  className={cn(
+                    fieldBase,
+                    "h-14 bg-muted/20 text-center text-2xl font-bold tabular-nums text-primary/80 placeholder:text-primary/40"
+                  )}
+                />
+              </section>
+
+              <div className="grid grid-cols-2 gap-4">
+                <section>
+                  {effectiveType === "income" ? (
+                    <>
+                      <Label htmlFor={incomeSourceId} className={labelClass}>
+                        Income source
                       </Label>
                       <div className="relative">
                         <select
-                          id={accountIdField}
-                          value={accountId}
-                          onChange={(e) => onIncomeExpenseAccountChange(e.target.value)}
-                          className={cn(selectFieldClass, !accountId && "text-muted-foreground")}
+                          id={incomeSourceId}
+                          value={incomeSource}
+                          onChange={(e) => setIncomeSource(e.target.value)}
+                          className={selectFieldClass}
                         >
-                          <option value="">Select account</option>
-                          {accounts.map((a) => (
-                            <option key={a.id} value={a.id}>
-                              {accountSelectLabel(a)}
+                          {INCOME_SOURCE_OPTIONS.map(({ value, label }) => (
+                            <option key={value} value={value}>
+                              {label}
                             </option>
                           ))}
                         </select>
                         <SelectChevron />
                       </div>
-                    </section>
-                  </>
-                )}
-
-                {effectiveType !== "transfer" && !isCreditCardExpenseMode ? (
-                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                    <label className="flex cursor-pointer items-start gap-2.5 rounded-xl border border-input bg-muted/5 px-3 py-2.5">
-                      <input
-                        type="checkbox"
-                        checked={paidOnBehalf}
-                        onChange={(e) => setPaidOnBehalf(e.target.checked)}
-                        className="mt-0.5 size-4 shrink-0 rounded border-input"
-                      />
-                      <span className="text-xs font-medium leading-tight text-foreground/90">
-                        Paid on behalf of someone (add to their dues)
-                      </span>
-                    </label>
-                    <div className="rounded-xl border border-input bg-muted/10 p-2.5">
-                      <label className="flex cursor-pointer items-start justify-between gap-2">
-                        <div className="min-w-0">
-                          <span className="text-sm font-semibold text-foreground">
-                            Schedule upcoming
-                          </span>
-                          <p className="mt-0.5 text-xs text-muted-foreground">
-                            Planned only; no balance change yet.
-                          </p>
-                        </div>
-                        <input
-                          type="checkbox"
-                          checked={scheduleUpcoming}
-                          onChange={(e) => setScheduleUpcoming(e.target.checked)}
-                          className="mt-0.5 size-4 shrink-0 rounded border-input"
-                        />
-                      </label>
-                    </div>
-                  </div>
-                ) : null}
-
-                {expenseFlow && !isCreditCardExpenseMode ? (
-                  <section>
-                    <Label htmlFor="at-note" className={labelClass}>
-                      Note
-                    </Label>
-                    <textarea
-                      id="at-note"
-                      rows={2}
-                      placeholder="What was this for?"
-                      value={note}
-                      onChange={(e) => setNote(e.target.value)}
-                      className={cn(fieldBase, "min-h-[3.5rem] resize-none py-2")}
-                    />
-                  </section>
-                ) : effectiveType === "transfer" || isCreditCardExpenseMode ? null : (
-                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                    <section>
-                      <Label htmlFor="at-desc" className={labelClass}>
-                        Description
+                    </>
+                  ) : (
+                    <>
+                      <Label htmlFor={categoryId} className={labelClass}>
+                        Category
                       </Label>
-                      <Input
-                        id="at-desc"
-                        value={description}
-                        onChange={(e) => setDescription(e.target.value)}
-                        placeholder="Short description"
-                        className={fieldBase}
-                      />
-                    </section>
-                    <section>
-                      <Label htmlFor="at-note" className={labelClass}>
-                        Note
-                      </Label>
-                      <textarea
-                        id="at-note"
-                        rows={1}
-                        placeholder="Optional details…"
-                        value={note}
-                        onChange={(e) => setNote(e.target.value)}
-                        className={cn(fieldBase, "min-h-[2.5rem] resize-none py-2")}
-                      />
-                    </section>
-                  </div>
-                )}
-
-                {effectiveType === "transfer" || !isCreditCardExpenseMode ? (
-                  <section>
-                    <Label className={cn(labelClass, "flex items-center gap-1.5")}>
-                      <Tag className="size-3.5" strokeWidth={2.5} aria-hidden />
-                      Tags
-                    </Label>
-                    <div className="flex flex-wrap gap-2">
-                      <div className="relative min-w-0 flex-1 basis-[38%]">
+                      <div className="relative">
                         <select
-                          value={tagPreset}
-                          onChange={(e) => setTagPreset(e.target.value)}
-                          className={cn(selectFieldClass, !tagPreset && "text-muted-foreground")}
-                          aria-label="Select tag"
+                          id={categoryId}
+                          value={category}
+                          onChange={(e) => setCategory(e.target.value)}
+                          className={cn(selectFieldClass, !category && "text-muted-foreground")}
                         >
-                          <option value="">
-                            {effectiveType === "transfer" ? "Select tag" : "Add tag…"}
-                          </option>
+                          <option value="">Select category</option>
                           {TX_CATEGORIES.map((c) => (
                             <option key={c} value={c}>
                               {c}
@@ -1656,56 +1479,206 @@ function AddTransactionModalMounted({
                         </select>
                         <SelectChevron />
                       </div>
-                      <Input
-                        value={newTag}
-                        onChange={(e) => setNewTag(e.target.value)}
-                        placeholder={effectiveType === "transfer" ? "Add new tag" : "New tag"}
-                        className={cn(fieldBase, "min-w-24 flex-1")}
-                        onKeyDown={(e) => {
-                          if (e.key === "Enter") {
-                            e.preventDefault()
-                            addTagFromInputs()
-                          }
-                        }}
-                      />
-                      <Button
-                        type="button"
-                        variant="secondary"
-                        className="h-10 shrink-0 rounded-xl px-4 text-xs font-bold sm:px-5 sm:text-sm"
-                        aria-label="Add tag"
-                        onClick={addTagFromInputs}
-                      >
-                        Add Tag
-                      </Button>
-                    </div>
-                    {tags.length > 0 && (
-                      <p className="mt-2 truncate text-xs font-medium text-muted-foreground">
-                        {tags.join(" · ")}
-                      </p>
-                    )}
-                  </section>
-                ) : null}
+                    </>
+                  )}
+                </section>
+                <section>
+                  <Label htmlFor="at-date" className={labelClass}>
+                    Date
+                  </Label>
+                  <Input
+                    id="at-date"
+                    type="date"
+                    value={date}
+                    onChange={(e) => setDate(e.target.value)}
+                    className={cn(fieldBase, "scheme-light dark:scheme-dark")}
+                  />
+                </section>
               </div>
 
-              <div className={cn(FORM_OVERLAY_FOOTER, "px-5")}>
+              <section>
+                <Label className={labelClass}>Payment Method</Label>
+                <div className="grid grid-cols-2 gap-2">
+                  <ToggleTile
+                    selected={paymentMethod === "account"}
+                    onClick={() => setPaymentMethod("account")}
+                    className="h-10"
+                  >
+                    <CreditCard
+                      className="size-4 shrink-0 text-primary"
+                      strokeWidth={2}
+                      aria-hidden
+                    />
+                    <span className="font-medium">Account / UPI</span>
+                  </ToggleTile>
+                  <ToggleTile
+                    selected={paymentMethod === "card"}
+                    onClick={() => setPaymentMethod("card")}
+                    className="h-10"
+                  >
+                    <Gem className="size-4 shrink-0 text-primary" strokeWidth={2} aria-hidden />
+                    <span className="font-medium">Credit Card</span>
+                  </ToggleTile>
+                </div>
+              </section>
+
+              <section>
+                <Label htmlFor={accountIdField} className={labelClass}>
+                  {fromAccountLabel}
+                </Label>
+                <div className="relative">
+                  <select
+                    id={accountIdField}
+                    value={accountId}
+                    onChange={(e) => onIncomeExpenseAccountChange(e.target.value)}
+                    className={cn(selectFieldClass, !accountId && "text-muted-foreground")}
+                  >
+                    <option value="">Select account</option>
+                    {accounts.map((a) => (
+                      <option key={a.id} value={a.id}>
+                        {accountSelectLabel(a)}
+                      </option>
+                    ))}
+                  </select>
+                  <SelectChevron />
+                </div>
+              </section>
+            </>
+          )}
+
+          {effectiveType !== "transfer" && !isCreditCardExpenseMode ? (
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <label className="flex cursor-pointer items-start gap-2.5 rounded-xl border border-input bg-muted/5 px-3 py-2.5">
+                <input
+                  type="checkbox"
+                  checked={paidOnBehalf}
+                  onChange={(e) => setPaidOnBehalf(e.target.checked)}
+                  className="mt-0.5 size-4 shrink-0 rounded border-input"
+                />
+                <span className="text-xs font-medium leading-tight text-foreground/90">
+                  Paid on behalf of someone (add to their dues)
+                </span>
+              </label>
+              <div className="rounded-xl border border-input bg-muted/10 p-2.5">
+                <label className="flex cursor-pointer items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <span className="text-sm font-semibold text-foreground">Schedule upcoming</span>
+                    <p className="mt-0.5 text-xs text-muted-foreground">
+                      Planned only; no balance change yet.
+                    </p>
+                  </div>
+                  <input
+                    type="checkbox"
+                    checked={scheduleUpcoming}
+                    onChange={(e) => setScheduleUpcoming(e.target.checked)}
+                    className="mt-0.5 size-4 shrink-0 rounded border-input"
+                  />
+                </label>
+              </div>
+            </div>
+          ) : null}
+
+          {expenseFlow && !isCreditCardExpenseMode ? (
+            <section>
+              <Label htmlFor="at-note" className={labelClass}>
+                Note
+              </Label>
+              <textarea
+                id="at-note"
+                rows={2}
+                placeholder="What was this for?"
+                value={note}
+                onChange={(e) => setNote(e.target.value)}
+                className={cn(fieldBase, "min-h-[3.5rem] resize-none py-2")}
+              />
+            </section>
+          ) : effectiveType === "transfer" || isCreditCardExpenseMode ? null : (
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <section>
+                <Label htmlFor="at-desc" className={labelClass}>
+                  Description
+                </Label>
+                <Input
+                  id="at-desc"
+                  value={description}
+                  onChange={(e) => setDescription(e.target.value)}
+                  placeholder="Short description"
+                  className={fieldBase}
+                />
+              </section>
+              <section>
+                <Label htmlFor="at-note" className={labelClass}>
+                  Note
+                </Label>
+                <textarea
+                  id="at-note"
+                  rows={1}
+                  placeholder="Optional details…"
+                  value={note}
+                  onChange={(e) => setNote(e.target.value)}
+                  className={cn(fieldBase, "min-h-[2.5rem] resize-none py-2")}
+                />
+              </section>
+            </div>
+          )}
+
+          {effectiveType === "transfer" || !isCreditCardExpenseMode ? (
+            <section>
+              <Label className={cn(labelClass, "flex items-center gap-1.5")}>
+                <Tag className="size-3.5" strokeWidth={2.5} aria-hidden />
+                Tags
+              </Label>
+              <div className="flex flex-wrap gap-2">
+                <div className="relative min-w-0 flex-1 basis-[38%]">
+                  <select
+                    value={tagPreset}
+                    onChange={(e) => setTagPreset(e.target.value)}
+                    className={cn(selectFieldClass, !tagPreset && "text-muted-foreground")}
+                    aria-label="Select tag"
+                  >
+                    <option value="">
+                      {effectiveType === "transfer" ? "Select tag" : "Add tag…"}
+                    </option>
+                    {TX_CATEGORIES.map((c) => (
+                      <option key={c} value={c}>
+                        {c}
+                      </option>
+                    ))}
+                  </select>
+                  <SelectChevron />
+                </div>
+                <Input
+                  value={newTag}
+                  onChange={(e) => setNewTag(e.target.value)}
+                  placeholder={effectiveType === "transfer" ? "Add new tag" : "New tag"}
+                  className={cn(fieldBase, "min-w-24 flex-1")}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault()
+                      addTagFromInputs()
+                    }
+                  }}
+                />
                 <Button
-                  type="submit"
-                  disabled={
-                    isSubmitting ||
-                    (effectiveType === "transfer" &&
-                      transferDestinationType === "credit_card_bill" &&
-                      isCreditCardPaymentDisabled)
-                  }
-                  className="h-10 w-full rounded-xl bg-[hsl(230_22%_62%)] text-sm font-bold text-white hover:bg-[hsl(230_22%_56%)] disabled:opacity-60 sm:h-11 sm:text-base"
+                  type="button"
+                  variant="secondary"
+                  className="h-10 shrink-0 rounded-xl px-4 text-xs font-bold sm:px-5 sm:text-sm"
+                  aria-label="Add tag"
+                  onClick={addTagFromInputs}
                 >
-                  {isSubmitting ? "Saving…" : submitLabel}
+                  Add Tag
                 </Button>
               </div>
-            </form>
-          )}
+              {tags.length > 0 && (
+                <p className="mt-2 truncate text-xs font-medium text-muted-foreground">
+                  {tags.join(" · ")}
+                </p>
+              )}
+            </section>
+          ) : null}
         </div>
-      </div>
-    </div>
+      )}
+    </FormDialog>
   )
 }
 
@@ -1730,6 +1703,7 @@ export function AddTransactionModal({
   return (
     <AddTransactionModalMounted
       key={`${typeKey}-${presetKey}`}
+      open={open}
       expenseFlow={expenseFlow}
       initialType={expenseFlow ? "expense" : initialType}
       onOpenChange={onOpenChange}
