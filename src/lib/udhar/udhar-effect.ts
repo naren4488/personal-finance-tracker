@@ -71,12 +71,29 @@ function normalizeEntryTypeToken(raw: string): UdharEntryTypeNorm | null {
   /** Backend ledger slugs — semantic meaning is in `title`, not `type`/`direction`/`signedAmount` sign. */
   if (t === "person_lend") return "money_given"
   if (t === "person_borrow") return "money_taken"
+  /** Repayment slugs seen in recent transactions payloads. */
+  if (t === "person_repayment") return "payment_received"
+  if (t === "udhar_repayment") return "payment_made"
   if (t === "money_given" || t === "moneygiven" || t === "lent" || t === "given")
     return "money_given"
   if (t === "money_taken" || t === "moneytaken" || t === "borrowed" || t === "taken")
     return "money_taken"
-  if (t === "payment_received" || t === "paymentreceived") return "payment_received"
-  if (t === "payment_made" || t === "paymentmade") return "payment_made"
+  if (
+    t === "payment_received" ||
+    t === "paymentreceived" ||
+    t === "repayment_received" ||
+    t === "received_repayment"
+  ) {
+    return "payment_received"
+  }
+  if (
+    t === "payment_made" ||
+    t === "paymentmade" ||
+    t === "repayment_made" ||
+    t === "made_repayment"
+  ) {
+    return "payment_made"
+  }
   return null
 }
 
@@ -85,6 +102,11 @@ function inferEntryTypeFromSlug(hay: string): UdharEntryTypeNorm | null {
   const s = hay.toLowerCase()
   if (s.includes("person_lend")) return "money_given"
   if (s.includes("person_borrow")) return "money_taken"
+  if (s.includes("person_repayment")) return "payment_received"
+  if (s.includes("udhar_repayment")) return "payment_made"
+  if (s.includes("repayment_received") || s.includes("received_repayment"))
+    return "payment_received"
+  if (s.includes("repayment_made") || s.includes("made_repayment")) return "payment_made"
   if (s.includes("payment_received") || s.includes("payment-received")) return "payment_received"
   if (s.includes("payment_made") || s.includes("payment-made")) return "payment_made"
   if (s.includes("money_given") || s.includes("money-given")) return "money_given"

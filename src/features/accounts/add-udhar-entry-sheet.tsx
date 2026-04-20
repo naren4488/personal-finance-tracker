@@ -232,11 +232,14 @@ function AddUdharEntrySheetMounted({ open, onOpenChange }: MountedProps) {
     }
 
     try {
-      await createUdharEntry(payload).unwrap()
+      console.log("[AddUdharEntrySheet] submit payload:", payload)
+      const response = await createUdharEntry(payload).unwrap()
+      console.log("[AddUdharEntrySheet] submit success response:", response)
       toast.success("udhar entry created successfully")
       setForm(initialFormState())
       dismiss()
     } catch (err) {
+      console.error("[AddUdharEntrySheet] submit failed:", err)
       const msg = getErrorMessage(err)
       if (isAuthTokenRequiredMessage(msg)) {
         toast.error("Please sign in again")

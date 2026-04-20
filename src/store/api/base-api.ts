@@ -779,11 +779,37 @@ export const baseApi = createApi({
         if (!id) {
           return { error: { status: 422, data: "Account id is required" } }
         }
-        const res = await baseQuery({
-          url: TRANSACTION_PATHS.udharSummary,
-          method: "GET",
-          params: { accountId: id },
-        })
+        const candidateUrls = [TRANSACTION_PATHS.udharSummary, "/transactions/udhar/summary"]
+        let res: Awaited<ReturnType<typeof baseQuery>> | null = null
+        for (const url of candidateUrls) {
+          // Prefer GET with query for REST-style summary endpoints.
+          const getRes = await baseQuery({
+            url,
+            method: "GET",
+            params: { accountId: id },
+          })
+          if (!getRes.error) {
+            res = getRes
+            break
+          }
+
+          // Retry POST for backends that model summary as an action endpoint.
+          const postRes = await baseQuery({
+            url,
+            method: "POST",
+            body: { accountId: id },
+          })
+          if (!postRes.error) {
+            res = postRes
+            break
+          }
+
+          // Preserve the latest error if all candidates fail.
+          res = postRes
+        }
+        if (!res) {
+          return { error: { status: 500, data: "Unable to fetch udhar summary" } }
+        }
         if (res.error) {
           return { error: normalizeFetchError(res.error) }
         }
@@ -1260,20 +1286,28 @@ export const baseApi = createApi({
           return { error: { status: 422, data: first ?? "Invalid udhar entry payload" } }
         }
         const postBody = buildUdharEntryPostBody(validated.data)
+        console.log("[udhar] create — request (validated):", validated.data)
+        console.log("[udhar] create — POST body:", postBody)
+        console.log("[udhar] create — auth token present:", Boolean(getToken()))
         const res = await baseQuery({
           url: TRANSACTION_PATHS.udhar,
           method: "POST",
           body: postBody,
         })
         if (res.error) {
-          return { error: normalizeFetchError(res.error) }
+          const err = normalizeFetchError(res.error)
+          console.error("[udhar] create failed — HTTP error:", err)
+          return { error: err }
         }
+        console.log("[udhar] create — response (raw):", res.data)
         const failMsg = parseApiFailureMessage(res.data)
         if (failMsg) {
+          console.error("[udhar] create — success:false envelope:", failMsg, res.data)
           return { error: { status: 400, data: failMsg } }
         }
         const parsed = parseCreateUdharEntrySuccess(res.data)
         if (!parsed.ok) {
+          console.error("[udhar] create — parse failed:", parsed.error, res.data)
           return { error: { status: 422, data: parsed.error } }
         }
         if (parsed.entry?.person) {
@@ -1286,6 +1320,7 @@ export const baseApi = createApi({
           parsed.message?.trim() && parsed.message.trim().length > 0
             ? parsed.message.trim()
             : "udhar entry created successfully"
+        console.log("[udhar] create — parsed entry:", parsed.entry)
         return {
           data: {
             message,

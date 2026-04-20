@@ -6,7 +6,10 @@ import { extractUdharEntryType } from "@/lib/udhar/udhar-effect"
  * Net position for a person from ledger rows.
  * - `person_lend` / `person_borrow` rows are split by **title** (see {@link extractUdharEntryType}),
  *   not by the sign of `signedAmount` alone.
- * - Other rows keep the legacy split: positive `signedAmount` → receivable side, negative → payable.
+ * - Payment rows follow Udhar semantics:
+ *   - `payment_received` increases receivable-side movement
+ *   - `payment_made` increases payable-side movement
+ * - Unknown rows keep the legacy split: positive `signedAmount` → receivable side, negative → payable.
  */
 export function aggregateUdharLedgerEntries(entries: RecentTransaction[]): {
   totalLent: number
@@ -21,10 +24,10 @@ export function aggregateUdharLedgerEntries(entries: RecentTransaction[]): {
     const mag = Math.abs(s)
     const entryType = extractUdharEntryType(tx)
 
-    if (entryType === "money_given") {
+    if (entryType === "money_given" || entryType === "payment_received") {
       sumPositive += mag
       net += mag
-    } else if (entryType === "money_taken") {
+    } else if (entryType === "money_taken" || entryType === "payment_made") {
       sumNegativeAbs += mag
       net -= mag
     } else {
