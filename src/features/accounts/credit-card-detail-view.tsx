@@ -1,6 +1,15 @@
 import { useCallback, useEffect, useMemo, useState } from "react"
 import { useNavigate } from "react-router-dom"
-import { Archive, ArrowLeft, Check, ChevronDown, Pencil, Trash2, X } from "lucide-react"
+import {
+  Archive,
+  ArrowLeft,
+  Check,
+  ChevronDown,
+  Pencil,
+  Trash2,
+  WalletCards,
+  X,
+} from "lucide-react"
 import { toast } from "sonner"
 import { ConfirmDeleteDialog } from "@/components/confirm-delete-dialog"
 import { Button } from "@/components/ui/button"
@@ -484,34 +493,22 @@ export function CreditCardDetailView({
             "relative z-10 flex min-h-0 w-full max-w-lg flex-1 flex-col overflow-hidden bg-background shadow-2xl sm:max-h-[min(92dvh,calc(100dvh-1.5rem))] sm:rounded-2xl"
           )}
         >
-          <div className="shrink-0 flex items-center gap-2 px-4 pb-1.5 pt-2 sm:px-5 sm:pt-2.5">
+          <div className="shrink-0 flex items-center gap-2 px-4 pb-2 pt-3 sm:px-5 sm:pt-3.5">
             <button
               type="button"
               onClick={dismiss}
-              className="inline-flex shrink-0 items-center gap-1 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground sm:text-sm"
+              className="inline-flex shrink-0 items-center gap-1 text-sm font-semibold text-slate-500 transition-colors hover:text-foreground"
             >
               <ArrowLeft className="size-4 shrink-0" strokeWidth={2} aria-hidden />
               Back
             </button>
             <p
               id="cc-detail-card-name"
-              className="min-w-0 flex-1 truncate text-base font-bold leading-tight text-foreground sm:text-lg"
+              className="min-w-0 flex-1 truncate text-base font-bold opacity-0"
             >
               {model.name}
             </p>
-            <div className="flex shrink-0 items-center gap-0.5">
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon-sm"
-                className="size-8 shrink-0 rounded-full text-muted-foreground hover:bg-muted hover:text-foreground sm:size-9"
-                aria-label={isEditing ? "Editing card" : "Edit card"}
-                disabled={isEditing}
-                onClick={startEdit}
-              >
-                <Pencil className="size-4 sm:size-[18px]" strokeWidth={2} aria-hidden />
-              </Button>
-            </div>
+            <span className="inline-block size-8 shrink-0" aria-hidden />
           </div>
 
           <div
@@ -519,46 +516,71 @@ export function CreditCardDetailView({
               "min-h-0 flex-1 overflow-y-auto overflow-x-hidden overscroll-y-contain px-4 pb-5 pt-0 [-ms-overflow-style:none] [scrollbar-width:thin] sm:px-5 sm:pb-6"
             )}
           >
-            <div className="overflow-hidden rounded-2xl bg-primary text-primary-foreground shadow-md">
-              <div className="px-3 pb-2.5 pt-2 sm:px-4 sm:pb-3 sm:pt-2.5">
-                {subtitle ? (
-                  <p className="truncate text-center text-[11px] font-medium text-primary-foreground/85 sm:text-xs">
-                    {subtitle}
+            <div className="overflow-hidden rounded-3xl border border-[#1D2E77]/70 bg-[#0B1C66] text-primary-foreground shadow-[0_12px_30px_rgba(8,18,70,0.35)]">
+              <div className="px-4 pb-4 pt-3.5 sm:px-5 sm:pb-5 sm:pt-4">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-xl font-bold tracking-tight text-white sm:text-2xl">
+                      {model.name || "Credit Card"}
+                    </p>
+                    <p className="mt-0.5 truncate text-sm font-medium text-white/80">
+                      {subtitle || networkDisplay || "credit card"}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon-sm"
+                      className="size-8 shrink-0 rounded-full text-white/85 hover:bg-white/12 hover:text-white"
+                      aria-label={isEditing ? "Editing card" : "Edit card"}
+                      disabled={isEditing}
+                      onClick={startEdit}
+                    >
+                      <Pencil className="size-4" strokeWidth={2.1} aria-hidden />
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon-sm"
+                      className="size-8 shrink-0 rounded-full text-white/85 hover:bg-white/12 hover:text-white"
+                      aria-label="Pay bill"
+                      onClick={() => onPayBill?.()}
+                    >
+                      <WalletCards className="size-4" strokeWidth={2.1} aria-hidden />
+                    </Button>
+                  </div>
+                </div>
+
+                {masked ? (
+                  <p className="mt-2 truncate text-xs font-medium tracking-[0.12em] text-white/85 sm:text-sm">
+                    {masked}
                   </p>
                 ) : null}
 
-                {masked ? (
-                  <p
-                    className={cn(
-                      "text-center text-xs font-medium tracking-[0.12em] text-primary-foreground sm:text-sm",
-                      subtitle ? "mt-1.5" : "mt-0"
-                    )}
-                  >
-                    {masked}
-                  </p>
-                ) : (
-                  <div className={subtitle ? "mt-1.5" : "mt-0"} />
-                )}
-
-                <div className="mt-2 flex flex-wrap items-end justify-between gap-x-4 gap-y-1.5 sm:mt-2.5">
+                <p className="mt-5 text-[11px] font-medium uppercase tracking-wide text-white/70">
+                  Available Credit
+                </p>
+                <p className="mt-1 text-3xl font-bold tabular-nums text-white sm:text-4xl">
+                  {formatCurrency(available)}
+                </p>
+                <div className="mt-2 flex items-end justify-between gap-4">
                   <div className="min-w-0">
-                    <p className="text-[10px] font-medium uppercase tracking-wide text-primary-foreground/70 sm:text-[11px]">
+                    <p className="text-[11px] font-medium uppercase tracking-wide text-white/70">
+                      Outstanding
+                    </p>
+                    <p className="mt-0.5 text-sm font-semibold tabular-nums text-white/90 sm:text-base">
+                      {formatCurrency(outstanding)}
+                    </p>
+                  </div>
+                  <div className="min-w-0 text-right">
+                    <p className="text-[11px] font-medium uppercase tracking-wide text-white/70">
                       Credit Limit
                     </p>
-                    <p className="mt-0.5 text-2xl font-bold leading-none tabular-nums sm:text-3xl">
+                    <p className="mt-0.5 text-sm font-semibold tabular-nums text-white/90 sm:text-base">
                       {formatCurrency(limit)}
                     </p>
                   </div>
-                  {model.dueDateLabel ? (
-                    <div className="min-w-0 text-right">
-                      <p className="text-[10px] font-medium uppercase tracking-wide text-primary-foreground/70 sm:text-[11px]">
-                        Next Due Date
-                      </p>
-                      <p className="mt-0.5 text-base font-bold tabular-nums text-primary-foreground sm:text-lg">
-                        {model.dueDateLabel}
-                      </p>
-                    </div>
-                  ) : null}
                 </div>
               </div>
             </div>

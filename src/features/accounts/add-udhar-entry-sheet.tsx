@@ -131,11 +131,15 @@ function AddUdharEntrySheetMounted({ open, onOpenChange }: MountedProps) {
 
   const [form, setForm] = useState(() => initialFormState())
 
-  const { data: udharBalancesCached = [], refetch: refetchUdharBalances } =
-    useGetUdharAccountBalancesQuery(
-      { accountId: form.accountId },
-      { skip: !user || !form.accountId.trim() }
-    )
+  const { data: udharBalancesCached = [] } = useGetUdharAccountBalancesQuery(
+    { accountId: form.accountId },
+    /**
+     * Backend on this project does not expose a compatible udhar-summary route yet.
+     * Keep local cache shape for optional client-side guards, but disable live fetch
+     * so account selection / submit does not trigger noisy 405 console errors.
+     */
+    { skip: true }
+  )
 
   const dismiss = useCallback(() => {
     onOpenChange(false)
@@ -205,12 +209,8 @@ function AddUdharEntrySheetMounted({ open, onOpenChange }: MountedProps) {
       return
     }
 
-    /** Fresh caps from GET udhar-summary before any POST (best-effort vs concurrent edits). */
-    let balanceRows = udharBalancesCached
-    if (form.accountId.trim()) {
-      const refreshed = await refetchUdharBalances()
-      balanceRows = refreshed.data ?? udharBalancesCached
-    }
+    /** Best-effort client-side caps; when summary API is unavailable we skip this guard. */
+    const balanceRows = udharBalancesCached
 
     if (form.entryType === "payment_received" || form.entryType === "payment_made") {
       const row = balanceRows.find((b) => b.personId === effectivePersonId)
