@@ -10,6 +10,16 @@ import { accountSelectLabel, filterActiveAccounts } from "@/lib/api/account-sche
 import { buildCreateCommitmentBody } from "@/lib/api/commitment-schemas"
 import { getErrorMessage } from "@/lib/api/errors"
 import { endUserSession } from "@/lib/auth/end-session"
+import {
+  APP_FORM_FIELD_CLASS,
+  APP_FORM_HEADER_CLASS,
+  APP_FORM_LABEL_CLASS,
+  APP_FORM_SELECT_CLASS,
+  APP_FORM_STACK_CLASS,
+  APP_FORM_SUBMIT_CLASS,
+  APP_FORM_TITLE_CLASS,
+  APP_FORM_TWO_COL_GRID_CLASS,
+} from "@/lib/ui/app-form-styles"
 import { cn } from "@/lib/utils"
 import { useCreateCommitmentMutation, useGetCreditCardsQuery } from "@/store/api/base-api"
 import { useAppDispatch, useAppSelector } from "@/store/hooks"
@@ -94,9 +104,6 @@ function AddCommitmentModalMounted({ open, onOpenChange }: MountedProps) {
     onOpenChange(false)
   }, [onOpenChange])
 
-  const fieldClass =
-    "h-9 w-full rounded-xl border border-slate-200 bg-slate-50/80 px-3 text-sm text-foreground shadow-sm outline-none focus-visible:border-[#1e1b4b]/40 focus-visible:ring-2 focus-visible:ring-[#1e1b4b]/20"
-
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     const title = form.title.trim()
@@ -160,15 +167,15 @@ function AddCommitmentModalMounted({ open, onOpenChange }: MountedProps) {
       onOpenChange={onOpenChange}
       accessibilityTitle="Add Commitment"
       header={
-        <header className="flex shrink-0 items-start justify-between gap-2 border-b border-slate-100 px-5 py-4">
-          <h2 id={titleId} className="text-lg font-bold text-[#0f172a]">
+        <header className={cn(APP_FORM_HEADER_CLASS, "flex items-start justify-between gap-2")}>
+          <h2 id={titleId} className={APP_FORM_TITLE_CLASS}>
             Add Commitment
           </h2>
           <Button
             type="button"
             variant="ghost"
             size="icon-sm"
-            className="shrink-0 rounded-full text-slate-500 hover:text-slate-900"
+            className="shrink-0 rounded-full text-muted-foreground hover:text-foreground"
             aria-label="Close"
             onClick={dismiss}
           >
@@ -178,21 +185,15 @@ function AddCommitmentModalMounted({ open, onOpenChange }: MountedProps) {
       }
       formProps={{ onSubmit: (e) => void handleSubmit(e) }}
       footer={
-        <div className="flex justify-start">
-          <Button
-            type="submit"
-            disabled={isCreating}
-            className="h-10 rounded-xl bg-[#1e1b4b] px-6 text-sm font-bold text-white hover:bg-[#16143a] disabled:opacity-60"
-          >
-            {isCreating ? "Saving…" : "Save Commitment"}
-          </Button>
-        </div>
+        <Button type="submit" disabled={isCreating} className={APP_FORM_SUBMIT_CLASS}>
+          {isCreating ? "Saving…" : "Save Commitment"}
+        </Button>
       }
     >
-      <div className="px-5 pt-4">
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+      <div className={APP_FORM_STACK_CLASS}>
+        <div className={APP_FORM_TWO_COL_GRID_CLASS}>
           <div className="space-y-1.5">
-            <Label htmlFor="commitment-direction" className="text-xs font-medium text-slate-600">
+            <Label htmlFor="commitment-direction" className={APP_FORM_LABEL_CLASS}>
               Direction
             </Label>
             <div className="relative">
@@ -205,7 +206,7 @@ function AddCommitmentModalMounted({ open, onOpenChange }: MountedProps) {
                     direction: e.target.value as FormState["direction"],
                   }))
                 }
-                className={cn(fieldClass, "appearance-none pr-9")}
+                className={APP_FORM_SELECT_CLASS}
               >
                 {DIRECTIONS.map((d) => (
                   <option key={d.value} value={d.value}>
@@ -218,7 +219,7 @@ function AddCommitmentModalMounted({ open, onOpenChange }: MountedProps) {
           </div>
 
           <div className="space-y-1.5">
-            <Label htmlFor="commitment-kind" className="text-xs font-medium text-slate-600">
+            <Label htmlFor="commitment-kind" className={APP_FORM_LABEL_CLASS}>
               Kind
             </Label>
             <div className="relative">
@@ -231,7 +232,7 @@ function AddCommitmentModalMounted({ open, onOpenChange }: MountedProps) {
                     kind: e.target.value as FormState["kind"],
                   }))
                 }
-                className={cn(fieldClass, "appearance-none pr-9")}
+                className={APP_FORM_SELECT_CLASS}
               >
                 {KINDS.map((k) => (
                   <option key={k.value} value={k.value}>
@@ -244,21 +245,21 @@ function AddCommitmentModalMounted({ open, onOpenChange }: MountedProps) {
           </div>
 
           <div className="space-y-1.5">
-            <Label htmlFor="commitment-title" className="text-xs font-medium text-slate-600">
+            <Label htmlFor="commitment-title" className={APP_FORM_LABEL_CLASS}>
               Title
             </Label>
             <Input
               id="commitment-title"
               value={form.title}
               onChange={(e) => setForm((f) => ({ ...f, title: e.target.value }))}
-              className={fieldClass}
+              className={APP_FORM_FIELD_CLASS}
               placeholder=""
               autoComplete="off"
             />
           </div>
 
           <div className="space-y-1.5">
-            <Label htmlFor="commitment-amount" className="text-xs font-medium text-slate-600">
+            <Label htmlFor="commitment-amount" className={APP_FORM_LABEL_CLASS}>
               Amount
             </Label>
             <Input
@@ -266,13 +267,13 @@ function AddCommitmentModalMounted({ open, onOpenChange }: MountedProps) {
               inputMode="decimal"
               value={form.amount}
               onChange={(e) => setForm((f) => ({ ...f, amount: e.target.value }))}
-              className={fieldClass}
+              className={APP_FORM_FIELD_CLASS}
               placeholder="0.00"
             />
           </div>
 
           <div className="space-y-1.5">
-            <Label htmlFor="commitment-due" className="text-xs font-medium text-slate-600">
+            <Label htmlFor="commitment-due" className={APP_FORM_LABEL_CLASS}>
               Due Date
             </Label>
             <Input
@@ -280,12 +281,12 @@ function AddCommitmentModalMounted({ open, onOpenChange }: MountedProps) {
               type="date"
               value={form.dueDate}
               onChange={(e) => setForm((f) => ({ ...f, dueDate: e.target.value }))}
-              className={cn(fieldClass, "scheme-light")}
+              className={cn(APP_FORM_FIELD_CLASS, "scheme-light dark:scheme-dark")}
             />
           </div>
 
           <div className="space-y-1.5">
-            <Label htmlFor="commitment-card" className="text-xs font-medium text-slate-600">
+            <Label htmlFor="commitment-card" className={APP_FORM_LABEL_CLASS}>
               Card
             </Label>
             <div className="relative">
@@ -295,8 +296,7 @@ function AddCommitmentModalMounted({ open, onOpenChange }: MountedProps) {
                 onChange={(e) => setForm((f) => ({ ...f, cardAccountId: e.target.value }))}
                 disabled={cardsBusy}
                 className={cn(
-                  fieldClass,
-                  "appearance-none pr-9",
+                  APP_FORM_SELECT_CLASS,
                   !form.cardAccountId && "text-muted-foreground"
                 )}
               >
@@ -312,15 +312,15 @@ function AddCommitmentModalMounted({ open, onOpenChange }: MountedProps) {
           </div>
         </div>
 
-        <div className="mt-4 space-y-1.5">
-          <Label htmlFor="commitment-note" className="text-xs font-medium text-slate-600">
+        <div className="space-y-1.5">
+          <Label htmlFor="commitment-note" className={APP_FORM_LABEL_CLASS}>
             Note
           </Label>
           <Input
             id="commitment-note"
             value={form.note}
             onChange={(e) => setForm((f) => ({ ...f, note: e.target.value }))}
-            className={fieldClass}
+            className={APP_FORM_FIELD_CLASS}
             placeholder=""
             autoComplete="off"
           />

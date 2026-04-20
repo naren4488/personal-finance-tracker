@@ -25,6 +25,15 @@ import { getErrorMessage } from "@/lib/api/errors"
 import { isLoanAccount } from "@/lib/api/loan-account-map"
 import { INCOME_SOURCE_OPTIONS } from "@/lib/api/transaction-schemas"
 import { FORM_OVERLAY_FILL_BODY, FORM_OVERLAY_SCROLL_BODY } from "@/lib/form-overlay-scroll"
+import {
+  TX_FORM_DESCRIPTION_CLASS,
+  TX_FORM_FIELDS_STACK_CLASS,
+  TX_FORM_FIELD_CLASS,
+  TX_FORM_HEADER_CLASS,
+  TX_FORM_LABEL_CLASS,
+  TX_FORM_SELECT_CLASS,
+  TX_FORM_SUBMIT_CLASS,
+} from "@/lib/ui/tx-modal-form-classes"
 import type {
   CreateTransactionPayload,
   Transaction,
@@ -139,11 +148,6 @@ function CreditCardExpenseFields({
   onOptionalDescriptionChange,
 }: CreditCardExpenseFieldsProps) {
   const [tagDraft, setTagDraft] = useState("")
-  const labelClass = "mb-1.5 block text-xs font-semibold text-foreground/80"
-  const fieldBase =
-    "flex h-10 w-full rounded-xl border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-0 disabled:cursor-not-allowed disabled:opacity-50"
-  const selectFieldClass = cn(fieldBase, "appearance-none pr-9")
-
   const selectedCardId = useWatch({ control: form.control, name: "creditCardAccountId" }) ?? ""
   const tags = useWatch({ control: form.control, name: "tags" }) ?? []
   const selectedCard = useMemo(
@@ -179,7 +183,7 @@ function CreditCardExpenseFields({
   return (
     <>
       <section>
-        <Label htmlFor="at-cc-account" className={labelClass}>
+        <Label htmlFor="at-cc-account" className={TX_FORM_LABEL_CLASS}>
           Credit card
         </Label>
         <div className="relative">
@@ -190,7 +194,7 @@ function CreditCardExpenseFields({
               const v = e.target.value
               onAccountIdChange(v)
             }}
-            className={cn(selectFieldClass, !accountId && "text-muted-foreground")}
+            className={cn(TX_FORM_SELECT_CLASS, !accountId && "text-muted-foreground")}
           >
             <option value="">Select account</option>
             {accounts.map((a) => (
@@ -235,7 +239,7 @@ function CreditCardExpenseFields({
       ) : null}
 
       <section>
-        <Label htmlFor="at-cc-amount" className={cn(labelClass, "text-center")}>
+        <Label htmlFor="at-cc-amount" className={cn(TX_FORM_LABEL_CLASS, "text-center")}>
           Amount (₹)
         </Label>
         <Input
@@ -247,7 +251,7 @@ function CreditCardExpenseFields({
           {...form.register("amount")}
           aria-invalid={!!form.formState.errors.amount}
           className={cn(
-            fieldBase,
+            TX_FORM_FIELD_CLASS,
             "h-14 bg-muted/20 text-center text-2xl font-bold tabular-nums text-primary/80 placeholder:text-primary/40"
           )}
         />
@@ -260,7 +264,7 @@ function CreditCardExpenseFields({
 
       <div className="grid grid-cols-2 gap-4">
         <section>
-          <Label htmlFor="at-cc-category" className={labelClass}>
+          <Label htmlFor="at-cc-category" className={TX_FORM_LABEL_CLASS}>
             Category
           </Label>
           <Input
@@ -268,7 +272,10 @@ function CreditCardExpenseFields({
             placeholder="e.g. food"
             autoComplete="off"
             {...form.register("category")}
-            className={cn(fieldBase, form.formState.errors.category && "border-destructive")}
+            className={cn(
+              TX_FORM_FIELD_CLASS,
+              form.formState.errors.category && "border-destructive"
+            )}
           />
           {form.formState.errors.category && (
             <p className="mt-1 text-xs text-destructive">
@@ -277,14 +284,14 @@ function CreditCardExpenseFields({
           )}
         </section>
         <section>
-          <Label htmlFor="at-cc-date" className={labelClass}>
+          <Label htmlFor="at-cc-date" className={TX_FORM_LABEL_CLASS}>
             Date
           </Label>
           <Input
             id="at-cc-date"
             type="date"
             {...form.register("date")}
-            className={cn(fieldBase, "scheme-light dark:scheme-dark")}
+            className={cn(TX_FORM_FIELD_CLASS, "scheme-light dark:scheme-dark")}
           />
           {form.formState.errors.date && (
             <p className="mt-1 text-xs text-destructive">{form.formState.errors.date.message}</p>
@@ -293,7 +300,7 @@ function CreditCardExpenseFields({
       </div>
 
       <section>
-        <Label htmlFor="at-cc-desc-opt" className={labelClass}>
+        <Label htmlFor="at-cc-desc-opt" className={TX_FORM_LABEL_CLASS}>
           Description <span className="font-normal text-muted-foreground">(optional)</span>
         </Label>
         <Input
@@ -301,12 +308,12 @@ function CreditCardExpenseFields({
           value={optionalDescription}
           onChange={(e) => onOptionalDescriptionChange(e.target.value)}
           placeholder="Short description"
-          className={fieldBase}
+          className={TX_FORM_FIELD_CLASS}
         />
       </section>
 
       <section>
-        <Label htmlFor="at-cc-fee" className={labelClass}>
+        <Label htmlFor="at-cc-fee" className={TX_FORM_LABEL_CLASS}>
           Fee amount (₹)
         </Label>
         <Input
@@ -316,13 +323,13 @@ function CreditCardExpenseFields({
           autoComplete="off"
           placeholder="0 (optional)"
           {...form.register("feeAmount")}
-          className={fieldBase}
+          className={TX_FORM_FIELD_CLASS}
         />
         <p className="mt-1 text-xs text-muted-foreground">Leave empty for 0</p>
       </section>
 
       <section>
-        <Label htmlFor="at-cc-note" className={labelClass}>
+        <Label htmlFor="at-cc-note" className={TX_FORM_LABEL_CLASS}>
           Note
         </Label>
         <Input
@@ -330,12 +337,12 @@ function CreditCardExpenseFields({
           placeholder="Optional"
           autoComplete="off"
           {...form.register("note")}
-          className={fieldBase}
+          className={TX_FORM_FIELD_CLASS}
         />
       </section>
 
       <section>
-        <Label className={cn(labelClass, "flex items-center gap-1.5")}>
+        <Label className={cn(TX_FORM_LABEL_CLASS, "flex items-center gap-1.5")}>
           <Tag className="size-3.5" strokeWidth={2.5} aria-hidden />
           Tags
         </Label>
@@ -350,7 +357,7 @@ function CreditCardExpenseFields({
               }
             }}
             placeholder="Add tag"
-            className={cn(fieldBase, "min-w-32 flex-1")}
+            className={cn(TX_FORM_FIELD_CLASS, "min-w-32 flex-1")}
           />
           <Button
             type="button"
@@ -465,12 +472,6 @@ function AddTransactionModalMounted({
   const navigate = useNavigate()
   const dispatch = useAppDispatch()
   const user = useAppSelector((s) => s.auth.user)
-
-  // Shared Styles mapping to your AddCreditCard requirements
-  const labelClass = "mb-1.5 block text-xs font-semibold text-foreground/80"
-  const fieldBase =
-    "flex h-10 w-full rounded-xl border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-0 disabled:cursor-not-allowed disabled:opacity-50"
-  const selectFieldClass = cn(fieldBase, "appearance-none pr-9")
 
   const {
     data: accountsRaw = [],
@@ -1000,7 +1001,7 @@ function AddTransactionModalMounted({
       onOpenChange={onOpenChange}
       accessibilityTitle={modalTitle}
       header={
-        <header className="shrink-0 border-b border-border/80 bg-card px-5 py-4">
+        <header className={TX_FORM_HEADER_CLASS}>
           <div className="flex items-center justify-between gap-2">
             <h2 id={titleId} className="text-base font-bold text-primary sm:text-lg">
               {modalTitle}
@@ -1016,7 +1017,7 @@ function AddTransactionModalMounted({
               <X className="size-4" strokeWidth={2.5} />
             </Button>
           </div>
-          <DialogDescription className="mt-2 text-center text-xs leading-relaxed text-muted-foreground sm:text-sm">
+          <DialogDescription className={TX_FORM_DESCRIPTION_CLASS}>
             Log income, expenses, or transfers in one place.
           </DialogDescription>
         </header>
@@ -1037,7 +1038,7 @@ function AddTransactionModalMounted({
                 transferDestinationType === "credit_card_bill" &&
                 isCreditCardPaymentDisabled)
             }
-            className="h-10 w-full rounded-xl bg-[hsl(230_22%_62%)] text-sm font-bold text-white hover:bg-[hsl(230_22%_56%)] disabled:opacity-60 sm:h-11 sm:text-base"
+            className={TX_FORM_SUBMIT_CLASS}
           >
             {isSubmitting ? "Saving…" : submitLabel}
           </Button>
@@ -1086,10 +1087,10 @@ function AddTransactionModalMounted({
       )}
 
       {!isLoading && !isError && hasAccount && (
-        <div className={cn(FORM_OVERLAY_SCROLL_BODY, "space-y-4 px-5 py-5")}>
+        <div className={cn(FORM_OVERLAY_SCROLL_BODY, TX_FORM_FIELDS_STACK_CLASS)}>
           {!expenseFlow && !lockTransferPayment && (
             <section>
-              <Label className={labelClass}>Type</Label>
+              <Label className={TX_FORM_LABEL_CLASS}>Type</Label>
               <div className="grid grid-cols-3 gap-3">
                 {(
                   [
@@ -1128,7 +1129,7 @@ function AddTransactionModalMounted({
             <>
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <section>
-                  <Label htmlFor={accountIdField} className={labelClass}>
+                  <Label htmlFor={accountIdField} className={TX_FORM_LABEL_CLASS}>
                     {fromAccountLabel}
                   </Label>
                   <div className="relative">
@@ -1144,7 +1145,7 @@ function AddTransactionModalMounted({
                         setAccountId(v)
                         if (toAccountId === v) setToAccountId("")
                       }}
-                      className={cn(selectFieldClass, !accountId && "text-muted-foreground")}
+                      className={cn(TX_FORM_SELECT_CLASS, !accountId && "text-muted-foreground")}
                     >
                       <option value="">Select account</option>
                       {transferSourceAccounts.map((a) => (
@@ -1157,7 +1158,7 @@ function AddTransactionModalMounted({
                   </div>
                 </section>
                 <section>
-                  <Label htmlFor={transferDestinationTypeId} className={labelClass}>
+                  <Label htmlFor={transferDestinationTypeId} className={TX_FORM_LABEL_CLASS}>
                     Destination type
                   </Label>
                   <div className="relative">
@@ -1171,7 +1172,7 @@ function AddTransactionModalMounted({
                       }}
                       disabled={lockTransferPayment}
                       className={cn(
-                        selectFieldClass,
+                        TX_FORM_SELECT_CLASS,
                         lockTransferPayment && "cursor-not-allowed opacity-80"
                       )}
                       aria-label="Transfer destination"
@@ -1187,7 +1188,7 @@ function AddTransactionModalMounted({
 
               {transferDestinationType === "account" ? (
                 <section>
-                  <Label htmlFor={toAccountIdField} className={labelClass}>
+                  <Label htmlFor={toAccountIdField} className={TX_FORM_LABEL_CLASS}>
                     To account
                   </Label>
                   <div className="relative">
@@ -1195,7 +1196,7 @@ function AddTransactionModalMounted({
                       id={toAccountIdField}
                       value={toAccountId}
                       onChange={(e) => setToAccountId(e.target.value)}
-                      className={cn(selectFieldClass, !toAccountId && "text-muted-foreground")}
+                      className={cn(TX_FORM_SELECT_CLASS, !toAccountId && "text-muted-foreground")}
                     >
                       <option value="">Select account</option>
                       {transferSourceAccounts
@@ -1212,7 +1213,7 @@ function AddTransactionModalMounted({
               ) : transferDestinationType === "credit_card_bill" ? (
                 <>
                   <section>
-                    <Label htmlFor={creditCardAccountFieldId} className={labelClass}>
+                    <Label htmlFor={creditCardAccountFieldId} className={TX_FORM_LABEL_CLASS}>
                       Credit card
                     </Label>
                     <div className="relative">
@@ -1238,7 +1239,7 @@ function AddTransactionModalMounted({
                           lockTransferPayment && transferPaymentPreset?.kind === "credit_card_bill"
                         }
                         className={cn(
-                          selectFieldClass,
+                          TX_FORM_SELECT_CLASS,
                           !creditCardAccountId && "text-muted-foreground",
                           lockTransferPayment &&
                             transferPaymentPreset?.kind === "credit_card_bill" &&
@@ -1280,7 +1281,7 @@ function AddTransactionModalMounted({
                     </div>
                     {creditCardPayment.isMinimumPaymentEnabled ? (
                       <section>
-                        <Label htmlFor="at-minimum-due-transfer" className={labelClass}>
+                        <Label htmlFor="at-minimum-due-transfer" className={TX_FORM_LABEL_CLASS}>
                           Minimum amount
                         </Label>
                         <Input
@@ -1298,7 +1299,7 @@ function AddTransactionModalMounted({
                             }
                             dispatch(setMinimumAmount(parsed))
                           }}
-                          className={cn(fieldBase, "font-medium tabular-nums")}
+                          className={cn(TX_FORM_FIELD_CLASS, "font-medium tabular-nums")}
                         />
                       </section>
                     ) : null}
@@ -1307,7 +1308,7 @@ function AddTransactionModalMounted({
               ) : (
                 <>
                   <section>
-                    <Label htmlFor={loanAccountFieldId} className={labelClass}>
+                    <Label htmlFor={loanAccountFieldId} className={TX_FORM_LABEL_CLASS}>
                       Loan account
                     </Label>
                     <div className="relative">
@@ -1332,7 +1333,7 @@ function AddTransactionModalMounted({
                         }}
                         disabled={lockTransferPayment && transferPaymentPreset?.kind === "loan_emi"}
                         className={cn(
-                          selectFieldClass,
+                          TX_FORM_SELECT_CLASS,
                           !loanAccountId && "text-muted-foreground",
                           lockTransferPayment &&
                             transferPaymentPreset?.kind === "loan_emi" &&
@@ -1388,7 +1389,7 @@ function AddTransactionModalMounted({
 
                   <div className="grid grid-cols-2 gap-4">
                     <section>
-                      <Label htmlFor={loanPrincipalFieldId} className={labelClass}>
+                      <Label htmlFor={loanPrincipalFieldId} className={TX_FORM_LABEL_CLASS}>
                         Principal (payment)
                       </Label>
                       <Input
@@ -1402,11 +1403,11 @@ function AddTransactionModalMounted({
                             principal: sanitizeDecimalInput(e.target.value),
                           }))
                         }
-                        className={cn(fieldBase, "tabular-nums")}
+                        className={cn(TX_FORM_FIELD_CLASS, "tabular-nums")}
                       />
                     </section>
                     <section>
-                      <Label htmlFor={loanInterestFieldId} className={labelClass}>
+                      <Label htmlFor={loanInterestFieldId} className={TX_FORM_LABEL_CLASS}>
                         Interest (payment)
                       </Label>
                       <Input
@@ -1420,7 +1421,7 @@ function AddTransactionModalMounted({
                             interest: sanitizeDecimalInput(e.target.value),
                           }))
                         }
-                        className={cn(fieldBase, "tabular-nums")}
+                        className={cn(TX_FORM_FIELD_CLASS, "tabular-nums")}
                       />
                     </section>
                   </div>
@@ -1428,7 +1429,7 @@ function AddTransactionModalMounted({
               )}
 
               <section>
-                <Label htmlFor="at-transfer-description" className={labelClass}>
+                <Label htmlFor="at-transfer-description" className={TX_FORM_LABEL_CLASS}>
                   Description <span className="font-normal text-muted-foreground">(optional)</span>
                 </Label>
                 <Input
@@ -1436,13 +1437,13 @@ function AddTransactionModalMounted({
                   value={description}
                   onChange={(e) => setDescription(e.target.value)}
                   placeholder="Short label for this transfer"
-                  className={fieldBase}
+                  className={TX_FORM_FIELD_CLASS}
                 />
               </section>
 
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
                 <section>
-                  <Label htmlFor="at-amount-transfer" className={labelClass}>
+                  <Label htmlFor="at-amount-transfer" className={TX_FORM_LABEL_CLASS}>
                     Amount (₹)
                   </Label>
                   {transferDestinationType === "loan_emi" ? (
@@ -1451,7 +1452,7 @@ function AddTransactionModalMounted({
                       readOnly
                       value={formatInr2(loanTotalInr)}
                       className={cn(
-                        fieldBase,
+                        TX_FORM_FIELD_CLASS,
                         "bg-muted/40 text-center font-semibold tabular-nums text-muted-foreground"
                       )}
                     />
@@ -1462,7 +1463,7 @@ function AddTransactionModalMounted({
                       value={formatInr2(creditCardPayment.paymentAmount)}
                       placeholder="0.00"
                       className={cn(
-                        fieldBase,
+                        TX_FORM_FIELD_CLASS,
                         "bg-muted/40 text-center font-semibold tabular-nums text-muted-foreground placeholder:text-muted-foreground/60"
                       )}
                     />
@@ -1474,14 +1475,14 @@ function AddTransactionModalMounted({
                       value={amount}
                       onChange={(e) => setAmount(e.target.value.replace(/[^\d]/g, ""))}
                       className={cn(
-                        fieldBase,
+                        TX_FORM_FIELD_CLASS,
                         "bg-muted/20 text-center font-semibold tabular-nums text-primary/80 placeholder:text-primary/40"
                       )}
                     />
                   )}
                 </section>
                 <section>
-                  <Label htmlFor="at-date-transfer" className={labelClass}>
+                  <Label htmlFor="at-date-transfer" className={TX_FORM_LABEL_CLASS}>
                     Date
                   </Label>
                   <Input
@@ -1489,11 +1490,11 @@ function AddTransactionModalMounted({
                     type="date"
                     value={date}
                     onChange={(e) => setDate(e.target.value)}
-                    className={cn(fieldBase, "scheme-light dark:scheme-dark")}
+                    className={cn(TX_FORM_FIELD_CLASS, "scheme-light dark:scheme-dark")}
                   />
                 </section>
                 <section>
-                  <Label htmlFor="at-transfer-note-grid" className={labelClass}>
+                  <Label htmlFor="at-transfer-note-grid" className={TX_FORM_LABEL_CLASS}>
                     Note
                   </Label>
                   <Input
@@ -1501,7 +1502,7 @@ function AddTransactionModalMounted({
                     placeholder="Optional note"
                     value={note}
                     onChange={(e) => setNote(e.target.value)}
-                    className={fieldBase}
+                    className={TX_FORM_FIELD_CLASS}
                   />
                 </section>
               </div>
@@ -1521,7 +1522,7 @@ function AddTransactionModalMounted({
           ) : (
             <>
               <section>
-                <Label htmlFor="at-amount" className={cn(labelClass, "text-center")}>
+                <Label htmlFor="at-amount" className={cn(TX_FORM_LABEL_CLASS, "text-center")}>
                   Amount (₹)
                 </Label>
                 <Input
@@ -1531,7 +1532,7 @@ function AddTransactionModalMounted({
                   value={amount}
                   onChange={(e) => setAmount(e.target.value.replace(/[^\d]/g, ""))}
                   className={cn(
-                    fieldBase,
+                    TX_FORM_FIELD_CLASS,
                     "h-14 bg-muted/20 text-center text-2xl font-bold tabular-nums text-primary/80 placeholder:text-primary/40"
                   )}
                 />
@@ -1541,7 +1542,7 @@ function AddTransactionModalMounted({
                 <section>
                   {effectiveType === "income" ? (
                     <>
-                      <Label htmlFor={incomeSourceId} className={labelClass}>
+                      <Label htmlFor={incomeSourceId} className={TX_FORM_LABEL_CLASS}>
                         Income source
                       </Label>
                       <div className="relative">
@@ -1549,7 +1550,7 @@ function AddTransactionModalMounted({
                           id={incomeSourceId}
                           value={incomeSource}
                           onChange={(e) => setIncomeSource(e.target.value)}
-                          className={selectFieldClass}
+                          className={TX_FORM_SELECT_CLASS}
                         >
                           {INCOME_SOURCE_OPTIONS.map(({ value, label }) => (
                             <option key={value} value={value}>
@@ -1562,7 +1563,7 @@ function AddTransactionModalMounted({
                     </>
                   ) : (
                     <>
-                      <Label htmlFor={categoryId} className={labelClass}>
+                      <Label htmlFor={categoryId} className={TX_FORM_LABEL_CLASS}>
                         Category
                       </Label>
                       <div className="relative">
@@ -1570,7 +1571,7 @@ function AddTransactionModalMounted({
                           id={categoryId}
                           value={category}
                           onChange={(e) => setCategory(e.target.value)}
-                          className={cn(selectFieldClass, !category && "text-muted-foreground")}
+                          className={cn(TX_FORM_SELECT_CLASS, !category && "text-muted-foreground")}
                         >
                           <option value="">Select category</option>
                           {TX_CATEGORIES.map((c) => (
@@ -1585,7 +1586,7 @@ function AddTransactionModalMounted({
                   )}
                 </section>
                 <section>
-                  <Label htmlFor="at-date" className={labelClass}>
+                  <Label htmlFor="at-date" className={TX_FORM_LABEL_CLASS}>
                     Date
                   </Label>
                   <Input
@@ -1593,13 +1594,13 @@ function AddTransactionModalMounted({
                     type="date"
                     value={date}
                     onChange={(e) => setDate(e.target.value)}
-                    className={cn(fieldBase, "scheme-light dark:scheme-dark")}
+                    className={cn(TX_FORM_FIELD_CLASS, "scheme-light dark:scheme-dark")}
                   />
                 </section>
               </div>
 
               <section>
-                <Label className={labelClass}>Payment Method</Label>
+                <Label className={TX_FORM_LABEL_CLASS}>Payment Method</Label>
                 <div className="grid grid-cols-2 gap-2">
                   <ToggleTile
                     selected={paymentMethod === "account"}
@@ -1625,7 +1626,7 @@ function AddTransactionModalMounted({
               </section>
 
               <section>
-                <Label htmlFor={accountIdField} className={labelClass}>
+                <Label htmlFor={accountIdField} className={TX_FORM_LABEL_CLASS}>
                   {fromAccountLabel}
                 </Label>
                 <div className="relative">
@@ -1633,7 +1634,7 @@ function AddTransactionModalMounted({
                     id={accountIdField}
                     value={accountId}
                     onChange={(e) => onIncomeExpenseAccountChange(e.target.value)}
-                    className={cn(selectFieldClass, !accountId && "text-muted-foreground")}
+                    className={cn(TX_FORM_SELECT_CLASS, !accountId && "text-muted-foreground")}
                   >
                     <option value="">Select account</option>
                     {incomeExpensePayFromOptions.map((a) => (
@@ -1683,7 +1684,7 @@ function AddTransactionModalMounted({
           {expenseFlow && !isCreditCardExpenseMode ? (
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <section>
-                <Label htmlFor="at-exp-flow-desc" className={labelClass}>
+                <Label htmlFor="at-exp-flow-desc" className={TX_FORM_LABEL_CLASS}>
                   Description <span className="font-normal text-muted-foreground">(optional)</span>
                 </Label>
                 <Input
@@ -1691,11 +1692,11 @@ function AddTransactionModalMounted({
                   value={description}
                   onChange={(e) => setDescription(e.target.value)}
                   placeholder="Short description"
-                  className={fieldBase}
+                  className={TX_FORM_FIELD_CLASS}
                 />
               </section>
               <section>
-                <Label htmlFor="at-note" className={labelClass}>
+                <Label htmlFor="at-note" className={TX_FORM_LABEL_CLASS}>
                   Note
                 </Label>
                 <textarea
@@ -1704,14 +1705,14 @@ function AddTransactionModalMounted({
                   placeholder="What was this for?"
                   value={note}
                   onChange={(e) => setNote(e.target.value)}
-                  className={cn(fieldBase, "min-h-[3.5rem] resize-none py-2")}
+                  className={cn(TX_FORM_FIELD_CLASS, "min-h-[3.5rem] resize-none py-2")}
                 />
               </section>
             </div>
           ) : effectiveType === "transfer" || isCreditCardExpenseMode ? null : (
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <section>
-                <Label htmlFor="at-desc" className={labelClass}>
+                <Label htmlFor="at-desc" className={TX_FORM_LABEL_CLASS}>
                   Description <span className="font-normal text-muted-foreground">(optional)</span>
                 </Label>
                 <Input
@@ -1719,11 +1720,11 @@ function AddTransactionModalMounted({
                   value={description}
                   onChange={(e) => setDescription(e.target.value)}
                   placeholder="Short description"
-                  className={fieldBase}
+                  className={TX_FORM_FIELD_CLASS}
                 />
               </section>
               <section>
-                <Label htmlFor="at-note" className={labelClass}>
+                <Label htmlFor="at-note" className={TX_FORM_LABEL_CLASS}>
                   Note
                 </Label>
                 <textarea
@@ -1732,7 +1733,7 @@ function AddTransactionModalMounted({
                   placeholder="Optional details…"
                   value={note}
                   onChange={(e) => setNote(e.target.value)}
-                  className={cn(fieldBase, "min-h-[2.5rem] resize-none py-2")}
+                  className={cn(TX_FORM_FIELD_CLASS, "min-h-[2.5rem] resize-none py-2")}
                 />
               </section>
             </div>
@@ -1740,7 +1741,7 @@ function AddTransactionModalMounted({
 
           {effectiveType === "transfer" || !isCreditCardExpenseMode ? (
             <section>
-              <Label className={cn(labelClass, "flex items-center gap-1.5")}>
+              <Label className={cn(TX_FORM_LABEL_CLASS, "flex items-center gap-1.5")}>
                 <Tag className="size-3.5" strokeWidth={2.5} aria-hidden />
                 Tags
               </Label>
@@ -1749,7 +1750,7 @@ function AddTransactionModalMounted({
                   <select
                     value={tagPreset}
                     onChange={(e) => setTagPreset(e.target.value)}
-                    className={cn(selectFieldClass, !tagPreset && "text-muted-foreground")}
+                    className={cn(TX_FORM_SELECT_CLASS, !tagPreset && "text-muted-foreground")}
                     aria-label="Select tag"
                   >
                     <option value="">
@@ -1767,7 +1768,7 @@ function AddTransactionModalMounted({
                   value={newTag}
                   onChange={(e) => setNewTag(e.target.value)}
                   placeholder={effectiveType === "transfer" ? "Add new tag" : "New tag"}
-                  className={cn(fieldBase, "min-w-24 flex-1")}
+                  className={cn(TX_FORM_FIELD_CLASS, "min-w-24 flex-1")}
                   onKeyDown={(e) => {
                     if (e.key === "Enter") {
                       e.preventDefault()

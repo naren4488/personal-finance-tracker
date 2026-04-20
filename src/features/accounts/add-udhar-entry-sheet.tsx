@@ -11,6 +11,18 @@ import { accountSelectLabel, filterActiveAccounts } from "@/lib/api/account-sche
 import { getErrorMessage } from "@/lib/api/errors"
 import type { CreateUdharEntryRequest } from "@/lib/api/udhar-schemas"
 import { endUserSession } from "@/lib/auth/end-session"
+import {
+  APP_FORM_AMOUNT_PRIMARY_CLASS,
+  APP_FORM_FIELD_CLASS,
+  APP_FORM_HEADER_CLASS,
+  APP_FORM_LABEL_CLASS,
+  APP_FORM_SELECT_CLASS,
+  APP_FORM_STACK_CLASS,
+  APP_FORM_SUBMIT_CLASS,
+  APP_FORM_TEXTAREA_CLASS,
+  APP_FORM_TITLE_CLASS,
+  APP_FORM_TWO_COL_GRID_CLASS,
+} from "@/lib/ui/app-form-styles"
 import { cn } from "@/lib/utils"
 import { validateUdharPaymentAgainstBalances } from "@/lib/udhar/udhar-payment-validation"
 import {
@@ -237,17 +249,14 @@ function AddUdharEntrySheetMounted({ open, onOpenChange }: MountedProps) {
     }
   }
 
-  const fieldClass =
-    "h-9 rounded-xl border border-border bg-card px-3 text-sm text-foreground shadow-sm outline-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/50"
-
   return (
     <FormDialog
       open={open}
       onOpenChange={onOpenChange}
       accessibilityTitle="Add Udhar Entry"
       header={
-        <header className="flex shrink-0 items-start justify-between gap-2 border-b border-border px-4 py-2.5">
-          <h2 id={titleId} className="text-base font-bold text-primary sm:text-lg">
+        <header className={cn(APP_FORM_HEADER_CLASS, "flex items-start justify-between gap-2")}>
+          <h2 id={titleId} className={APP_FORM_TITLE_CLASS}>
             Add Udhar Entry
           </h2>
           <Button
@@ -267,15 +276,15 @@ function AddUdharEntrySheetMounted({ open, onOpenChange }: MountedProps) {
         <Button
           type="submit"
           disabled={isCreatingPerson || isUdharSubmitting}
-          className="h-10 w-full rounded-xl bg-[hsl(230_22%_62%)] text-sm font-bold text-white hover:bg-[hsl(230_22%_56%)] disabled:opacity-60 sm:h-11 sm:text-base"
+          className={APP_FORM_SUBMIT_CLASS}
         >
           {isCreatingPerson ? "Saving…" : isUdharSubmitting ? "Submitting…" : "Add Entry"}
         </Button>
       }
     >
-      <div className="space-y-2 px-4 py-2">
+      <div className={APP_FORM_STACK_CLASS}>
         <section>
-          <Label className="mb-0.5 block text-xs font-bold text-primary">Type</Label>
+          <Label className={APP_FORM_LABEL_CLASS}>Type</Label>
           <div className="grid grid-cols-2 gap-1.5">
             {ENTRY_TYPES.map(({ id, label, Icon }) => (
               <ToggleTile
@@ -291,8 +300,8 @@ function AddUdharEntrySheetMounted({ open, onOpenChange }: MountedProps) {
         </section>
 
         <section>
-          <div className="mb-0.5 flex items-center justify-between gap-2">
-            <Label className="text-xs font-bold text-primary">Person</Label>
+          <div className="mb-1.5 flex items-center justify-between gap-2">
+            <Label className={APP_FORM_LABEL_CLASS}>Person</Label>
             {form.personMode === "existing" ? (
               <button
                 type="button"
@@ -329,8 +338,8 @@ function AddUdharEntrySheetMounted({ open, onOpenChange }: MountedProps) {
                   disabled={peopleListLoading && people.length === 0}
                   onChange={(e) => setForm((f) => ({ ...f, selectedPersonId: e.target.value }))}
                   className={cn(
-                    fieldClass,
-                    "w-full appearance-none pr-9",
+                    APP_FORM_SELECT_CLASS,
+                    "w-full",
                     "disabled:cursor-not-allowed disabled:opacity-60",
                     !form.selectedPersonId && "text-muted-foreground"
                   )}
@@ -347,12 +356,12 @@ function AddUdharEntrySheetMounted({ open, onOpenChange }: MountedProps) {
               </div>
             </div>
           ) : (
-            <div className="grid grid-cols-2 gap-1.5">
+            <div className={APP_FORM_TWO_COL_GRID_CLASS}>
               <Input
                 placeholder="Person's name"
                 value={form.personName}
                 onChange={(e) => setForm((f) => ({ ...f, personName: e.target.value }))}
-                className="rounded-xl border-border bg-muted/50 px-3 text-sm h-9"
+                className={APP_FORM_FIELD_CLASS}
                 autoComplete="name"
               />
               <Input
@@ -360,7 +369,7 @@ function AddUdharEntrySheetMounted({ open, onOpenChange }: MountedProps) {
                 placeholder="Phone (optional)"
                 value={form.personPhone}
                 onChange={(e) => setForm((f) => ({ ...f, personPhone: e.target.value }))}
-                className="rounded-xl border-border bg-muted/50 px-3 text-sm h-9"
+                className={APP_FORM_FIELD_CLASS}
                 autoComplete="tel"
               />
             </div>
@@ -368,7 +377,7 @@ function AddUdharEntrySheetMounted({ open, onOpenChange }: MountedProps) {
         </section>
 
         <section>
-          <Label htmlFor="udhar-amount" className="mb-0.5 block text-xs font-bold text-primary">
+          <Label htmlFor="udhar-amount" className={APP_FORM_LABEL_CLASS}>
             Amount (₹)
           </Label>
           <Input
@@ -379,12 +388,15 @@ function AddUdharEntrySheetMounted({ open, onOpenChange }: MountedProps) {
             onChange={(e) =>
               setForm((f) => ({ ...f, amount: e.target.value.replace(/[^\d]/g, "") }))
             }
-            className="h-12 rounded-xl border-border bg-muted/60 text-center text-2xl font-semibold tabular-nums text-primary/80 placeholder:text-primary/40"
+            className={cn(
+              APP_FORM_AMOUNT_PRIMARY_CLASS,
+              "text-2xl font-semibold text-primary/80 placeholder:text-primary/40"
+            )}
           />
         </section>
 
         <section>
-          <Label htmlFor="udhar-account" className="mb-0.5 block text-xs font-bold text-primary">
+          <Label htmlFor="udhar-account" className={APP_FORM_LABEL_CLASS}>
             Account
           </Label>
           <div className="relative">
@@ -401,8 +413,8 @@ function AddUdharEntrySheetMounted({ open, onOpenChange }: MountedProps) {
               disabled={accountsListLoading || accounts.length === 0}
               onChange={(e) => setForm((f) => ({ ...f, accountId: e.target.value }))}
               className={cn(
-                fieldClass,
-                "w-full appearance-none pr-9",
+                APP_FORM_SELECT_CLASS,
+                "w-full",
                 !form.accountId && "text-muted-foreground",
                 "disabled:cursor-not-allowed disabled:opacity-60"
               )}
@@ -418,9 +430,9 @@ function AddUdharEntrySheetMounted({ open, onOpenChange }: MountedProps) {
           </div>
         </section>
 
-        <div className="grid grid-cols-2 gap-2">
+        <div className={APP_FORM_TWO_COL_GRID_CLASS}>
           <section>
-            <Label htmlFor="udhar-date" className="mb-0.5 block text-xs font-bold text-primary">
+            <Label htmlFor="udhar-date" className={APP_FORM_LABEL_CLASS}>
               Date
             </Label>
             <Input
@@ -428,11 +440,11 @@ function AddUdharEntrySheetMounted({ open, onOpenChange }: MountedProps) {
               type="date"
               value={form.date}
               onChange={(e) => setForm((f) => ({ ...f, date: e.target.value }))}
-              className={cn(fieldClass, "scheme-light dark:scheme-dark")}
+              className={cn(APP_FORM_FIELD_CLASS, "scheme-light dark:scheme-dark")}
             />
           </section>
           <section>
-            <Label htmlFor="udhar-due-date" className="mb-0.5 block text-xs font-bold text-primary">
+            <Label htmlFor="udhar-due-date" className={APP_FORM_LABEL_CLASS}>
               Due date
             </Label>
             <Input
@@ -440,13 +452,13 @@ function AddUdharEntrySheetMounted({ open, onOpenChange }: MountedProps) {
               type="date"
               value={form.dueDate}
               onChange={(e) => setForm((f) => ({ ...f, dueDate: e.target.value }))}
-              className={cn(fieldClass, "scheme-light dark:scheme-dark")}
+              className={cn(APP_FORM_FIELD_CLASS, "scheme-light dark:scheme-dark")}
             />
           </section>
         </div>
 
         <section>
-          <Label htmlFor="udhar-note" className="mb-0.5 block text-xs font-bold text-primary">
+          <Label htmlFor="udhar-note" className={APP_FORM_LABEL_CLASS}>
             Note <span className="font-normal text-muted-foreground">(optional)</span>
           </Label>
           <textarea
@@ -455,11 +467,7 @@ function AddUdharEntrySheetMounted({ open, onOpenChange }: MountedProps) {
             placeholder="What was this for?"
             value={form.note}
             onChange={(e) => setForm((f) => ({ ...f, note: e.target.value }))}
-            className={cn(
-              "min-h-9 w-full resize-none rounded-xl border border-border bg-card px-3 py-1.5 text-sm text-foreground shadow-sm outline-none",
-              "placeholder:text-muted-foreground/80",
-              "focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/50"
-            )}
+            className={cn(APP_FORM_TEXTAREA_CLASS, "min-h-20 resize-none")}
           />
         </section>
       </div>

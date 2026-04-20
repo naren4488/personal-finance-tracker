@@ -19,6 +19,7 @@ import { getAuthErrorMessage } from "@/lib/api/errors"
 import { useRegisterMutation } from "@/store/api/base-api"
 import { isAuthApiDebugEnabled } from "@/lib/debug/auth-api-log"
 import { safeReturnPath } from "@/features/auth/safe-return-path"
+import { APP_FORM_FIELD_CLASS, APP_FORM_SUBMIT_CLASS } from "@/lib/ui/app-form-styles"
 
 export function RegisterForm() {
   const navigate = useNavigate()
@@ -80,7 +81,7 @@ export function RegisterForm() {
                   <Input
                     placeholder="Jane Doe"
                     autoComplete="name"
-                    className="h-11 rounded-lg bg-muted/30 dark:bg-input/30"
+                    className={APP_FORM_FIELD_CLASS}
                     {...field}
                   />
                 </FormControl>
@@ -99,7 +100,7 @@ export function RegisterForm() {
                     type="email"
                     placeholder="you@example.com"
                     autoComplete="email"
-                    className="h-11 rounded-lg bg-muted/30 dark:bg-input/30"
+                    className={APP_FORM_FIELD_CLASS}
                     {...field}
                   />
                 </FormControl>
@@ -117,7 +118,7 @@ export function RegisterForm() {
                   <PasswordInput
                     placeholder="••••••••"
                     autoComplete="new-password"
-                    className="h-11 rounded-lg bg-muted/30 dark:bg-input/30"
+                    className={APP_FORM_FIELD_CLASS}
                     {...field}
                   />
                 </FormControl>
@@ -129,11 +130,7 @@ export function RegisterForm() {
 
         <Separator className="bg-border/60" />
 
-        <Button
-          type="submit"
-          className="h-11 w-full rounded-lg text-base font-semibold"
-          disabled={isLoading}
-        >
+        <Button type="submit" className={APP_FORM_SUBMIT_CLASS} disabled={isLoading}>
           {isLoading ? "Creating account…" : "Create account"}
         </Button>
       </form>

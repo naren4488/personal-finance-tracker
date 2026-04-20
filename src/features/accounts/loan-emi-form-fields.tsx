@@ -5,6 +5,12 @@ import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
 import type { LoanEmiFormModel } from "@/features/accounts/loan-emi-model"
 import { BILLING_DAY_OPTIONS } from "@/lib/billing-day-options"
+import {
+  APP_FORM_FIELD_CLASS,
+  APP_FORM_LABEL_CLASS,
+  APP_FORM_SELECT_CLASS,
+  APP_FORM_TWO_COL_GRID_CLASS,
+} from "@/lib/ui/app-form-styles"
 import { cn } from "@/lib/utils"
 
 function SelectChevron() {
@@ -31,17 +37,12 @@ export function LoanEmiFormFields({
 }) {
   const overdueAmountId = useId()
 
-  // Updated base styles to match the precise UI from the image
-  const labelClass = "mb-1.5 block text-xs font-semibold text-foreground/80"
-  const fieldBase =
-    "flex h-10 w-full rounded-xl border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-0 disabled:cursor-not-allowed disabled:opacity-50"
-
   return (
     <div className="space-y-4 animate-in fade-in slide-in-from-top-1 duration-200">
       {/* Bank / Lender & Loan Account No. */}
-      <div className="grid grid-cols-2 gap-4">
+      <div className={APP_FORM_TWO_COL_GRID_CLASS}>
         <section>
-          <Label htmlFor="emi-bank" className={labelClass}>
+          <Label htmlFor="emi-bank" className={APP_FORM_LABEL_CLASS}>
             Bank / Lender
           </Label>
           <Input
@@ -49,11 +50,11 @@ export function LoanEmiFormFields({
             value={value.bankLender}
             onChange={(e) => onChange({ bankLender: e.target.value })}
             placeholder="e.g. SBI"
-            className={fieldBase}
+            className={APP_FORM_FIELD_CLASS}
           />
         </section>
         <section>
-          <Label htmlFor="emi-acct" className={labelClass}>
+          <Label htmlFor="emi-acct" className={APP_FORM_LABEL_CLASS}>
             Loan Account No.
           </Label>
           <Input
@@ -61,7 +62,7 @@ export function LoanEmiFormFields({
             value={value.loanAccountNo}
             onChange={(e) => onChange({ loanAccountNo: e.target.value })}
             placeholder="Account number"
-            className={fieldBase}
+            className={APP_FORM_FIELD_CLASS}
             autoComplete="off"
           />
         </section>
@@ -69,7 +70,7 @@ export function LoanEmiFormFields({
 
       {/* Principal Amount */}
       <section>
-        <Label htmlFor="emi-principal" className={labelClass}>
+        <Label htmlFor="emi-principal" className={APP_FORM_LABEL_CLASS}>
           Principal Amount (₹)
         </Label>
         <Input
@@ -78,14 +79,14 @@ export function LoanEmiFormFields({
           placeholder="0"
           value={value.principal}
           onChange={(e) => onChange({ principal: e.target.value.replace(/[^\d]/g, "") })}
-          className={fieldBase}
+          className={APP_FORM_FIELD_CLASS}
         />
       </section>
 
       {/* Interest Rate & Tenure */}
-      <div className="grid grid-cols-2 gap-4">
+      <div className={APP_FORM_TWO_COL_GRID_CLASS}>
         <section>
-          <Label htmlFor="emi-rate" className={labelClass}>
+          <Label htmlFor="emi-rate" className={APP_FORM_LABEL_CLASS}>
             Interest Rate (% p.a.)
           </Label>
           <Input
@@ -94,11 +95,11 @@ export function LoanEmiFormFields({
             placeholder="8.5"
             value={value.interestRate}
             onChange={(e) => onChange({ interestRate: e.target.value.replace(/[^\d.]/g, "") })}
-            className={fieldBase}
+            className={APP_FORM_FIELD_CLASS}
           />
         </section>
         <section>
-          <Label htmlFor="emi-tenure" className={labelClass}>
+          <Label htmlFor="emi-tenure" className={APP_FORM_LABEL_CLASS}>
             Tenure (months)
           </Label>
           <Input
@@ -107,15 +108,15 @@ export function LoanEmiFormFields({
             placeholder="60"
             value={value.tenureMonths}
             onChange={(e) => onChange({ tenureMonths: e.target.value.replace(/\D/g, "") })}
-            className={fieldBase}
+            className={APP_FORM_FIELD_CLASS}
           />
         </section>
       </div>
 
       {/* Start Date & EMI Due Day */}
-      <div className="grid grid-cols-2 gap-4">
+      <div className={APP_FORM_TWO_COL_GRID_CLASS}>
         <section>
-          <Label htmlFor="emi-start" className={labelClass}>
+          <Label htmlFor="emi-start" className={APP_FORM_LABEL_CLASS}>
             Start Date
           </Label>
           <Input
@@ -123,11 +124,11 @@ export function LoanEmiFormFields({
             type="date"
             value={value.startDate}
             onChange={(e) => onChange({ startDate: e.target.value })}
-            className={fieldBase}
+            className={cn(APP_FORM_FIELD_CLASS, "scheme-light dark:scheme-dark")}
           />
         </section>
         <section>
-          <Label htmlFor="emi-due-day" className={labelClass}>
+          <Label htmlFor="emi-due-day" className={APP_FORM_LABEL_CLASS}>
             EMI Due Day
           </Label>
           <div className="relative">
@@ -135,7 +136,7 @@ export function LoanEmiFormFields({
               id="emi-due-day"
               value={value.emiDueDay}
               onChange={(e) => onChange({ emiDueDay: e.target.value })}
-              className={cn(fieldBase, "appearance-none pr-9 focus:border-primary")}
+              className={cn(APP_FORM_SELECT_CLASS, "focus:border-primary")}
             >
               <option value="" disabled>
                 Select day
@@ -153,7 +154,7 @@ export function LoanEmiFormFields({
 
       {/* Due Date Cycle Toggle */}
       <section>
-        <Label className={labelClass}>Due Date Cycle</Label>
+        <Label className={APP_FORM_LABEL_CLASS}>Due Date Cycle</Label>
         <div className="flex w-full overflow-hidden rounded-xl border border-input bg-muted/30">
           <button
             type="button"
@@ -206,7 +207,7 @@ export function LoanEmiFormFields({
         </div>
         {value.overrideEmi && (
           <div className="mt-4 animate-in fade-in slide-in-from-top-2 duration-200">
-            <Label htmlFor="emi-override-amt" className={labelClass}>
+            <Label htmlFor="emi-override-amt" className={APP_FORM_LABEL_CLASS}>
               Custom EMI amount (₹)
             </Label>
             <Input
@@ -217,7 +218,7 @@ export function LoanEmiFormFields({
               onChange={(e) =>
                 onChange({ overrideEmiAmount: e.target.value.replace(/[^\d]/g, "") })
               }
-              className={fieldBase}
+              className={APP_FORM_FIELD_CLASS}
             />
           </div>
         )}
@@ -249,7 +250,7 @@ export function LoanEmiFormFields({
                 Include missed EMIs, penalties, and other overdue charges if applicable.
               </p>
               <div>
-                <Label htmlFor={overdueAmountId} className={labelClass}>
+                <Label htmlFor={overdueAmountId} className={APP_FORM_LABEL_CLASS}>
                   Overdue Amount (₹)
                 </Label>
                 <Input
@@ -260,7 +261,7 @@ export function LoanEmiFormFields({
                   onChange={(e) =>
                     onChange({ overdueAmount: e.target.value.replace(/[^\d]/g, "") })
                   }
-                  className={fieldBase}
+                  className={APP_FORM_FIELD_CLASS}
                 />
               </div>
             </div>

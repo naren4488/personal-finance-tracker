@@ -15,6 +15,14 @@ import { getErrorMessage } from "@/lib/api/errors"
 import { endUserSession } from "@/lib/auth/end-session"
 import { getToken } from "@/lib/auth/token"
 import { formatCurrency } from "@/lib/format"
+import {
+  APP_FORM_FIELD_CLASS,
+  APP_FORM_HEADER_CLASS,
+  APP_FORM_LABEL_CLASS,
+  APP_FORM_STACK_CLASS,
+  APP_FORM_SUBMIT_CLASS,
+  APP_FORM_TEXTAREA_CLASS,
+} from "@/lib/ui/app-form-styles"
 import { cn } from "@/lib/utils"
 import { useCreateAccountBalanceAdjustmentMutation } from "@/store/api/base-api"
 import { useAppDispatch } from "@/store/hooks"
@@ -37,9 +45,6 @@ function parseAmountToNumber(s: string): number | null {
   const n = Number(t)
   return Number.isFinite(n) ? n : null
 }
-
-const fieldClass =
-  "h-9 rounded-xl border border-border bg-card px-3 text-sm text-foreground shadow-sm outline-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/50"
 
 type FormState = {
   targetBalance: string
@@ -146,7 +151,7 @@ function AdjustBalanceSheetMounted({ open, account, onOpenChange }: MountedProps
       onOpenChange={onOpenChange}
       accessibilityTitle="Adjust balance"
       header={
-        <header className="flex shrink-0 items-start justify-between gap-2 border-b border-border px-4 py-2.5">
+        <header className={cn(APP_FORM_HEADER_CLASS, "flex items-start justify-between gap-2")}>
           <div className="min-w-0">
             <h2 id={titleId} className="text-base font-bold text-primary sm:text-lg">
               Adjust balance
@@ -167,16 +172,12 @@ function AdjustBalanceSheetMounted({ open, account, onOpenChange }: MountedProps
       }
       formProps={{ onSubmit: (e) => void handleSubmit(e) }}
       footer={
-        <Button
-          type="submit"
-          disabled={isLoading}
-          className="h-10 w-full rounded-xl bg-[hsl(230_22%_62%)] text-sm font-bold text-white hover:bg-[hsl(230_22%_56%)] disabled:opacity-60 sm:h-11 sm:text-base"
-        >
+        <Button type="submit" disabled={isLoading} className={APP_FORM_SUBMIT_CLASS}>
           {isLoading ? "Saving…" : "Save adjustment"}
         </Button>
       }
     >
-      <div className="space-y-3 px-4 py-2">
+      <div className={APP_FORM_STACK_CLASS}>
         <div className="flex items-start gap-3 rounded-xl border border-border/80 bg-muted/30 px-3 py-2.5">
           <Scale className="mt-0.5 size-5 shrink-0 text-muted-foreground" aria-hidden />
           <div className="min-w-0 text-sm">
@@ -192,7 +193,7 @@ function AdjustBalanceSheetMounted({ open, account, onOpenChange }: MountedProps
         </div>
 
         <section>
-          <Label htmlFor="adj-target" className="mb-0.5 block text-xs font-bold text-primary">
+          <Label htmlFor="adj-target" className={APP_FORM_LABEL_CLASS}>
             Target balance
           </Label>
           <Input
@@ -201,13 +202,13 @@ function AdjustBalanceSheetMounted({ open, account, onOpenChange }: MountedProps
             autoComplete="off"
             value={form.targetBalance}
             onChange={(e) => setForm((f) => ({ ...f, targetBalance: e.target.value }))}
-            className={cn(fieldClass, "h-10")}
+            className={APP_FORM_FIELD_CLASS}
             placeholder="0.00"
           />
         </section>
 
         <section>
-          <Label htmlFor="adj-date" className="mb-0.5 block text-xs font-bold text-primary">
+          <Label htmlFor="adj-date" className={APP_FORM_LABEL_CLASS}>
             Date
           </Label>
           <Input
@@ -215,26 +216,26 @@ function AdjustBalanceSheetMounted({ open, account, onOpenChange }: MountedProps
             type="date"
             value={form.date}
             onChange={(e) => setForm((f) => ({ ...f, date: e.target.value }))}
-            className={cn(fieldClass, "h-10 scheme-light dark:scheme-dark")}
+            className={cn(APP_FORM_FIELD_CLASS, "scheme-light dark:scheme-dark")}
           />
         </section>
 
         <section>
-          <Label htmlFor="adj-reason" className="mb-0.5 block text-xs font-bold text-primary">
+          <Label htmlFor="adj-reason" className={APP_FORM_LABEL_CLASS}>
             Reason
           </Label>
           <Input
             id="adj-reason"
             value={form.reason}
             onChange={(e) => setForm((f) => ({ ...f, reason: e.target.value }))}
-            className={cn(fieldClass, "h-10")}
+            className={APP_FORM_FIELD_CLASS}
             placeholder="e.g. reconciled with bank statement"
             autoComplete="off"
           />
         </section>
 
         <section>
-          <Label htmlFor="adj-note" className="mb-0.5 block text-xs font-bold text-primary">
+          <Label htmlFor="adj-note" className={APP_FORM_LABEL_CLASS}>
             Note <span className="font-normal text-muted-foreground">(optional)</span>
           </Label>
           <textarea
@@ -242,11 +243,7 @@ function AdjustBalanceSheetMounted({ open, account, onOpenChange }: MountedProps
             rows={2}
             value={form.note}
             onChange={(e) => setForm((f) => ({ ...f, note: e.target.value }))}
-            className={cn(
-              "min-h-9 w-full resize-none rounded-xl border border-border bg-card px-3 py-1.5 text-sm text-foreground shadow-sm outline-none",
-              "placeholder:text-muted-foreground/80",
-              "focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/50"
-            )}
+            className={cn(APP_FORM_TEXTAREA_CLASS, "min-h-20 resize-none")}
             placeholder="Optional details"
           />
         </section>

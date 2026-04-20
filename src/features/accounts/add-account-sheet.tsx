@@ -14,6 +14,17 @@ import {
 import { formatOpeningBalanceForApi, type CreateAccountRequest } from "@/lib/api/account-schemas"
 import { getErrorMessage } from "@/lib/api/errors"
 import { isAccountCreateApiDisabled } from "@/lib/feature-flags"
+import {
+  APP_FORM_FIELD_CLASS,
+  APP_FORM_FIELD_EMPHASIS_CLASS,
+  APP_FORM_HEADER_CLASS,
+  APP_FORM_LABEL_CLASS,
+  APP_FORM_SECTION_HEADING_CLASS,
+  APP_FORM_STACK_CLASS,
+  APP_FORM_SUBMIT_CLASS,
+  APP_FORM_SWITCH_ROW_CLASS,
+  APP_FORM_TITLE_CLASS,
+} from "@/lib/ui/app-form-styles"
 import { cn } from "@/lib/utils"
 import { useCreateAccountMutation } from "@/store/api/base-api"
 
@@ -179,17 +190,8 @@ function AddAccountSheetMounted({ open, onOpenChange }: MountedProps) {
     }
   }
 
-  const fieldClass =
-    "h-11 w-full rounded-2xl border border-border/80 bg-background px-4 text-sm text-foreground shadow-sm transition-[color,box-shadow,border-color] outline-none placeholder:text-muted-foreground/65 hover:border-border focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/35 focus-visible:ring-offset-2 focus-visible:ring-offset-background sm:h-12"
-
-  const balanceInputClass =
-    "h-12 w-full rounded-2xl border border-border/80 bg-background px-4 text-center text-lg font-semibold tabular-nums text-primary shadow-sm transition-[color,box-shadow,border-color] outline-none placeholder:text-primary/35 hover:border-border focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/35 focus-visible:ring-offset-2 focus-visible:ring-offset-background sm:h-14 sm:text-xl"
-
   const typeTileClass =
     "flex min-h-0 items-start gap-2 rounded-2xl border-2 bg-card p-2.5 text-left transition-[border-color,box-shadow,background-color] sm:gap-2.5 sm:p-3 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-card"
-
-  const sectionLabelClass =
-    "mb-2 block text-xs font-bold uppercase tracking-wide text-primary/90 sm:text-[13px] sm:normal-case sm:tracking-normal"
 
   return (
     <FormDialog
@@ -198,12 +200,11 @@ function AddAccountSheetMounted({ open, onOpenChange }: MountedProps) {
       accessibilityTitle="Add Account"
       contentClassName="sm:rounded-3xl lg:max-w-xl"
       formProps={{ onSubmit: handleSubmit }}
-      footerClassName="border-t border-border/80 bg-card/95 py-3 backdrop-blur-md supports-backdrop-filter:bg-card/90 sm:px-6 sm:py-4"
       footer={
         <Button
           type="submit"
           disabled={isSubmitting || accountCreateDisabled}
-          className="h-11 w-full rounded-2xl bg-[hsl(230_22%_62%)] text-sm font-bold text-white shadow-md transition-[transform,box-shadow] hover:bg-[hsl(230_22%_56%)] hover:shadow-lg active:scale-[0.99] disabled:pointer-events-none disabled:opacity-60 sm:h-12 sm:text-base"
+          className={APP_FORM_SUBMIT_CLASS}
         >
           {accountCreateDisabled
             ? "Unavailable"
@@ -213,9 +214,9 @@ function AddAccountSheetMounted({ open, onOpenChange }: MountedProps) {
         </Button>
       }
       header={
-        <header className="shrink-0 border-b border-border/80 bg-card/95 px-4 py-3 backdrop-blur-sm sm:px-6 sm:py-4">
+        <header className={APP_FORM_HEADER_CLASS}>
           <div className="flex items-start justify-between gap-3">
-            <h2 id={titleId} className="text-lg font-bold tracking-tight text-primary sm:text-xl">
+            <h2 id={titleId} className={APP_FORM_TITLE_CLASS}>
               Add Account
             </h2>
             <Button
@@ -240,7 +241,7 @@ function AddAccountSheetMounted({ open, onOpenChange }: MountedProps) {
         </header>
       }
     >
-      <div className="space-y-6 px-4 py-5 pb-6! sm:space-y-7 sm:px-6 sm:py-6 sm:pb-8!">
+      <div className={APP_FORM_STACK_CLASS}>
         {accountCreateDisabled ? (
           <div
             role="status"
@@ -264,7 +265,7 @@ function AddAccountSheetMounted({ open, onOpenChange }: MountedProps) {
         ) : null}
 
         <section className="space-y-3 sm:space-y-3.5" aria-labelledby="account-type-heading">
-          <p id="account-type-heading" className={sectionLabelClass}>
+          <p id="account-type-heading" className={APP_FORM_SECTION_HEADING_CLASS}>
             Account type
           </p>
           <div className="space-y-2.5 sm:space-y-3">
@@ -342,10 +343,7 @@ function AddAccountSheetMounted({ open, onOpenChange }: MountedProps) {
         </section>
 
         <section className="space-y-2 sm:space-y-2.5">
-          <Label
-            htmlFor={nameId}
-            className={cn(sectionLabelClass, "mb-0 normal-case tracking-normal")}
-          >
+          <Label htmlFor={nameId} className={APP_FORM_LABEL_CLASS}>
             Name
           </Label>
           <Input
@@ -353,15 +351,12 @@ function AddAccountSheetMounted({ open, onOpenChange }: MountedProps) {
             value={name}
             onChange={(e) => setName(e.target.value)}
             placeholder="e.g. SBI Savings, HDFC Current"
-            className={fieldClass}
+            className={APP_FORM_FIELD_CLASS}
           />
         </section>
 
         <section className="space-y-2 sm:space-y-2.5">
-          <Label
-            htmlFor={bankNameId}
-            className={cn(sectionLabelClass, "mb-0 normal-case tracking-normal")}
-          >
+          <Label htmlFor={bankNameId} className={APP_FORM_LABEL_CLASS}>
             Bank / institution
           </Label>
           <p className="text-[11px] leading-relaxed text-muted-foreground sm:text-xs">
@@ -373,16 +368,11 @@ function AddAccountSheetMounted({ open, onOpenChange }: MountedProps) {
             value={bankName}
             onChange={(e) => setBankName(e.target.value)}
             placeholder="e.g. SBI, HDFC, Paytm"
-            className={fieldClass}
+            className={APP_FORM_FIELD_CLASS}
           />
         </section>
 
-        <section
-          className={cn(
-            "flex items-center justify-between gap-4 rounded-2xl border border-border/70 bg-muted/25 px-4 py-3.5 sm:px-5 sm:py-4",
-            "shadow-sm"
-          )}
-        >
+        <section className={APP_FORM_SWITCH_ROW_CLASS}>
           <div className="min-w-0 space-y-0.5">
             <Label
               htmlFor="account-active"
@@ -403,12 +393,7 @@ function AddAccountSheetMounted({ open, onOpenChange }: MountedProps) {
           />
         </section>
 
-        <section
-          className={cn(
-            "flex items-center justify-between gap-4 rounded-2xl border border-border/70 bg-muted/25 px-4 py-3.5 sm:px-5 sm:py-4",
-            "shadow-sm"
-          )}
-        >
+        <section className={APP_FORM_SWITCH_ROW_CLASS}>
           <div className="min-w-0 space-y-0.5">
             <Label
               htmlFor="account-emi-due"
@@ -432,10 +417,7 @@ function AddAccountSheetMounted({ open, onOpenChange }: MountedProps) {
         {!emiDue ? (
           <section className="space-y-2 sm:space-y-2.5">
             <div className="space-y-2">
-              <Label
-                htmlFor={balanceId}
-                className={cn(sectionLabelClass, "mb-0 normal-case tracking-normal")}
-              >
+              <Label htmlFor={balanceId} className={APP_FORM_LABEL_CLASS}>
                 Current balance (₹)
               </Label>
               <p className="text-[11px] leading-relaxed text-muted-foreground sm:text-xs">
@@ -447,7 +429,7 @@ function AddAccountSheetMounted({ open, onOpenChange }: MountedProps) {
                 placeholder="0"
                 value={balance}
                 onChange={(e) => setBalance(e.target.value.replace(/[^\d]/g, ""))}
-                className={balanceInputClass}
+                className={APP_FORM_FIELD_EMPHASIS_CLASS}
               />
             </div>
           </section>

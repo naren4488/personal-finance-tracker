@@ -20,6 +20,16 @@ import { endUserSession } from "@/lib/auth/end-session"
 import { formatCurrency } from "@/lib/format"
 import { isLoanAccount } from "@/lib/api/loan-account-map"
 import { assertSourceAccountCoversAmount } from "@/lib/validation/source-account-balance"
+import {
+  APP_FORM_AMOUNT_PRIMARY_CLASS,
+  APP_FORM_FIELD_CLASS,
+  APP_FORM_HEADER_CLASS,
+  APP_FORM_LABEL_CLASS,
+  APP_FORM_SELECT_CLASS,
+  APP_FORM_STACK_CLASS,
+  APP_FORM_SUBMIT_CLASS,
+  APP_FORM_TITLE_CLASS,
+} from "@/lib/ui/app-form-styles"
 import { cn } from "@/lib/utils"
 import { useAddTransactionMutation, useGetAccountsQuery } from "@/store/api/base-api"
 import { useAppDispatch, useAppSelector } from "@/store/hooks"
@@ -216,13 +226,6 @@ function PayCreditCardBillSheetInner({
   const dueLabel = billCycleLabelFromDay(dueDay) ?? "—"
   const cardLabel = cardPaySelectLabel(account)
 
-  const fieldBase = cn(
-    "w-full rounded-xl border border-border bg-muted/50 text-foreground shadow-sm outline-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/50",
-    "h-9 px-2.5 text-xs sm:h-10 sm:px-3 sm:text-sm"
-  )
-
-  const lb = "mb-0.5 block text-[10px] font-bold text-primary sm:text-xs"
-
   return (
     <FormDialog
       open={open}
@@ -230,8 +233,8 @@ function PayCreditCardBillSheetInner({
       accessibilityTitle="Pay Credit Card Bill"
       contentClassName="max-w-xl"
       header={
-        <header className="flex shrink-0 items-start justify-between gap-2 border-b border-border px-4 py-2.5 sm:px-4">
-          <h2 id={titleId} className="text-base font-bold text-primary sm:text-lg">
+        <header className={cn(APP_FORM_HEADER_CLASS, "flex items-start justify-between gap-2")}>
+          <h2 id={titleId} className={APP_FORM_TITLE_CLASS}>
             Pay Credit Card Bill
           </h2>
           <Button
@@ -252,7 +255,7 @@ function PayCreditCardBillSheetInner({
           <Button
             type="submit"
             disabled={isSubmitting || payingAccounts.length === 0}
-            className="h-10 w-full rounded-xl bg-[hsl(230_22%_62%)] text-sm font-bold text-white hover:bg-[hsl(230_22%_56%)] sm:h-11 sm:text-base"
+            className={APP_FORM_SUBMIT_CLASS}
           >
             {isSubmitting ? "Saving…" : "Add Card Payment"}
           </Button>
@@ -282,9 +285,9 @@ function PayCreditCardBillSheetInner({
       )}
 
       {!isLoading && !isError && (
-        <div className="space-y-3 px-4 py-3 sm:space-y-3.5 sm:py-4">
+        <div className={APP_FORM_STACK_CLASS}>
           <section>
-            <Label htmlFor={amountId} className={lb}>
+            <Label htmlFor={amountId} className={APP_FORM_LABEL_CLASS}>
               Amount (₹)
             </Label>
             <Input
@@ -305,24 +308,20 @@ function PayCreditCardBillSheetInner({
                   setAmount(v)
                 }
               }}
-              className={cn(
-                "h-12 rounded-xl border-2 border-primary bg-card px-3 text-center text-lg font-bold tabular-nums shadow-sm sm:h-14 sm:text-xl",
-                "focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-primary/30",
-                "[appearance:textfield] [&::-webkit-inner-spin-button]:appearance-auto [&::-webkit-outer-spin-button]:appearance-auto"
-              )}
+              className={APP_FORM_AMOUNT_PRIMARY_CLASS}
             />
           </section>
 
           <section>
-            <Label className={lb}>Credit Card</Label>
+            <Label className={APP_FORM_LABEL_CLASS}>Credit Card</Label>
             <div className="relative">
               <select
                 disabled
                 aria-disabled="true"
                 value={account.id}
                 className={cn(
-                  fieldBase,
-                  "appearance-none pr-8 opacity-90",
+                  APP_FORM_SELECT_CLASS,
+                  "pr-8 opacity-90",
                   "cursor-not-allowed bg-muted/70"
                 )}
               >
@@ -351,14 +350,14 @@ function PayCreditCardBillSheetInner({
           </section>
 
           <section>
-            <Label className={lb}>Paying From (Account)</Label>
+            <Label className={APP_FORM_LABEL_CLASS}>Paying From (Account)</Label>
             <div className="relative">
               <select
                 value={fromAccountId}
                 onChange={(e) => setFromAccountId(e.target.value)}
                 className={cn(
-                  fieldBase,
-                  "appearance-none pr-8",
+                  APP_FORM_SELECT_CLASS,
+                  "pr-8",
                   !fromAccountId && "text-muted-foreground"
                 )}
               >
@@ -374,7 +373,7 @@ function PayCreditCardBillSheetInner({
           </section>
 
           <section>
-            <Label htmlFor={dateId} className={lb}>
+            <Label htmlFor={dateId} className={APP_FORM_LABEL_CLASS}>
               Date
             </Label>
             <Input
@@ -382,12 +381,12 @@ function PayCreditCardBillSheetInner({
               type="date"
               value={date}
               onChange={(e) => setDate(e.target.value)}
-              className={fieldBase}
+              className={cn(APP_FORM_FIELD_CLASS, "scheme-light dark:scheme-dark")}
             />
           </section>
 
           <section>
-            <Label htmlFor={noteId} className={lb}>
+            <Label htmlFor={noteId} className={APP_FORM_LABEL_CLASS}>
               Note
             </Label>
             <Input
@@ -395,12 +394,12 @@ function PayCreditCardBillSheetInner({
               placeholder="What was this for?"
               value={note}
               onChange={(e) => setNote(e.target.value)}
-              className={fieldBase}
+              className={APP_FORM_FIELD_CLASS}
             />
           </section>
 
           <section>
-            <Label className={cn(lb, "flex items-center gap-1")}>
+            <Label className={cn(APP_FORM_LABEL_CLASS, "flex items-center gap-1")}>
               <Tag className="size-3 sm:size-3.5" strokeWidth={2} aria-hidden />
               Tags
             </Label>
@@ -410,8 +409,8 @@ function PayCreditCardBillSheetInner({
                   value={tagPreset}
                   onChange={(e) => setTagPreset(e.target.value)}
                   className={cn(
-                    fieldBase,
-                    "appearance-none pr-8",
+                    APP_FORM_SELECT_CLASS,
+                    "pr-8",
                     !tagPreset && "text-muted-foreground"
                   )}
                 >
@@ -428,7 +427,7 @@ function PayCreditCardBillSheetInner({
                 value={newTag}
                 onChange={(e) => setNewTag(e.target.value)}
                 placeholder="New tag"
-                className={cn(fieldBase, "min-w-[5rem] flex-1")}
+                className={cn(APP_FORM_FIELD_CLASS, "min-w-[5rem] flex-1")}
                 onKeyDown={(e) => {
                   if (e.key === "Enter") {
                     e.preventDefault()
@@ -440,7 +439,7 @@ function PayCreditCardBillSheetInner({
                 type="button"
                 variant="secondary"
                 size="icon"
-                className="size-9 shrink-0 rounded-xl"
+                className="h-10 w-10 shrink-0 rounded-xl"
                 aria-label="Add tag"
                 onClick={addTagFromInputs}
               >

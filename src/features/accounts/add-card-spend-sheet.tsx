@@ -20,6 +20,16 @@ import { getErrorMessage } from "@/lib/api/errors"
 import type { CreateTransactionPayload } from "@/lib/api/schemas"
 import { endUserSession } from "@/lib/auth/end-session"
 import { formatCurrency } from "@/lib/format"
+import {
+  APP_FORM_AMOUNT_PRIMARY_CLASS,
+  APP_FORM_FIELD_CLASS,
+  APP_FORM_HEADER_CLASS,
+  APP_FORM_LABEL_CLASS,
+  APP_FORM_SELECT_CLASS,
+  APP_FORM_STACK_CLASS,
+  APP_FORM_SUBMIT_CLASS,
+  APP_FORM_TITLE_CLASS,
+} from "@/lib/ui/app-form-styles"
 import { cn } from "@/lib/utils"
 import { useAddTransactionMutation, useGetCreditCardsQuery } from "@/store/api/base-api"
 import { useAppDispatch } from "@/store/hooks"
@@ -215,13 +225,6 @@ function AddCardSpendSheetInner({
   const available = selectedCard ? creditCardAvailableCreditInr(selectedCard) : 0
   const limitKnown = limit > 0
 
-  const fieldBase = cn(
-    "w-full rounded-xl border border-border bg-muted/50 text-foreground shadow-sm outline-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/50",
-    "h-9 px-2.5 text-xs sm:h-10 sm:px-3 sm:text-sm"
-  )
-
-  const lb = "mb-0.5 block text-[10px] font-bold text-primary sm:text-xs"
-
   return (
     <FormDialog
       open={open}
@@ -229,8 +232,8 @@ function AddCardSpendSheetInner({
       accessibilityTitle="Add Card Spend"
       contentClassName="max-w-xl"
       header={
-        <header className="flex shrink-0 items-start justify-between gap-2 border-b border-border px-4 py-2.5 sm:px-4">
-          <h2 id={titleId} className="text-base font-bold text-primary sm:text-lg">
+        <header className={cn(APP_FORM_HEADER_CLASS, "flex items-start justify-between gap-2")}>
+          <h2 id={titleId} className={APP_FORM_TITLE_CLASS}>
             Add Card Spend
           </h2>
           <Button
@@ -250,7 +253,7 @@ function AddCardSpendSheetInner({
         <Button
           type="submit"
           disabled={isSubmitting || cardsLoading || creditCards.length === 0}
-          className="h-10 w-full rounded-xl bg-[hsl(230_22%_62%)] text-sm font-bold text-white hover:bg-[hsl(230_22%_56%)] sm:h-11 sm:text-base"
+          className={APP_FORM_SUBMIT_CLASS}
         >
           {isSubmitting ? "Saving…" : "Add Card Spend"}
         </Button>
@@ -258,9 +261,9 @@ function AddCardSpendSheetInner({
     >
       <input type="hidden" name="type" value="expense" readOnly aria-hidden />
 
-      <div className="space-y-3 px-4 py-3 sm:space-y-3.5 sm:py-4">
+      <div className={APP_FORM_STACK_CLASS}>
         <section>
-          <Label htmlFor={cardId} className={lb}>
+          <Label htmlFor={cardId} className={APP_FORM_LABEL_CLASS}>
             Credit card
           </Label>
           <div className="relative">
@@ -269,8 +272,8 @@ function AddCardSpendSheetInner({
               disabled={cardsLoading || creditCards.length === 0}
               {...form.register("creditCardAccountId")}
               className={cn(
-                fieldBase,
-                "appearance-none pr-8",
+                APP_FORM_SELECT_CLASS,
+                "pr-8",
                 !selectedCardId && "text-muted-foreground"
               )}
             >
@@ -317,7 +320,7 @@ function AddCardSpendSheetInner({
         )}
 
         <section>
-          <Label htmlFor={amountId} className={lb}>
+          <Label htmlFor={amountId} className={APP_FORM_LABEL_CLASS}>
             Amount (₹)
           </Label>
           <Input
@@ -328,10 +331,7 @@ function AddCardSpendSheetInner({
             placeholder="0.00"
             aria-invalid={!!form.formState.errors.amount}
             {...form.register("amount")}
-            className={cn(
-              "h-12 rounded-xl border-2 border-primary bg-card px-3 text-center text-lg font-bold tabular-nums shadow-sm sm:h-14 sm:text-xl",
-              "focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-primary/30"
-            )}
+            className={APP_FORM_AMOUNT_PRIMARY_CLASS}
           />
           {form.formState.errors.amount && (
             <p className="mt-1 text-xs text-destructive">{form.formState.errors.amount.message}</p>
@@ -339,7 +339,7 @@ function AddCardSpendSheetInner({
         </section>
 
         <section>
-          <Label htmlFor={categoryId} className={lb}>
+          <Label htmlFor={categoryId} className={APP_FORM_LABEL_CLASS}>
             Category
           </Label>
           <Input
@@ -348,7 +348,7 @@ function AddCardSpendSheetInner({
             autoComplete="off"
             aria-invalid={!!form.formState.errors.category}
             {...form.register("category")}
-            className={fieldBase}
+            className={APP_FORM_FIELD_CLASS}
           />
           {form.formState.errors.category && (
             <p className="mt-1 text-xs text-destructive">
@@ -358,7 +358,7 @@ function AddCardSpendSheetInner({
         </section>
 
         <section>
-          <Label htmlFor={feeId} className={lb}>
+          <Label htmlFor={feeId} className={APP_FORM_LABEL_CLASS}>
             Fee amount (₹)
           </Label>
           <Input
@@ -368,13 +368,13 @@ function AddCardSpendSheetInner({
             autoComplete="off"
             placeholder="0 (optional)"
             {...form.register("feeAmount")}
-            className={fieldBase}
+            className={APP_FORM_FIELD_CLASS}
           />
           <p className="mt-1 text-[10px] text-muted-foreground sm:text-[11px]">Leave empty for 0</p>
         </section>
 
         <section>
-          <Label htmlFor={dateId} className={lb}>
+          <Label htmlFor={dateId} className={APP_FORM_LABEL_CLASS}>
             Date
           </Label>
           <Input
@@ -382,7 +382,7 @@ function AddCardSpendSheetInner({
             type="date"
             aria-invalid={!!form.formState.errors.date}
             {...form.register("date")}
-            className={fieldBase}
+            className={APP_FORM_FIELD_CLASS}
           />
           {form.formState.errors.date && (
             <p className="mt-1 text-xs text-destructive">{form.formState.errors.date.message}</p>
@@ -390,7 +390,7 @@ function AddCardSpendSheetInner({
         </section>
 
         <section>
-          <Label htmlFor={noteId} className={lb}>
+          <Label htmlFor={noteId} className={APP_FORM_LABEL_CLASS}>
             Note
           </Label>
           <Input
@@ -398,12 +398,12 @@ function AddCardSpendSheetInner({
             placeholder="Optional"
             autoComplete="off"
             {...form.register("note")}
-            className={fieldBase}
+            className={APP_FORM_FIELD_CLASS}
           />
         </section>
 
         <section>
-          <Label htmlFor={tagInputId} className={lb}>
+          <Label htmlFor={tagInputId} className={APP_FORM_LABEL_CLASS}>
             Tags
           </Label>
           <div className="flex flex-wrap gap-2">
@@ -418,13 +418,13 @@ function AddCardSpendSheetInner({
                 }
               }}
               placeholder="Add tag"
-              className={cn(fieldBase, "min-w-32 flex-1")}
+              className={cn(APP_FORM_FIELD_CLASS, "min-w-32 flex-1")}
             />
             <Button
               type="button"
               variant="secondary"
               size="sm"
-              className="h-9 shrink-0 rounded-xl sm:h-10"
+              className="h-10 min-h-10 shrink-0 rounded-xl px-3"
               onClick={addTag}
               aria-label="Add tag"
             >

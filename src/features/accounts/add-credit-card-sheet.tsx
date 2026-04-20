@@ -10,6 +10,16 @@ import { BILLING_DAY_OPTIONS } from "@/lib/billing-day-options"
 import { type CreateAccountRequest } from "@/lib/api/account-schemas"
 import { getErrorMessage } from "@/lib/api/errors"
 import { endUserSession } from "@/lib/auth/end-session"
+import {
+  APP_FORM_FIELD_CLASS,
+  APP_FORM_HEADER_CLASS,
+  APP_FORM_LABEL_CLASS,
+  APP_FORM_SELECT_CLASS,
+  APP_FORM_STACK_CLASS,
+  APP_FORM_SUBMIT_CLASS,
+  APP_FORM_TITLE_CLASS,
+  APP_FORM_TWO_COL_GRID_CLASS,
+} from "@/lib/ui/app-form-styles"
 import { cn } from "@/lib/utils"
 import { useCreateAccountMutation } from "@/store/api/base-api"
 import { useAppDispatch } from "@/store/hooks"
@@ -123,19 +133,14 @@ function AddCreditCardSheetMounted({ open, onOpenChange }: MountedProps) {
     }
   }
 
-  const labelClass = "mb-1.5 block text-xs font-semibold text-foreground/80"
-
-  const fieldBase =
-    "flex h-10 w-full rounded-xl border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-0 disabled:cursor-not-allowed disabled:opacity-50"
-
   return (
     <FormDialog
       open={open}
       onOpenChange={onOpenChange}
       accessibilityTitle="Add Credit Card"
       header={
-        <header className="flex shrink-0 items-center justify-between gap-2 border-b border-border px-5 py-4">
-          <h2 id={titleId} className="text-base font-bold text-primary sm:text-lg">
+        <header className={cn(APP_FORM_HEADER_CLASS, "flex items-center justify-between gap-2")}>
+          <h2 id={titleId} className={APP_FORM_TITLE_CLASS}>
             Add Credit Card
           </h2>
           <Button
@@ -152,18 +157,14 @@ function AddCreditCardSheetMounted({ open, onOpenChange }: MountedProps) {
       }
       formProps={{ onSubmit: (e) => void handleSubmit(e) }}
       footer={
-        <Button
-          type="submit"
-          disabled={isSubmitting}
-          className="h-10 w-full rounded-xl bg-[hsl(230_22%_62%)] text-sm font-bold text-white hover:bg-[hsl(230_22%_56%)] disabled:opacity-60 sm:h-11 sm:text-base"
-        >
+        <Button type="submit" disabled={isSubmitting} className={APP_FORM_SUBMIT_CLASS}>
           {isSubmitting ? "Saving..." : "Add Credit Card"}
         </Button>
       }
     >
-      <div className="space-y-4 px-5 py-5">
+      <div className={APP_FORM_STACK_CLASS}>
         <section>
-          <Label htmlFor="cc-name" className={labelClass}>
+          <Label htmlFor="cc-name" className={APP_FORM_LABEL_CLASS}>
             Card Name
           </Label>
           <Input
@@ -171,13 +172,13 @@ function AddCreditCardSheetMounted({ open, onOpenChange }: MountedProps) {
             value={cardName}
             onChange={(e) => setCardName(e.target.value)}
             placeholder="e.g. HDFC Regalia"
-            className={fieldBase}
+            className={APP_FORM_FIELD_CLASS}
           />
         </section>
 
-        <div className="grid grid-cols-2 gap-4">
+        <div className={APP_FORM_TWO_COL_GRID_CLASS}>
           <section>
-            <Label htmlFor="cc-bank" className={labelClass}>
+            <Label htmlFor="cc-bank" className={APP_FORM_LABEL_CLASS}>
               Bank Name
             </Label>
             <Input
@@ -185,11 +186,11 @@ function AddCreditCardSheetMounted({ open, onOpenChange }: MountedProps) {
               value={bankName}
               onChange={(e) => setBankName(e.target.value)}
               placeholder="e.g. HDFC"
-              className={fieldBase}
+              className={APP_FORM_FIELD_CLASS}
             />
           </section>
           <section>
-            <Label htmlFor={networkId} className={labelClass}>
+            <Label htmlFor={networkId} className={APP_FORM_LABEL_CLASS}>
               Card Network
             </Label>
             <div className="relative">
@@ -197,7 +198,7 @@ function AddCreditCardSheetMounted({ open, onOpenChange }: MountedProps) {
                 id={networkId}
                 value={cardNetwork}
                 onChange={(e) => setCardNetwork(e.target.value)}
-                className={cn(fieldBase, "appearance-none pr-9 border-primary")}
+                className={cn(APP_FORM_SELECT_CLASS, "border-primary")}
               >
                 <option value="">Select</option>
                 {CARD_NETWORKS.map((n) => (
@@ -211,9 +212,9 @@ function AddCreditCardSheetMounted({ open, onOpenChange }: MountedProps) {
           </section>
         </div>
 
-        <div className="grid grid-cols-2 gap-4">
+        <div className={APP_FORM_TWO_COL_GRID_CLASS}>
           <section>
-            <Label htmlFor="cc-last4" className={labelClass}>
+            <Label htmlFor="cc-last4" className={APP_FORM_LABEL_CLASS}>
               Last 4 Digits
             </Label>
             <Input
@@ -223,11 +224,11 @@ function AddCreditCardSheetMounted({ open, onOpenChange }: MountedProps) {
               value={last4}
               onChange={(e) => setLast4(e.target.value.replace(/\D/g, ""))}
               placeholder="1234"
-              className={fieldBase}
+              className={APP_FORM_FIELD_CLASS}
             />
           </section>
           <section>
-            <Label htmlFor="cc-limit" className={labelClass}>
+            <Label htmlFor="cc-limit" className={APP_FORM_LABEL_CLASS}>
               Credit Limit (₹)
             </Label>
             <Input
@@ -236,13 +237,13 @@ function AddCreditCardSheetMounted({ open, onOpenChange }: MountedProps) {
               placeholder="0"
               value={creditLimit}
               onChange={(e) => setCreditLimit(e.target.value.replace(/[^\d]/g, ""))}
-              className={fieldBase}
+              className={APP_FORM_FIELD_CLASS}
             />
           </section>
         </div>
 
         <section>
-          <Label htmlFor="cc-out" className={labelClass}>
+          <Label htmlFor="cc-out" className={APP_FORM_LABEL_CLASS}>
             Current Outstanding (₹)
           </Label>
           <Input
@@ -251,13 +252,13 @@ function AddCreditCardSheetMounted({ open, onOpenChange }: MountedProps) {
             placeholder="0"
             value={outstanding}
             onChange={(e) => setOutstanding(e.target.value.replace(/[^\d]/g, ""))}
-            className={fieldBase}
+            className={APP_FORM_FIELD_CLASS}
           />
         </section>
 
-        <div className="grid grid-cols-2 gap-4">
+        <div className={APP_FORM_TWO_COL_GRID_CLASS}>
           <section>
-            <Label htmlFor="cc-bill" className={labelClass}>
+            <Label htmlFor="cc-bill" className={APP_FORM_LABEL_CLASS}>
               Bill Generation Day
             </Label>
             <div className="relative">
@@ -265,7 +266,7 @@ function AddCreditCardSheetMounted({ open, onOpenChange }: MountedProps) {
                 id="cc-bill"
                 value={billDay}
                 onChange={(e) => setBillDay(e.target.value)}
-                className={cn(fieldBase, "appearance-none pr-9")}
+                className={APP_FORM_SELECT_CLASS}
               >
                 {BILLING_DAY_OPTIONS.map(({ value, label }) => (
                   <option key={value} value={value}>
@@ -277,7 +278,7 @@ function AddCreditCardSheetMounted({ open, onOpenChange }: MountedProps) {
             </div>
           </section>
           <section>
-            <Label htmlFor="cc-due" className={labelClass}>
+            <Label htmlFor="cc-due" className={APP_FORM_LABEL_CLASS}>
               Payment Due Day
             </Label>
             <div className="relative">
@@ -285,7 +286,7 @@ function AddCreditCardSheetMounted({ open, onOpenChange }: MountedProps) {
                 id="cc-due"
                 value={dueDay}
                 onChange={(e) => setDueDay(e.target.value)}
-                className={cn(fieldBase, "appearance-none pr-9")}
+                className={APP_FORM_SELECT_CLASS}
               >
                 {BILLING_DAY_OPTIONS.map(({ value, label }) => (
                   <option key={value} value={value}>
@@ -298,9 +299,9 @@ function AddCreditCardSheetMounted({ open, onOpenChange }: MountedProps) {
           </section>
         </div>
 
-        <div className="grid grid-cols-2 gap-4">
+        <div className={APP_FORM_TWO_COL_GRID_CLASS}>
           <section>
-            <Label htmlFor="cc-rate" className={labelClass}>
+            <Label htmlFor="cc-rate" className={APP_FORM_LABEL_CLASS}>
               Interest Rate (%)
             </Label>
             <Input
@@ -309,11 +310,11 @@ function AddCreditCardSheetMounted({ open, onOpenChange }: MountedProps) {
               value={interestRate}
               onChange={(e) => setInterestRate(e.target.value.replace(/[^\d.]/g, ""))}
               placeholder="3.5"
-              className={fieldBase}
+              className={APP_FORM_FIELD_CLASS}
             />
           </section>
           <section>
-            <Label htmlFor="cc-min" className={labelClass}>
+            <Label htmlFor="cc-min" className={APP_FORM_LABEL_CLASS}>
               Min Due (%)
             </Label>
             <Input
@@ -322,7 +323,7 @@ function AddCreditCardSheetMounted({ open, onOpenChange }: MountedProps) {
               value={minDuePercent}
               onChange={(e) => setMinDuePercent(e.target.value.replace(/[^\d.]/g, ""))}
               placeholder="5"
-              className={fieldBase}
+              className={APP_FORM_FIELD_CLASS}
             />
           </section>
         </div>

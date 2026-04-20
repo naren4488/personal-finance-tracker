@@ -21,6 +21,7 @@ import {
 import { filterActiveAccounts } from "@/lib/api/account-schemas"
 import { assertSourceAccountCoversAmount } from "@/lib/validation/source-account-balance"
 import { getErrorMessage } from "@/lib/api/errors"
+import { APP_FORM_FIELD_CLASS, APP_FORM_SUBMIT_CLASS } from "@/lib/ui/app-form-styles"
 import { cn } from "@/lib/utils"
 import { useAddTransactionMutation, useGetAccountsQuery } from "@/store/api/base-api"
 import { useAppSelector } from "@/store/hooks"
@@ -85,7 +86,7 @@ export function QuickTransactionForm({ onSuccess, className }: QuickTransactionF
               <FieldContent>
                 <Input
                   id="qt-title"
-                  className="h-12 rounded-xl"
+                  className={APP_FORM_FIELD_CLASS}
                   placeholder="e.g. Coffee"
                   autoComplete="off"
                   {...form.register("title")}
@@ -99,7 +100,7 @@ export function QuickTransactionForm({ onSuccess, className }: QuickTransactionF
               <FieldContent>
                 <Input
                   id="qt-amount"
-                  className="h-12 rounded-xl"
+                  className={APP_FORM_FIELD_CLASS}
                   inputMode="decimal"
                   placeholder="0"
                   autoComplete="off"
@@ -135,7 +136,7 @@ export function QuickTransactionForm({ onSuccess, className }: QuickTransactionF
         <CardFooter>
           <Button
             type="submit"
-            className="w-full rounded-xl text-base font-semibold"
+            className={APP_FORM_SUBMIT_CLASS}
             disabled={isLoading || !defaultAccountId}
           >
             {isLoading ? "Saving…" : "Add transaction"}

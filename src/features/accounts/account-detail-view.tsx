@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useState } from "react"
 import { useNavigate } from "react-router-dom"
-import { Archive, ArrowLeft, Banknote, Check, Pencil, Scale, Trash2, X } from "lucide-react"
+import { Archive, ArrowLeft, Banknote, Pencil, Scale, Trash2 } from "lucide-react"
 import { toast } from "sonner"
 import { ConfirmDeleteDialog } from "@/components/confirm-delete-dialog"
 import { Button } from "@/components/ui/button"
@@ -27,6 +27,19 @@ import {
   useUpdateAccountMutation,
 } from "@/store/api/base-api"
 import { useAppSelector } from "@/store/hooks"
+import {
+  TX_FORM_DESCRIPTION_CLASS,
+  TX_FORM_FIELDS_STACK_CLASS,
+  TX_FORM_FIELD_CLASS,
+  TX_FORM_FOOTER_CLASS,
+  TX_FORM_HEADER_CLASS,
+  TX_FORM_LABEL_CLASS,
+  TX_FORM_PANEL_CLASS,
+  TX_FORM_SECONDARY_BTN_CLASS,
+  TX_FORM_SUBMIT_CLASS,
+  TX_FORM_SWITCH_ROW_CLASS,
+  TX_FORM_TITLE_CLASS,
+} from "@/lib/ui/tx-modal-form-classes"
 import { cn } from "@/lib/utils"
 
 function comingSoon(label: string) {
@@ -274,12 +287,6 @@ export function AccountDetailView({
   const headerTitle = isEditing && draft ? draft.name.trim() || account.name : account.name
   const subtitle = accountSubtitleForList(account)
 
-  const labelSm = "text-[10px] font-medium text-muted-foreground sm:text-xs"
-  const fieldIn = cn(
-    "mt-1 w-full rounded-lg border border-border bg-background px-2 py-1.5 text-sm font-semibold text-foreground shadow-sm outline-none",
-    "focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/50"
-  )
-
   function patchDraft(patch: Partial<MinimalAccountEditDraft>) {
     setDraft((d) => (d ? { ...d, ...patch } : d))
   }
@@ -397,75 +404,96 @@ export function AccountDetailView({
             </div>
 
             {isEditing && draft ? (
-              <div className="mt-4 rounded-2xl border border-border bg-card p-4 shadow-sm">
-                <h2 className="mb-3 text-base font-bold text-foreground">Edit Account</h2>
-                <div className="space-y-3">
-                  <div>
-                    <Label htmlFor="account-edit-name" className={labelSm}>
+              <div className={TX_FORM_PANEL_CLASS}>
+                <header className={TX_FORM_HEADER_CLASS}>
+                  <h2 className={TX_FORM_TITLE_CLASS}>Edit Account</h2>
+                  <p className={TX_FORM_DESCRIPTION_CLASS}>
+                    Update name, institution, and active status. Balance changes: use Adjust
+                    balance.
+                  </p>
+                </header>
+
+                <div
+                  className={cn(
+                    "min-h-0 flex-1 overflow-y-auto overflow-x-hidden overscroll-y-contain [scrollbar-width:thin]",
+                    TX_FORM_FIELDS_STACK_CLASS
+                  )}
+                >
+                  <section>
+                    <Label htmlFor="account-edit-name" className={TX_FORM_LABEL_CLASS}>
                       Name
                     </Label>
                     <Input
                       id="account-edit-name"
                       value={draft.name}
                       onChange={(e) => patchDraft({ name: e.target.value })}
-                      className={cn(fieldIn, "mt-1 h-10 text-left")}
+                      className={TX_FORM_FIELD_CLASS}
                       placeholder="e.g. SBI Savings"
                       autoComplete="off"
                       aria-labelledby="account-detail-name"
                     />
-                  </div>
-                  <div>
-                    <Label htmlFor="account-edit-bank" className={labelSm}>
+                  </section>
+
+                  <section>
+                    <Label htmlFor="account-edit-bank" className={TX_FORM_LABEL_CLASS}>
                       Bank / institution
                     </Label>
-                    <p className="mt-0.5 text-[10px] text-muted-foreground sm:text-[11px]">
-                      Optional on save — only included in the request when non-empty. Balance
-                      changes: use{" "}
-                      <span className="font-medium text-foreground">Adjust balance</span>.
+                    <p className="mt-1.5 text-xs leading-relaxed text-muted-foreground sm:text-sm">
+                      Optional on save when empty. Same field spacing as Add Transaction.
                     </p>
                     <Input
                       id="account-edit-bank"
                       value={draft.bankName}
                       onChange={(e) => patchDraft({ bankName: e.target.value })}
-                      className={cn(fieldIn, "mt-1 h-10 text-left")}
+                      className={TX_FORM_FIELD_CLASS}
+                      placeholder="e.g. SBI, HDFC"
                       autoComplete="organization"
                     />
-                  </div>
-                  <div className="flex items-center justify-between gap-3 rounded-lg border border-border/80 bg-muted/20 px-3 py-2.5">
-                    <div>
-                      <p className="text-sm font-semibold text-foreground">Active account</p>
-                      <p className="text-xs text-muted-foreground">
+                  </section>
+
+                  <section className={TX_FORM_SWITCH_ROW_CLASS}>
+                    <div className="min-w-0 space-y-0.5">
+                      <Label
+                        htmlFor="account-edit-active"
+                        className="text-xs font-bold text-foreground sm:text-sm"
+                      >
+                        Active account
+                      </Label>
+                      <p className="text-[11px] leading-relaxed text-muted-foreground sm:text-xs">
                         Inactive accounts stay hidden from most flows
                       </p>
                     </div>
                     <Switch
+                      id="account-edit-active"
                       checked={draft.isActive}
                       onCheckedChange={(v) => patchDraft({ isActive: v })}
                       aria-label="Account active"
+                      className="shrink-0"
                     />
+                  </section>
+                </div>
+
+                <footer className={TX_FORM_FOOTER_CLASS}>
+                  <div className="flex w-full flex-col gap-2 sm:flex-row sm:gap-3">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className={cn(TX_FORM_SECONDARY_BTN_CLASS, "sm:w-36 sm:shrink-0")}
+                      onClick={cancelEdit}
+                      disabled={isSaving}
+                    >
+                      Cancel
+                    </Button>
+                    <Button
+                      type="button"
+                      className={cn(TX_FORM_SUBMIT_CLASS, "sm:flex-1")}
+                      onClick={() => void saveEdit()}
+                      disabled={isSaving}
+                    >
+                      {isSaving ? "Saving…" : "Save"}
+                    </Button>
                   </div>
-                </div>
-                <div className="mt-4 flex gap-2">
-                  <Button
-                    type="button"
-                    className="h-11 min-h-11 min-w-0 flex-3 rounded-xl bg-primary text-sm font-bold text-primary-foreground hover:bg-primary/90 sm:text-base"
-                    onClick={() => void saveEdit()}
-                    disabled={isSaving}
-                  >
-                    <Check className="mr-2 size-4 shrink-0" strokeWidth={2.5} aria-hidden />
-                    {isSaving ? "Saving..." : "Save"}
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    className="h-11 min-h-11 w-[28%] shrink-0 rounded-xl border-border px-3 text-sm font-semibold sm:px-4"
-                    onClick={cancelEdit}
-                    disabled={isSaving}
-                  >
-                    <X className="mr-1.5 size-4 shrink-0" strokeWidth={2} aria-hidden />
-                    Cancel
-                  </Button>
-                </div>
+                </footer>
               </div>
             ) : null}
 

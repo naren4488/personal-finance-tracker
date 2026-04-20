@@ -14,6 +14,15 @@ import {
   createInitialLoanEmiModel,
   type LoanEmiFormModel,
 } from "@/features/accounts/loan-emi-model"
+import {
+  APP_FORM_FIELD_CLASS,
+  APP_FORM_HEADER_CLASS,
+  APP_FORM_LABEL_CLASS,
+  APP_FORM_SELECT_CLASS,
+  APP_FORM_STACK_CLASS,
+  APP_FORM_SUBMIT_CLASS,
+  APP_FORM_TITLE_CLASS,
+} from "@/lib/ui/app-form-styles"
 import { cn } from "@/lib/utils"
 import { useCreateAccountMutation } from "@/store/api/base-api"
 import { useAppDispatch } from "@/store/hooks"
@@ -149,19 +158,14 @@ function AddLoanSheetMounted({ open, onOpenChange }: MountedProps) {
     }
   }
 
-  const fieldBase =
-    "flex h-10 w-full rounded-xl border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-0 disabled:cursor-not-allowed disabled:opacity-50"
-
-  const labelClass = "mb-1.5 block text-xs font-semibold text-foreground/80"
-
   return (
     <FormDialog
       open={open}
       onOpenChange={onOpenChange}
       accessibilityTitle="Add Loan"
       header={
-        <header className="flex shrink-0 items-center justify-between gap-2 border-b border-border px-5 py-4">
-          <h2 id={titleId} className="text-base font-bold text-primary sm:text-lg">
+        <header className={cn(APP_FORM_HEADER_CLASS, "flex items-center justify-between gap-2")}>
+          <h2 id={titleId} className={APP_FORM_TITLE_CLASS}>
             Add Loan
           </h2>
           <Button
@@ -178,18 +182,14 @@ function AddLoanSheetMounted({ open, onOpenChange }: MountedProps) {
       }
       formProps={{ onSubmit: (e) => void handleSubmit(e) }}
       footer={
-        <Button
-          type="submit"
-          disabled={isSubmitting}
-          className="h-10 w-full rounded-xl bg-[hsl(230_22%_62%)] text-sm font-bold text-white hover:bg-[hsl(230_22%_56%)] disabled:opacity-60 sm:h-11 sm:text-base"
-        >
+        <Button type="submit" disabled={isSubmitting} className={APP_FORM_SUBMIT_CLASS}>
           {isSubmitting ? "Saving..." : "Add Loan"}
         </Button>
       }
     >
-      <div className="space-y-4 px-5 py-5">
+      <div className={APP_FORM_STACK_CLASS}>
         <section>
-          <Label htmlFor={loanTypeId} className={labelClass}>
+          <Label htmlFor={loanTypeId} className={APP_FORM_LABEL_CLASS}>
             Loan Type
           </Label>
           <div className="relative">
@@ -197,7 +197,7 @@ function AddLoanSheetMounted({ open, onOpenChange }: MountedProps) {
               id={loanTypeId}
               value={loanType}
               onChange={(e) => setLoanType(e.target.value)}
-              className={cn(fieldBase, "appearance-none pr-9 border-primary")}
+              className={cn(APP_FORM_SELECT_CLASS, "border-primary")}
             >
               {LOAN_TYPES.map((t) => (
                 <option key={t} value={t}>
@@ -210,7 +210,7 @@ function AddLoanSheetMounted({ open, onOpenChange }: MountedProps) {
         </section>
 
         <section>
-          <Label htmlFor="loan-name" className={labelClass}>
+          <Label htmlFor="loan-name" className={APP_FORM_LABEL_CLASS}>
             Loan Name
           </Label>
           <Input
@@ -218,7 +218,7 @@ function AddLoanSheetMounted({ open, onOpenChange }: MountedProps) {
             value={loanName}
             onChange={(e) => setLoanName(e.target.value)}
             placeholder="e.g. Home Loan - SBI"
-            className={fieldBase}
+            className={APP_FORM_FIELD_CLASS}
           />
         </section>
 

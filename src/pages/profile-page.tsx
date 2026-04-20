@@ -33,6 +33,13 @@ import {
 } from "@/store/api/base-api"
 import { useAppDispatch, useAppSelector } from "@/store/hooks"
 import { setUser } from "@/store/auth-slice"
+import {
+  APP_FORM_FIELD_CLASS,
+  APP_FORM_LABEL_CLASS,
+  APP_FORM_SECONDARY_BTN_CLASS,
+  APP_FORM_SUBMIT_CLASS,
+  APP_FORM_TWO_COL_GRID_CLASS,
+} from "@/lib/ui/app-form-styles"
 import { cn } from "@/lib/utils"
 
 function initialsFromName(name: string): string {
@@ -237,14 +244,16 @@ function ProfileForm({
           </div>
         </CardHeader>
         <CardContent className="space-y-4 pt-6">
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <div className={APP_FORM_TWO_COL_GRID_CLASS}>
             <div className="space-y-2">
-              <Label htmlFor="profile-name">Name</Label>
+              <Label htmlFor="profile-name" className={APP_FORM_LABEL_CLASS}>
+                Name
+              </Label>
               <Input
                 id="profile-name"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
-                className="h-11 rounded-xl bg-muted/40"
+                className={APP_FORM_FIELD_CLASS}
                 autoComplete="name"
                 aria-invalid={Boolean(fieldErrors.name)}
               />
@@ -253,13 +262,15 @@ function ProfileForm({
               ) : null}
             </div>
             <div className="space-y-2">
-              <Label htmlFor="profile-phone">Phone</Label>
+              <Label htmlFor="profile-phone" className={APP_FORM_LABEL_CLASS}>
+                Phone
+              </Label>
               <Input
                 id="profile-phone"
                 value={draft.phone}
                 onChange={(e) => updateDraft("phone", e.target.value)}
                 placeholder="+91…"
-                className="h-11 rounded-xl bg-muted/40"
+                className={APP_FORM_FIELD_CLASS}
                 inputMode="tel"
                 autoComplete="tel"
                 aria-invalid={Boolean(fieldErrors.phoneNumber)}
@@ -270,13 +281,15 @@ function ProfileForm({
             </div>
           </div>
           <div className="space-y-2">
-            <Label htmlFor="profile-email">Email</Label>
+            <Label htmlFor="profile-email" className={APP_FORM_LABEL_CLASS}>
+              Email
+            </Label>
             <Input
               id="profile-email"
               value={email}
               readOnly
               disabled
-              className="h-11 rounded-xl bg-muted/30"
+              className={cn(APP_FORM_FIELD_CLASS, "opacity-70")}
             />
             <p className="text-xs text-muted-foreground">
               Email comes from your account. Change it when your API supports it.
@@ -307,15 +320,17 @@ function ProfileForm({
               </button>
             ))}
           </div>
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <div className={APP_FORM_TWO_COL_GRID_CLASS}>
             <div className="space-y-2">
-              <Label htmlFor="profile-company">Company</Label>
+              <Label htmlFor="profile-company" className={APP_FORM_LABEL_CLASS}>
+                Company
+              </Label>
               <Input
                 id="profile-company"
                 value={draft.company}
                 onChange={(e) => updateDraft("company", e.target.value)}
                 placeholder="Company name"
-                className="h-11 rounded-xl bg-muted/40"
+                className={APP_FORM_FIELD_CLASS}
                 aria-invalid={Boolean(fieldErrors.company)}
               />
               {fieldErrors.company ? (
@@ -323,7 +338,9 @@ function ProfileForm({
               ) : null}
             </div>
             <div className="space-y-2">
-              <Label htmlFor="profile-salary-day">Salary day (1–31)</Label>
+              <Label htmlFor="profile-salary-day" className={APP_FORM_LABEL_CLASS}>
+                Salary day (1–31)
+              </Label>
               <Input
                 id="profile-salary-day"
                 type="number"
@@ -331,7 +348,7 @@ function ProfileForm({
                 max={31}
                 value={draft.salaryDay}
                 onChange={(e) => updateDraft("salaryDay", e.target.value)}
-                className="h-11 rounded-xl bg-muted/40"
+                className={APP_FORM_FIELD_CLASS}
                 aria-invalid={Boolean(fieldErrors.salaryDay)}
               />
               {fieldErrors.salaryDay ? (
@@ -340,13 +357,15 @@ function ProfileForm({
             </div>
           </div>
           <div className="space-y-2">
-            <Label htmlFor="profile-salary">Monthly salary (₹)</Label>
+            <Label htmlFor="profile-salary" className={APP_FORM_LABEL_CLASS}>
+              Monthly salary (₹)
+            </Label>
             <Input
               id="profile-salary"
               inputMode="decimal"
               value={draft.monthlySalary}
               onChange={(e) => updateDraft("monthlySalary", e.target.value)}
-              className="h-11 rounded-xl bg-muted/40"
+              className={APP_FORM_FIELD_CLASS}
               aria-invalid={Boolean(fieldErrors.monthlySalary)}
             />
             {fieldErrors.monthlySalary ? (
@@ -362,7 +381,7 @@ function ProfileForm({
       <div className="flex flex-col gap-3">
         <Button
           type="button"
-          className="h-11 w-full rounded-xl text-base font-semibold"
+          className={APP_FORM_SUBMIT_CLASS}
           disabled={isSaving || isDeletingAccount}
           onClick={() => void handleSaveProfile()}
         >
@@ -371,7 +390,7 @@ function ProfileForm({
         <Button
           type="button"
           variant="secondary"
-          className="h-11 w-full rounded-xl text-base font-semibold"
+          className={APP_FORM_SECONDARY_BTN_CLASS}
           disabled={isLogoutLoading || isDeletingAccount}
           onClick={() => void handleSignOut()}
         >
