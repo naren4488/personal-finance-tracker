@@ -5,13 +5,14 @@ import { toast } from "sonner"
 import { ConfirmDeleteDialog } from "@/components/confirm-delete-dialog"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import { Switch } from "@/components/ui/switch"
 import { getAccountDeleteWarning } from "@/lib/accounts/account-delete"
 import type { Account } from "@/lib/api/account-schemas"
 import {
   accountAvailableBalanceInrFromApi,
   accountBalanceInrFromApi,
   accountSubtitleForList,
-  formatOpeningBalanceForApi,
   openingBalanceInrFromApi,
 } from "@/lib/api/account-schemas"
 import { getErrorMessage, isFetchBaseQueryError } from "@/lib/api/errors"
@@ -26,7 +27,6 @@ import {
   useUpdateAccountMutation,
 } from "@/store/api/base-api"
 import { useAppSelector } from "@/store/hooks"
-import { ACTION_GROUP_ROW } from "@/lib/ui/action-group-classes"
 import { cn } from "@/lib/utils"
 
 function comingSoon(label: string) {
@@ -74,6 +74,21 @@ function monthInOutForAccount(
   return { monthIn, monthOut }
 }
 
+/** Edit form + minimal PUT: only these fields are sent (no openingBalance / kind / balances). */
+type MinimalAccountEditDraft = {
+  name: string
+  bankName: string
+  isActive: boolean
+}
+
+function draftFromAccount(a: Account): MinimalAccountEditDraft {
+  return {
+    name: a.name?.trim() ?? "",
+    bankName: (a.bankName ?? a.provider ?? "").trim(),
+    isActive: a.isActive !== false,
+  }
+}
+
 export function AccountDetailView({
   open,
   onOpenChange,
@@ -104,8 +119,10 @@ export function AccountDetailView({
   const [deleteAccount, { isLoading: isDeletingAccount }] = useDeleteAccountMutation()
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false)
   const txDelete = useDeleteTransactionFlow()
-  const [isEditing, setIsEditing] = useState(initialEditing)
-  const [draftName, setDraftName] = useState(() => account?.name?.trim() ?? "")
+  const [isEditing, setIsEditing] = useState(() => Boolean(initialEditing && account))
+  const [draft, setDraft] = useState<MinimalAccountEditDraft | null>(() =>
+    initialEditing && account ? draftFromAccount(account) : null
+  )
 
   const { data: accountsForRows = [] } = useGetAccountsQuery(undefined, {
     skip: !user || !open,
@@ -121,57 +138,57 @@ export function AccountDetailView({
   const dismiss = useCallback(() => {
     setDeleteConfirmOpen(false)
     setIsEditing(false)
-    setDraftName("")
+    setDraft(null)
     onOpenChange(false)
   }, [onOpenChange])
 
   const cancelEdit = useCallback(() => {
     setIsEditing(false)
-    setDraftName("")
+    setDraft(null)
   }, [])
 
   const startEdit = useCallback(() => {
     if (!account) return
-    setDraftName(account.name?.trim() ?? "")
+    setDraft(draftFromAccount(account))
     setIsEditing(true)
   }, [account])
 
   const saveEdit = useCallback(async () => {
-    if (!account) return
+    if (!draft || !account) return
     const accountId = String(account.id ?? "").trim()
     if (!accountId) {
       toast.error("Unable to update account: missing id")
       return
     }
-    const name = draftName.trim()
+    const name = draft.name.trim()
     if (!name) {
       toast.error("Enter account name")
       return
     }
 
-    const openingInr = openingBalanceInrFromApi(account)
-    const isActive = account.isActive !== false
-
+    /** Minimal PUT — avoid 400 from strict / unknown fields (no openingBalance, kind, balances). */
     const payload: Record<string, unknown> = {
       name,
-      openingBalance: formatOpeningBalanceForApi(openingInr),
-      isActive,
+      isActive: draft.isActive,
+    }
+    const bankName = draft.bankName.trim()
+    if (bankName) {
+      payload.bankName = bankName
     }
 
     try {
-      console.log("Updating account payload:", payload)
+      console.log("[account] PUT minimal body:", JSON.stringify(payload, null, 2))
       const response = await updateAccount({ id: accountId, body: payload }).unwrap()
-      console.log("Updated account response:", response)
       const next = (response.account as Account | undefined) ?? {
         ...account,
         name,
-        openingBalance: formatOpeningBalanceForApi(openingInr),
-        isActive,
+        ...(bankName ? { bankName } : {}),
+        isActive: draft.isActive,
       }
       onAccountUpdated?.(next)
       toast.success(response.message ?? "Account updated")
       setIsEditing(false)
-      setDraftName("")
+      setDraft(null)
     } catch (error) {
       console.error("[account] update failed", error)
       const msg = getErrorMessage(error)
@@ -185,7 +202,7 @@ export function AccountDetailView({
       }
       toast.error(msg || "Failed to update account")
     }
-  }, [account, draftName, navigate, onAccountUpdated, updateAccount])
+  }, [account, draft, navigate, onAccountUpdated, updateAccount])
 
   useEffect(() => {
     if (!open) return
@@ -210,7 +227,7 @@ export function AccountDetailView({
       toast.success(res.message ?? "Account deleted")
       setDeleteConfirmOpen(false)
       setIsEditing(false)
-      setDraftName("")
+      setDraft(null)
       onOpenChange(false)
       onAccountDeleted?.()
     } catch (error) {
@@ -254,8 +271,19 @@ export function AccountDetailView({
 
   if (!open || !account) return null
 
-  const workingName = isEditing ? draftName : account.name
+  const headerTitle = isEditing && draft ? draft.name.trim() || account.name : account.name
   const subtitle = accountSubtitleForList(account)
+
+  const labelSm = "text-[10px] font-medium text-muted-foreground sm:text-xs"
+  const fieldIn = cn(
+    "mt-1 w-full rounded-lg border border-border bg-background px-2 py-1.5 text-sm font-semibold text-foreground shadow-sm outline-none",
+    "focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/50"
+  )
+
+  function patchDraft(patch: Partial<MinimalAccountEditDraft>) {
+    setDraft((d) => (d ? { ...d, ...patch } : d))
+  }
+
   const availableBalance = accountAvailableBalanceInrFromApi(account)
   const bookBalance = accountBalanceInrFromApi(account)
   const initialBalance = openingBalanceInrFromApi(account)
@@ -316,67 +344,32 @@ export function AccountDetailView({
           >
             <div className="overflow-hidden rounded-2xl bg-primary text-primary-foreground shadow-md">
               <div className="px-4 pb-5 pt-4 sm:px-5 sm:pb-6 sm:pt-5">
-                {!isEditing ? (
-                  <div className="flex items-center justify-between gap-3">
-                    <div className="min-w-0 flex-1">
-                      <p
-                        id="account-detail-name"
-                        className="truncate text-xl font-bold tracking-tight sm:text-2xl"
-                      >
-                        {workingName}
-                      </p>
-                    </div>
-                    <div className="flex shrink-0 items-center justify-center gap-1">
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="icon-sm"
-                        className="size-9 shrink-0 rounded-full text-primary-foreground hover:bg-primary-foreground/15"
-                        aria-label="Edit account"
-                        onClick={startEdit}
-                      >
-                        <Pencil className="size-[18px]" strokeWidth={2} aria-hidden />
-                      </Button>
-                      <span className="flex size-9 items-center justify-center" aria-hidden>
-                        <Banknote className="size-6 text-primary-foreground/95" strokeWidth={2} />
-                      </span>
-                    </div>
-                  </div>
-                ) : (
-                  <div className={cn(ACTION_GROUP_ROW)}>
-                    <Input
+                <div className="flex items-center justify-between gap-3">
+                  <div className="min-w-0 flex-1">
+                    <p
                       id="account-detail-name"
-                      value={draftName}
-                      onChange={(e) => setDraftName(e.target.value)}
-                      className="min-w-0 flex-1 rounded-xl border-0 bg-background px-3 py-2 text-base font-semibold text-foreground shadow-sm"
-                      placeholder="Account name"
-                      autoComplete="off"
-                      aria-label="Account name"
-                    />
-                    <Button
-                      type="button"
-                      size="icon-sm"
-                      variant="secondary"
-                      className="size-10 shrink-0 rounded-full"
-                      disabled={isSaving}
-                      onClick={() => void saveEdit()}
-                      aria-label="Save"
+                      className="truncate text-xl font-bold tracking-tight sm:text-2xl"
                     >
-                      <Check className="size-5 text-income" strokeWidth={2} aria-hidden />
-                    </Button>
-                    <Button
-                      type="button"
-                      size="icon-sm"
-                      variant="secondary"
-                      className="size-10 shrink-0 rounded-full"
-                      disabled={isSaving}
-                      onClick={cancelEdit}
-                      aria-label="Cancel"
-                    >
-                      <X className="size-5" strokeWidth={2} aria-hidden />
-                    </Button>
+                      {headerTitle}
+                    </p>
                   </div>
-                )}
+                  <div className="flex shrink-0 items-center justify-center gap-1">
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon-sm"
+                      className="size-9 shrink-0 rounded-full text-primary-foreground hover:bg-primary-foreground/15"
+                      aria-label={isEditing ? "Editing account" : "Edit account"}
+                      disabled={isEditing}
+                      onClick={startEdit}
+                    >
+                      <Pencil className="size-[18px]" strokeWidth={2} aria-hidden />
+                    </Button>
+                    <span className="flex size-9 items-center justify-center" aria-hidden>
+                      <Banknote className="size-6 text-primary-foreground/95" strokeWidth={2} />
+                    </span>
+                  </div>
+                </div>
 
                 {subtitle ? (
                   <p className="mt-2 truncate text-sm font-medium text-primary-foreground/80">
@@ -402,6 +395,79 @@ export function AccountDetailView({
                 </div>
               </div>
             </div>
+
+            {isEditing && draft ? (
+              <div className="mt-4 rounded-2xl border border-border bg-card p-4 shadow-sm">
+                <h2 className="mb-3 text-base font-bold text-foreground">Edit Account</h2>
+                <div className="space-y-3">
+                  <div>
+                    <Label htmlFor="account-edit-name" className={labelSm}>
+                      Name
+                    </Label>
+                    <Input
+                      id="account-edit-name"
+                      value={draft.name}
+                      onChange={(e) => patchDraft({ name: e.target.value })}
+                      className={cn(fieldIn, "mt-1 h-10 text-left")}
+                      placeholder="e.g. SBI Savings"
+                      autoComplete="off"
+                      aria-labelledby="account-detail-name"
+                    />
+                  </div>
+                  <div>
+                    <Label htmlFor="account-edit-bank" className={labelSm}>
+                      Bank / institution
+                    </Label>
+                    <p className="mt-0.5 text-[10px] text-muted-foreground sm:text-[11px]">
+                      Optional on save — only included in the request when non-empty. Balance
+                      changes: use{" "}
+                      <span className="font-medium text-foreground">Adjust balance</span>.
+                    </p>
+                    <Input
+                      id="account-edit-bank"
+                      value={draft.bankName}
+                      onChange={(e) => patchDraft({ bankName: e.target.value })}
+                      className={cn(fieldIn, "mt-1 h-10 text-left")}
+                      autoComplete="organization"
+                    />
+                  </div>
+                  <div className="flex items-center justify-between gap-3 rounded-lg border border-border/80 bg-muted/20 px-3 py-2.5">
+                    <div>
+                      <p className="text-sm font-semibold text-foreground">Active account</p>
+                      <p className="text-xs text-muted-foreground">
+                        Inactive accounts stay hidden from most flows
+                      </p>
+                    </div>
+                    <Switch
+                      checked={draft.isActive}
+                      onCheckedChange={(v) => patchDraft({ isActive: v })}
+                      aria-label="Account active"
+                    />
+                  </div>
+                </div>
+                <div className="mt-4 flex gap-2">
+                  <Button
+                    type="button"
+                    className="h-11 min-h-11 min-w-0 flex-3 rounded-xl bg-primary text-sm font-bold text-primary-foreground hover:bg-primary/90 sm:text-base"
+                    onClick={() => void saveEdit()}
+                    disabled={isSaving}
+                  >
+                    <Check className="mr-2 size-4 shrink-0" strokeWidth={2.5} aria-hidden />
+                    {isSaving ? "Saving..." : "Save"}
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="h-11 min-h-11 w-[28%] shrink-0 rounded-xl border-border px-3 text-sm font-semibold sm:px-4"
+                    onClick={cancelEdit}
+                    disabled={isSaving}
+                  >
+                    <X className="mr-1.5 size-4 shrink-0" strokeWidth={2} aria-hidden />
+                    Cancel
+                  </Button>
+                </div>
+              </div>
+            ) : null}
 
             <div className="mt-4 rounded-2xl border border-border/80 bg-card p-4 shadow-sm">
               <div className="grid grid-cols-2 gap-3">
