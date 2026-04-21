@@ -4,6 +4,7 @@ import type { UdharAccountPersonBalance } from "@/lib/api/udhar-summary-schemas"
 import type { Person } from "@/lib/api/people-schemas"
 import {
   getPersonDisplayPhone,
+  getPersonUdharListSummary,
   getPersonUdharListSummaryFromTotals,
   type PersonUdharListSummary,
 } from "@/lib/api/people-schemas"
@@ -14,13 +15,21 @@ import { cn } from "@/lib/utils"
 const chipActive =
   "rounded-full px-3 py-1 text-[10px] font-bold uppercase tracking-wide bg-[#E6F4EA] text-[#1E7E34] dark:bg-emerald-950/40 dark:text-emerald-300"
 
+const viewChipClass =
+  "rounded-full px-3 py-1 text-xs font-semibold bg-primary/10 text-primary transition-opacity hover:opacity-90 dark:bg-primary/20"
+
 export type PersonCardProps = {
   person: Person
   onClick: (person: Person) => void
+  /** Opens ledger / detail view (separate from row click → udhar entry). */
+  onViewClick?: (person: Person) => void
   onDelete?: (person: Person) => void
-  /** Aggregated from GET /transactions/ledger (same as detail modal). */
+  /**
+   * When set, summary matches GET /transactions/ledger totals (e.g. after opening detail).
+   * When omitted, summary comes from the person list payload via {@link getPersonUdharListSummary}.
+   */
   ledgerBalance?: UdharAccountPersonBalance
-  /** True until ledger for this person has been loaded or errored. */
+  /** True while a ledger fetch is in flight for this row (batch / detail prefetch). */
   balancePending?: boolean
   balanceError?: string | null
 }
@@ -28,6 +37,7 @@ export type PersonCardProps = {
 export function PersonCard({
   person,
   onClick,
+  onViewClick,
   onDelete,
   ledgerBalance,
   balancePending,
@@ -37,9 +47,15 @@ export function PersonCard({
 
   const summary: PersonUdharListSummary | "loading" | "error" = useMemo(() => {
     if (balanceError) return "error"
-    if (balancePending || !ledgerBalance) return "loading"
-    return getPersonUdharListSummaryFromTotals(ledgerBalance.totalLent, ledgerBalance.totalBorrowed)
-  }, [balanceError, balancePending, ledgerBalance])
+    if (balancePending) return "loading"
+    if (ledgerBalance) {
+      return getPersonUdharListSummaryFromTotals(
+        ledgerBalance.totalLent,
+        ledgerBalance.totalBorrowed
+      )
+    }
+    return getPersonUdharListSummary(person)
+  }, [balanceError, balancePending, ledgerBalance, person])
 
   const body =
     summary === "loading" ? (
@@ -93,6 +109,20 @@ export function PersonCard({
         onClick={(e) => e.stopPropagation()}
         role="presentation"
       >
+        {onViewClick ? (
+          <button
+            type="button"
+            className={viewChipClass}
+            aria-label={`View udhar ledger for ${person.name}`}
+            onClick={(e) => {
+              e.preventDefault()
+              e.stopPropagation()
+              onViewClick(person)
+            }}
+          >
+            View
+          </button>
+        ) : null}
         {onDelete ? (
           <button
             type="button"

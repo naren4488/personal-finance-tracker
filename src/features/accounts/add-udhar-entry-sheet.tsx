@@ -81,6 +81,22 @@ function initialFormState(): UdharFormState {
   }
 }
 
+/** Used when opening Add Udhar from a People row (person + optional account pre-selected). */
+function buildEntryInitialState(
+  initialPersonId?: string,
+  initialAccountId?: string
+): UdharFormState {
+  const base = initialFormState()
+  const pid = initialPersonId?.trim()
+  if (!pid) return base
+  return {
+    ...base,
+    personMode: "existing",
+    selectedPersonId: pid,
+    accountId: initialAccountId?.trim() ? initialAccountId.trim() : base.accountId,
+  }
+}
+
 function SelectChevron() {
   return (
     <ChevronDown
@@ -93,6 +109,11 @@ function SelectChevron() {
 export type AddUdharEntrySheetProps = {
   open: boolean
   onOpenChange: (open: boolean) => void
+  mode?: "entry" | "person_only"
+  /** When `mode` is `entry`, pre-select this person (existing) in the form. */
+  initialPersonId?: string
+  /** When `mode` is `entry`, pre-select this account id when opening from a filtered People list. */
+  initialAccountId?: string
 }
 
 function isAuthTokenRequiredMessage(message: string): boolean {
@@ -102,12 +123,21 @@ function isAuthTokenRequiredMessage(message: string): boolean {
 type MountedProps = {
   open: boolean
   onOpenChange: (open: boolean) => void
+  mode: "entry" | "person_only"
+  initialPersonId?: string
+  initialAccountId?: string
 }
 
 /**
  * Renders only while the sheet is open. Unmounting clears form state without useEffect resets.
  */
-function AddUdharEntrySheetMounted({ open, onOpenChange }: MountedProps) {
+function AddUdharEntrySheetMounted({
+  open,
+  onOpenChange,
+  mode,
+  initialPersonId,
+  initialAccountId,
+}: MountedProps) {
   const titleId = useId()
   const selectPersonId = useId()
   const navigate = useNavigate()
@@ -129,7 +159,11 @@ function AddUdharEntrySheetMounted({ open, onOpenChange }: MountedProps) {
   const peopleListLoading = peopleQueryLoading || peopleQueryFetching
   const accountsListLoading = accountsLoading || accountsFetching
 
-  const [form, setForm] = useState(() => initialFormState())
+  const isPersonOnly = mode === "person_only"
+  const [form, setForm] = useState(() => {
+    if (isPersonOnly) return { ...initialFormState(), personMode: "new" as const }
+    return buildEntryInitialState(initialPersonId, initialAccountId)
+  })
 
   const { data: udharBalancesCached = [] } = useGetUdharAccountBalancesQuery(
     { accountId: form.accountId },
@@ -147,6 +181,34 @@ function AddUdharEntrySheetMounted({ open, onOpenChange }: MountedProps) {
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
+
+    if (isPersonOnly) {
+      const name = form.personName.trim()
+      if (!name) {
+        toast.error("Enter the person's name")
+        return
+      }
+      try {
+        await createPerson({
+          name,
+          phoneNumber: form.personPhone.trim() || undefined,
+        }).unwrap()
+        toast.success("Person added")
+        setForm(initialFormState())
+        dismiss()
+      } catch (err) {
+        const msg = getErrorMessage(err)
+        if (isAuthTokenRequiredMessage(msg)) {
+          toast.error("Please sign in again")
+          endUserSession(dispatch)
+          dismiss()
+          navigate("/login", { replace: true })
+          return
+        }
+        toast.error(msg)
+      }
+      return
+    }
 
     let effectivePersonId = form.selectedPersonId
 
@@ -256,11 +318,11 @@ function AddUdharEntrySheetMounted({ open, onOpenChange }: MountedProps) {
     <FormDialog
       open={open}
       onOpenChange={onOpenChange}
-      accessibilityTitle="Add Udhar Entry"
+      accessibilityTitle={isPersonOnly ? "Add Person" : "Add Udhar Entry"}
       header={
         <header className={cn(APP_FORM_HEADER_CLASS, "flex items-start justify-between gap-2")}>
           <h2 id={titleId} className={APP_FORM_TITLE_CLASS}>
-            Add Udhar Entry
+            {isPersonOnly ? "Add Person" : "Add Udhar Entry"}
           </h2>
           <Button
             type="button"
@@ -281,31 +343,21 @@ function AddUdharEntrySheetMounted({ open, onOpenChange }: MountedProps) {
           disabled={isCreatingPerson || isUdharSubmitting}
           className={APP_FORM_SUBMIT_CLASS}
         >
-          {isCreatingPerson ? "Saving…" : isUdharSubmitting ? "Submitting…" : "Add Entry"}
+          {isCreatingPerson
+            ? "Saving…"
+            : isUdharSubmitting
+              ? "Submitting…"
+              : isPersonOnly
+                ? "Add Person"
+                : "Add Entry"}
         </Button>
       }
     >
       <div className={APP_FORM_STACK_CLASS}>
         <section>
-          <Label className={APP_FORM_LABEL_CLASS}>Type</Label>
-          <div className="grid grid-cols-2 gap-1.5">
-            {ENTRY_TYPES.map(({ id, label, Icon }) => (
-              <ToggleTile
-                key={id}
-                selected={form.entryType === id}
-                onClick={() => setForm((f) => ({ ...f, entryType: id }))}
-              >
-                <Icon className="size-4 shrink-0" strokeWidth={2.25} aria-hidden />
-                <span>{label}</span>
-              </ToggleTile>
-            ))}
-          </div>
-        </section>
-
-        <section>
           <div className="mb-1.5 flex items-center justify-between gap-2">
             <Label className={APP_FORM_LABEL_CLASS}>Person</Label>
-            {form.personMode === "existing" ? (
+            {!isPersonOnly && form.personMode === "existing" ? (
               <button
                 type="button"
                 className="text-xs font-semibold text-primary hover:underline"
@@ -313,7 +365,7 @@ function AddUdharEntrySheetMounted({ open, onOpenChange }: MountedProps) {
               >
                 + Add New
               </button>
-            ) : (
+            ) : !isPersonOnly ? (
               <button
                 type="button"
                 className="text-xs font-semibold text-primary hover:underline"
@@ -328,10 +380,10 @@ function AddUdharEntrySheetMounted({ open, onOpenChange }: MountedProps) {
               >
                 Select Existing
               </button>
-            )}
+            ) : null}
           </div>
 
-          {form.personMode === "existing" ? (
+          {!isPersonOnly && form.personMode === "existing" ? (
             <div className="space-y-1.5">
               {peopleListLoading ? <p className="text-xs text-muted-foreground">Loading…</p> : null}
               <div className="relative">
@@ -378,108 +430,141 @@ function AddUdharEntrySheetMounted({ open, onOpenChange }: MountedProps) {
             </div>
           )}
         </section>
+        {!isPersonOnly ? (
+          <>
+            <section>
+              <Label className={APP_FORM_LABEL_CLASS}>Type</Label>
+              <div className="grid grid-cols-2 gap-1.5">
+                {ENTRY_TYPES.map(({ id, label, Icon }) => (
+                  <ToggleTile
+                    key={id}
+                    selected={form.entryType === id}
+                    onClick={() => setForm((f) => ({ ...f, entryType: id }))}
+                  >
+                    <Icon className="size-4 shrink-0" strokeWidth={2.25} aria-hidden />
+                    <span>{label}</span>
+                  </ToggleTile>
+                ))}
+              </div>
+            </section>
 
-        <section>
-          <Label htmlFor="udhar-amount" className={APP_FORM_LABEL_CLASS}>
-            Amount (₹)
-          </Label>
-          <Input
-            id="udhar-amount"
-            inputMode="numeric"
-            placeholder="0"
-            value={form.amount}
-            onChange={(e) =>
-              setForm((f) => ({ ...f, amount: e.target.value.replace(/[^\d]/g, "") }))
-            }
-            className={cn(
-              APP_FORM_AMOUNT_PRIMARY_CLASS,
-              "text-2xl font-semibold text-primary/80 placeholder:text-primary/40"
-            )}
-          />
-        </section>
+            <section>
+              <Label htmlFor="udhar-amount" className={APP_FORM_LABEL_CLASS}>
+                Amount (₹)
+              </Label>
+              <Input
+                id="udhar-amount"
+                inputMode="numeric"
+                placeholder="0"
+                value={form.amount}
+                onChange={(e) =>
+                  setForm((f) => ({ ...f, amount: e.target.value.replace(/[^\d]/g, "") }))
+                }
+                className={cn(
+                  APP_FORM_AMOUNT_PRIMARY_CLASS,
+                  "text-2xl font-semibold text-primary/80 placeholder:text-primary/40"
+                )}
+              />
+            </section>
 
-        <section>
-          <Label htmlFor="udhar-account" className={APP_FORM_LABEL_CLASS}>
-            Account
-          </Label>
-          <div className="relative">
-            {accountsListLoading ? (
-              <p className="text-xs text-muted-foreground">Loading accounts…</p>
-            ) : accounts.length === 0 ? (
-              <p className="text-xs text-muted-foreground">
-                Add an account first to link this entry.
-              </p>
-            ) : null}
-            <select
-              id="udhar-account"
-              value={form.accountId}
-              disabled={accountsListLoading || accounts.length === 0}
-              onChange={(e) => setForm((f) => ({ ...f, accountId: e.target.value }))}
-              className={cn(
-                APP_FORM_SELECT_CLASS,
-                "w-full",
-                !form.accountId && "text-muted-foreground",
-                "disabled:cursor-not-allowed disabled:opacity-60"
-              )}
-            >
-              <option value="">Select account</option>
-              {accounts.map((a) => (
-                <option key={a.id} value={a.id}>
-                  {accountSelectLabel(a)}
-                </option>
-              ))}
-            </select>
-            <SelectChevron />
-          </div>
-        </section>
+            <section>
+              <Label htmlFor="udhar-account" className={APP_FORM_LABEL_CLASS}>
+                Account
+              </Label>
+              <div className="relative">
+                {accountsListLoading ? (
+                  <p className="text-xs text-muted-foreground">Loading accounts…</p>
+                ) : accounts.length === 0 ? (
+                  <p className="text-xs text-muted-foreground">
+                    Add an account first to link this entry.
+                  </p>
+                ) : null}
+                <select
+                  id="udhar-account"
+                  value={form.accountId}
+                  disabled={accountsListLoading || accounts.length === 0}
+                  onChange={(e) => setForm((f) => ({ ...f, accountId: e.target.value }))}
+                  className={cn(
+                    APP_FORM_SELECT_CLASS,
+                    "w-full",
+                    !form.accountId && "text-muted-foreground",
+                    "disabled:cursor-not-allowed disabled:opacity-60"
+                  )}
+                >
+                  <option value="">Select account</option>
+                  {accounts.map((a) => (
+                    <option key={a.id} value={a.id}>
+                      {accountSelectLabel(a)}
+                    </option>
+                  ))}
+                </select>
+                <SelectChevron />
+              </div>
+            </section>
 
-        <div className={APP_FORM_TWO_COL_GRID_CLASS}>
-          <section>
-            <Label htmlFor="udhar-date" className={APP_FORM_LABEL_CLASS}>
-              Date
-            </Label>
-            <Input
-              id="udhar-date"
-              type="date"
-              value={form.date}
-              onChange={(e) => setForm((f) => ({ ...f, date: e.target.value }))}
-              className={cn(APP_FORM_FIELD_CLASS, "scheme-light dark:scheme-dark")}
-            />
-          </section>
-          <section>
-            <Label htmlFor="udhar-due-date" className={APP_FORM_LABEL_CLASS}>
-              Due date
-            </Label>
-            <Input
-              id="udhar-due-date"
-              type="date"
-              value={form.dueDate}
-              onChange={(e) => setForm((f) => ({ ...f, dueDate: e.target.value }))}
-              className={cn(APP_FORM_FIELD_CLASS, "scheme-light dark:scheme-dark")}
-            />
-          </section>
-        </div>
+            <div className={APP_FORM_TWO_COL_GRID_CLASS}>
+              <section>
+                <Label htmlFor="udhar-date" className={APP_FORM_LABEL_CLASS}>
+                  Date
+                </Label>
+                <Input
+                  id="udhar-date"
+                  type="date"
+                  value={form.date}
+                  onChange={(e) => setForm((f) => ({ ...f, date: e.target.value }))}
+                  className={cn(APP_FORM_FIELD_CLASS, "scheme-light dark:scheme-dark")}
+                />
+              </section>
+              <section>
+                <Label htmlFor="udhar-due-date" className={APP_FORM_LABEL_CLASS}>
+                  Due date
+                </Label>
+                <Input
+                  id="udhar-due-date"
+                  type="date"
+                  value={form.dueDate}
+                  onChange={(e) => setForm((f) => ({ ...f, dueDate: e.target.value }))}
+                  className={cn(APP_FORM_FIELD_CLASS, "scheme-light dark:scheme-dark")}
+                />
+              </section>
+            </div>
 
-        <section>
-          <Label htmlFor="udhar-note" className={APP_FORM_LABEL_CLASS}>
-            Note <span className="font-normal text-muted-foreground">(optional)</span>
-          </Label>
-          <textarea
-            id="udhar-note"
-            rows={2}
-            placeholder="What was this for?"
-            value={form.note}
-            onChange={(e) => setForm((f) => ({ ...f, note: e.target.value }))}
-            className={cn(APP_FORM_TEXTAREA_CLASS, "min-h-20 resize-none")}
-          />
-        </section>
+            <section>
+              <Label htmlFor="udhar-note" className={APP_FORM_LABEL_CLASS}>
+                Note <span className="font-normal text-muted-foreground">(optional)</span>
+              </Label>
+              <textarea
+                id="udhar-note"
+                rows={2}
+                placeholder="What was this for?"
+                value={form.note}
+                onChange={(e) => setForm((f) => ({ ...f, note: e.target.value }))}
+                className={cn(APP_FORM_TEXTAREA_CLASS, "min-h-20 resize-none")}
+              />
+            </section>
+          </>
+        ) : null}
       </div>
     </FormDialog>
   )
 }
 
 /** Wrapper has no hooks — mounted subtree owns form state and resets on unmount when `open` is false. */
-export function AddUdharEntrySheet({ open, onOpenChange }: AddUdharEntrySheetProps) {
+export function AddUdharEntrySheet({
+  open,
+  onOpenChange,
+  mode = "entry",
+  initialPersonId,
+  initialAccountId,
+}: AddUdharEntrySheetProps) {
   if (!open) return null
-  return <AddUdharEntrySheetMounted open={open} onOpenChange={onOpenChange} />
+  return (
+    <AddUdharEntrySheetMounted
+      open={open}
+      onOpenChange={onOpenChange}
+      mode={mode}
+      initialPersonId={initialPersonId}
+      initialAccountId={initialAccountId}
+    />
+  )
 }

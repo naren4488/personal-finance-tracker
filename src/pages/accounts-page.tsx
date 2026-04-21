@@ -32,10 +32,7 @@ import { CreditCardList } from "@/features/accounts/credit-card-list"
 import { LoanDetailView } from "@/features/accounts/loan-detail-view"
 import { LoanList } from "@/features/accounts/loan-list"
 import { PeopleList } from "@/features/accounts/people-list"
-import {
-  readPersonLedgerCache,
-  usePeopleLedgerBalances,
-} from "@/features/accounts/use-people-ledger-balances"
+import { readPersonLedgerCache } from "@/features/accounts/use-people-ledger-balances"
 import { useDeleteTransactionFlow } from "@/features/entries/use-delete-transaction-flow"
 import { UdharDetailsModal } from "@/features/accounts/udhar-details-modal"
 import {
@@ -75,6 +72,9 @@ const EMPTY_LEDGER_BALANCE_MAP = new Map<string, UdharAccountPersonBalance>()
 const EMPTY_PENDING_IDS = new Set<string>()
 const EMPTY_LEDGER_ERR_MAP = new Map<string, string>()
 
+/** `<select>` value for People tab: list everyone with udhar across accounts (GET /people with no filter). */
+const PEOPLE_ACCOUNT_ALL_VALUE = "__all_accounts__"
+
 export default function AccountsPage() {
   const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
@@ -88,6 +88,10 @@ export default function AccountsPage() {
   const transferSuccessSkipExitRef = useRef(false)
   const [segment, setSegment] = useState<AccountsSegmentId>("accounts")
   const [udharOpen, setUdharOpen] = useState(false)
+  /** Prefill Add Udhar Entry when opened from a People row */
+  const [udharPrefillPersonId, setUdharPrefillPersonId] = useState<string | null>(null)
+  const [udharPrefillAccountId, setUdharPrefillAccountId] = useState<string | null>(null)
+  const [addPersonOpen, setAddPersonOpen] = useState(false)
   const [addAccountOpen, setAddAccountOpen] = useState(false)
   const [loanOpen, setLoanOpen] = useState(false)
   const [cardOpen, setCardOpen] = useState(false)
@@ -329,8 +333,9 @@ export default function AccountsPage() {
     }
   }, [accountQ, loanQ, cardQ, normalAccounts, accountsLoading, setSearchParams])
 
-  const peopleAccountId = useMemo(() => {
+  const resolvedPeopleAccountFilter = useMemo(() => {
     if (normalAccounts.length === 0) return ""
+    if (peopleAccountPick === PEOPLE_ACCOUNT_ALL_VALUE) return PEOPLE_ACCOUNT_ALL_VALUE
     if (peopleAccountPick && normalAccounts.some((a) => String(a.id) === peopleAccountPick)) {
       return peopleAccountPick
     }
@@ -339,7 +344,7 @@ export default function AccountsPage() {
 
   const [fetchPersonLedger] = useLazyGetPersonLedgerQuery()
 
-  const onPersonClickLedger = useCallback(
+  const onPersonViewLedger = useCallback(
     async (person: Person) => {
       try {
         const cached = readPersonLedgerCache(person.id)
@@ -355,28 +360,58 @@ export default function AccountsPage() {
     [fetchPersonLedger]
   )
 
-  const peopleQuerySkip = !user || segment !== "people" || !peopleAccountId
+  const openUdharEntryForPerson = useCallback(
+    (person: Person) => {
+      setUdharPrefillPersonId(person.id)
+      setUdharPrefillAccountId(
+        resolvedPeopleAccountFilter === PEOPLE_ACCOUNT_ALL_VALUE ? "" : resolvedPeopleAccountFilter
+      )
+      setUdharOpen(true)
+    },
+    [resolvedPeopleAccountFilter]
+  )
+
+  const handleUdharSheetOpenChange = useCallback((open: boolean) => {
+    setUdharOpen(open)
+    if (!open) {
+      setUdharPrefillPersonId(null)
+      setUdharPrefillAccountId(null)
+    }
+  }, [])
+
+  const peopleQuerySkip = !user || segment !== "people" || normalAccounts.length === 0
 
   const {
     data: peopleForAccount = [],
-    fulfilledTimeStamp: peopleListFulfilledAt,
     isLoading: peopleQueryLoading,
     isFetching: peopleQueryFetching,
     isError: peopleListError,
     error: peopleQueryError,
     refetch: refetchPeople,
-  } = useGetPeopleQuery({ accountId: peopleAccountId }, { skip: peopleQuerySkip })
+  } = useGetPeopleQuery(
+    resolvedPeopleAccountFilter === PEOPLE_ACCOUNT_ALL_VALUE
+      ? {}
+      : { accountId: resolvedPeopleAccountFilter },
+    { skip: peopleQuerySkip }
+  )
 
-  const {
-    balanceByPersonId: ledgerBalanceByPersonId,
-    balanceErrorByPersonId,
-    pendingPersonIds: ledgerPendingPersonIds,
-  } = usePeopleLedgerBalances(peopleForAccount, !peopleQuerySkip, 2, peopleListFulfilledAt)
+  const peopleForList = useMemo(() => {
+    if (resolvedPeopleAccountFilter !== PEOPLE_ACCOUNT_ALL_VALUE) return peopleForAccount
+    const seen = new Set<string>()
+    return peopleForAccount.filter((p) => {
+      if (seen.has(p.id)) return false
+      seen.add(p.id)
+      return true
+    })
+  }, [peopleForAccount, resolvedPeopleAccountFilter])
 
   const showPeopleLoading =
-    segment === "people" &&
-    normalAccounts.length > 0 &&
-    (!peopleAccountId || peopleQueryLoading || peopleQueryFetching)
+    segment === "people" && normalAccounts.length > 0 && (peopleQueryLoading || peopleQueryFetching)
+
+  const peopleEmptySubtext =
+    resolvedPeopleAccountFilter === PEOPLE_ACCOUNT_ALL_VALUE
+      ? "Add someone or record udhar on any account to see them here."
+      : undefined
 
   /** Prefer latest row from GET /accounts cache (updated after transactions) over the object captured at click time. */
   const resolveAccountFromCache = useCallback(
@@ -416,7 +451,7 @@ export default function AccountsPage() {
 
   function openHeaderAdd() {
     if (segment === "accounts") setAddAccountOpen(true)
-    else if (segment === "people") setUdharOpen(true)
+    else if (segment === "people") setAddPersonOpen(true)
     else if (segment === "loans") setLoanOpen(true)
     else if (segment === "cards") setCardOpen(true)
     else setUdharOpen(true)
@@ -483,7 +518,13 @@ export default function AccountsPage() {
         account={resolvedAdjustBalanceAccount}
       />
       <AddAccountSheet open={addAccountOpen} onOpenChange={setAddAccountOpen} />
-      <AddUdharEntrySheet open={udharOpen} onOpenChange={setUdharOpen} />
+      <AddUdharEntrySheet
+        open={udharOpen}
+        onOpenChange={handleUdharSheetOpenChange}
+        initialPersonId={udharPrefillPersonId ?? undefined}
+        initialAccountId={udharPrefillAccountId ?? undefined}
+      />
+      <AddUdharEntrySheet open={addPersonOpen} onOpenChange={setAddPersonOpen} mode="person_only" />
       <AddLoanSheet open={loanOpen} onOpenChange={setLoanOpen} />
       <AddCreditCardSheet open={cardOpen} onOpenChange={setCardOpen} />
       <AddCardSpendSheet
@@ -694,7 +735,7 @@ export default function AccountsPage() {
                 onClick={openHeaderAdd}
                 aria-label={headerAddAriaLabel[segment]}
               >
-                + Add
+                {segment === "people" ? "+ Add person" : "+ Add"}
               </Button>
             ) : (
               <span className="inline-block h-9 w-[3.25rem] shrink-0" aria-hidden />
@@ -747,6 +788,7 @@ export default function AccountsPage() {
               loading
               error={null}
               onRetry={() => void refetchAccounts()}
+              onAddPersonClick={() => setAddPersonOpen(true)}
               onPersonClick={() => {}}
               balanceByPersonId={EMPTY_LEDGER_BALANCE_MAP}
               pendingPersonIds={EMPTY_PENDING_IDS}
@@ -786,20 +828,21 @@ export default function AccountsPage() {
             </Card>
           ) : segment === "people" ? (
             <div className="space-y-3">
-              {normalAccounts.length > 1 ? (
+              {normalAccounts.length > 0 ? (
                 <div className="space-y-1">
                   <Label htmlFor="people-account-filter" className="text-xs font-bold text-primary">
                     Account
                   </Label>
                   <select
                     id="people-account-filter"
-                    value={peopleAccountId}
+                    value={resolvedPeopleAccountFilter}
                     onChange={(e) => setPeopleAccountPick(e.target.value)}
                     className={cn(
                       "h-10 w-full rounded-xl border border-border bg-card px-3 text-sm text-foreground shadow-sm outline-none",
                       "focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/50"
                     )}
                   >
+                    <option value={PEOPLE_ACCOUNT_ALL_VALUE}>All accounts</option>
                     {normalAccounts.map((a) => (
                       <option key={a.id} value={String(a.id)}>
                         {accountSelectLabel(a)}
@@ -809,15 +852,18 @@ export default function AccountsPage() {
                 </div>
               ) : null}
               <PeopleList
-                people={peopleForAccount}
+                people={peopleForList}
                 loading={showPeopleLoading && !peopleListError}
                 error={peopleListError ? peopleQueryError : null}
                 onRetry={() => void refetchPeople()}
-                onPersonClick={onPersonClickLedger}
+                onAddPersonClick={() => setAddPersonOpen(true)}
+                onPersonClick={openUdharEntryForPerson}
+                onPersonViewClick={onPersonViewLedger}
                 onPersonDelete={(p) => setPendingDeletePerson(p)}
-                balanceByPersonId={ledgerBalanceByPersonId}
-                pendingPersonIds={ledgerPendingPersonIds}
-                balanceErrorByPersonId={balanceErrorByPersonId}
+                balanceByPersonId={EMPTY_LEDGER_BALANCE_MAP}
+                pendingPersonIds={EMPTY_PENDING_IDS}
+                balanceErrorByPersonId={EMPTY_LEDGER_ERR_MAP}
+                emptyStateSubtext={peopleEmptySubtext}
               />
             </div>
           ) : segment === "cards" && creditCardsLoading ? (
