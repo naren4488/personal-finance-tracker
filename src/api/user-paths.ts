@@ -1,4 +1,4 @@
-/** Relative to API base URL (`/api` → `/api/v1` in dev). */
+/** Relative to the centralized API base URL. */
 export const USER_PATHS = {
   me: "/users/me",
 } as const

@@ -1,4 +1,4 @@
-/** Relative to API base URL (see `getApiBaseUrl()` + Vite proxy). */
+/** Relative to the centralized API base URL. */
 export const ACCOUNT_PATHS = {
   list: "/accounts",
   create: "/accounts",

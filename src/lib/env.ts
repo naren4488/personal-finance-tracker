@@ -7,8 +7,8 @@ import { z } from "zod"
 const envSchema = z.object({
   VITE_API_BASE_URL: z
     .string()
-    .optional()
-    .transform((v) => (v && v.length > 0 ? v : "")),
+    .url("VITE_API_BASE_URL must be a valid URL")
+    .transform((v) => v.replace(/\/+$/, "")),
   MODE: z.string(),
   DEV: z.boolean(),
   PROD: z.boolean(),
@@ -25,11 +25,10 @@ function readEnv() {
 
 export const env = envSchema.parse(readEnv())
 
-/** Base URL for RTK Query fetchBaseQuery; trailing slashes normalized in baseApi. */
+/** Central API base URL used by every HTTP request. */
+export const BASE_URL = env.VITE_API_BASE_URL
+
+/** Kept for backwards compatibility with existing imports. */
 export function getApiBaseUrl(): string {
-  const base = env.VITE_API_BASE_URL
-  if (!base) {
-    return "/api"
-  }
-  return base.replace(/\/$/, "")
+  return BASE_URL
 }

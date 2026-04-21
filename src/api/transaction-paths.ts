@@ -1,4 +1,4 @@
-/** Relative to API base URL (`/api` in dev proxies to `/api/v1` on the backend). */
+/** Relative to the centralized API base URL. */
 export const TRANSACTION_PATHS = {
   create: "/transactions",
   recent: "/transactions/recent",

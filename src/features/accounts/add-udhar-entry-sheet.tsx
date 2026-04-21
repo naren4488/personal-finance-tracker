@@ -271,7 +271,7 @@ function AddUdharEntrySheetMounted({
       return
     }
 
-    /** Best-effort client-side caps; when summary API is unavailable we skip this guard. */
+    /** Basic client-side amount validation for payment rows; server remains authoritative for limits. */
     const balanceRows = udharBalancesCached
 
     if (form.entryType === "payment_received" || form.entryType === "payment_made") {

@@ -16,6 +16,7 @@ export const personSchema = z
     isActive: z.boolean().optional().default(true),
     createdAt: z.string().optional().default(""),
     updatedAt: z.string().optional().default(""),
+    totalBalance: z.union([z.number(), z.string()]).optional(),
   })
   .passthrough()
 
@@ -83,6 +84,18 @@ function computeNetFromPersonRaw(raw: Record<string, unknown>): {
     return { signedNet: 0, absAmount: 0, kind: "neutral" }
   }
 
+  /**
+   * Backend contracts commonly include signed net fields.
+   * Treat these as authoritative to avoid neutral/no-balance fallbacks on list rows.
+   */
+  const netAmountSigned = parseSignedRupee(raw.netAmount ?? raw.totalBalance ?? raw.total_balance)
+  if (netAmountSigned !== null) {
+    const absAmount = Math.abs(netAmountSigned)
+    if (netAmountSigned > 0) return { signedNet: netAmountSigned, absAmount, kind: "lent" }
+    if (netAmountSigned < 0) return { signedNet: netAmountSigned, absAmount, kind: "borrowed" }
+    return { signedNet: 0, absAmount: 0, kind: "neutral" }
+  }
+
   const typeRaw =
     typeof raw.type === "string"
       ? raw.type.trim().toLowerCase()
@@ -90,16 +103,23 @@ function computeNetFromPersonRaw(raw: Record<string, unknown>): {
         ? raw.udharType.trim().toLowerCase()
         : ""
   let kind: PersonUdharBalanceType | "neutral" =
-    typeRaw === "lent" || typeRaw === "borrowed" ? typeRaw : "neutral"
+    typeRaw === "lent" || typeRaw === "receivable"
+      ? "lent"
+      : typeRaw === "borrowed" || typeRaw === "payable"
+        ? "borrowed"
+        : "neutral"
 
-  let amount = parseAmountish(raw.balance ?? raw.udharBalance ?? raw.amount)
+  let amount = parseAmountish(
+    raw.balance ?? raw.udharBalance ?? raw.amount ?? raw.totalBalance ?? raw.total_balance
+  )
 
   const signedCandidates = [
     raw.signedBalance,
     raw.netUdharAmount,
-    raw.netAmount,
     raw.udharNet,
     raw.positionAmount,
+    raw.totalBalance,
+    raw.total_balance,
   ] as const
   let signed: number | null = null
   for (const c of signedCandidates) {
@@ -220,65 +240,89 @@ export function getPersonUdharListSummaryFromTotals(
  */
 export function getPersonUdharListSummary(person: Person): PersonUdharListSummary {
   const raw = person as Record<string, unknown>
-  const { absAmount, kind } = computeNetFromPersonRaw(raw)
-  const netBalanceFormatted = formatCurrency(absAmount)
-  const amtStr = formatCurrency(absAmount)
-
-  if (kind === "lent") {
-    const chip = absAmount === 0 ? `You lent ${formatCurrency(0)}` : `You lent ${amtStr}`
+  const totalBalanceSigned = parseSignedRupee(raw.totalBalance ?? raw.total_balance)
+  if (totalBalanceSigned !== null) {
+    const absAmount = Math.abs(totalBalanceSigned)
+    const netBalanceFormatted = formatCurrency(totalBalanceSigned)
+    const amtStr = formatCurrency(absAmount)
+    if (totalBalanceSigned > 0) {
+      return {
+        kind: "lent",
+        signedNet: totalBalanceSigned,
+        absAmount,
+        netBalanceFormatted,
+        amount: absAmount,
+        amountFormatted: amtStr,
+        amountChipLabel: `Net Balance ${netBalanceFormatted}`,
+        directionLabel: "Receivable",
+        summary: `Receivable amount is ${amtStr}.`,
+        badgeClassName: "bg-emerald-500/15 text-emerald-700 dark:text-emerald-400",
+        amountTextClassName: "text-emerald-600 dark:text-emerald-400",
+      }
+    }
+    if (totalBalanceSigned < 0) {
+      return {
+        kind: "borrowed",
+        signedNet: totalBalanceSigned,
+        absAmount,
+        netBalanceFormatted,
+        amount: absAmount,
+        amountFormatted: amtStr,
+        amountChipLabel: `Net Balance ${netBalanceFormatted}`,
+        directionLabel: "Payable",
+        summary: `Payable amount is ${amtStr}.`,
+        badgeClassName: "bg-red-500/15 text-red-700 dark:text-red-400",
+        amountTextClassName: "text-red-600 dark:text-red-400",
+      }
+    }
     return {
-      kind: "lent",
-      signedNet: absAmount === 0 ? 0 : absAmount,
+      kind: "neutral",
+      signedNet: 0,
+      absAmount: 0,
+      netBalanceFormatted: formatCurrency(0),
+      amount: 0,
+      amountFormatted: formatCurrency(0),
+      amountChipLabel: `Net Balance ${formatCurrency(0)}`,
+      directionLabel: "No activity",
+      summary: "There is no net balance with this person.",
+      badgeClassName: "bg-muted text-muted-foreground",
+      amountTextClassName: "text-muted-foreground",
+    }
+  }
+  const { absAmount, kind } = computeNetFromPersonRaw(raw)
+  const amtStr = formatCurrency(absAmount)
+  const fallbackSignedNet = kind === "borrowed" ? -absAmount : absAmount
+  const fallbackNet = formatCurrency(fallbackSignedNet)
+  if (kind === "lent") {
+    return {
+      kind,
+      signedNet: fallbackSignedNet,
       absAmount,
-      netBalanceFormatted,
+      netBalanceFormatted: fallbackNet,
       amount: absAmount,
       amountFormatted: amtStr,
-      amountChipLabel: chip,
-      directionLabel: "You lent — you will get this back",
-      summary:
-        absAmount === 0
-          ? "There is no net balance with this person."
-          : `You will get ${amtStr} from this person.`,
+      amountChipLabel: `Net Balance ${fallbackNet}`,
+      directionLabel: "Receivable",
+      summary: `Receivable amount is ${amtStr}.`,
       badgeClassName: "bg-emerald-500/15 text-emerald-700 dark:text-emerald-400",
       amountTextClassName: "text-emerald-600 dark:text-emerald-400",
     }
   }
   if (kind === "borrowed") {
-    const chip = absAmount === 0 ? `You borrow ${formatCurrency(0)}` : `You borrow ${amtStr}`
     return {
-      kind: "borrowed",
-      signedNet: absAmount === 0 ? 0 : -absAmount,
+      kind,
+      signedNet: fallbackSignedNet,
       absAmount,
-      netBalanceFormatted,
+      netBalanceFormatted: fallbackNet,
       amount: absAmount,
       amountFormatted: amtStr,
-      amountChipLabel: chip,
-      directionLabel: "You borrow — repay when due",
-      summary:
-        absAmount === 0
-          ? "There is no net balance with this person."
-          : `You owe ${amtStr} to this person.`,
+      amountChipLabel: `Net Balance ${fallbackNet}`,
+      directionLabel: "Payable",
+      summary: `Payable amount is ${amtStr}.`,
       badgeClassName: "bg-red-500/15 text-red-700 dark:text-red-400",
       amountTextClassName: "text-red-600 dark:text-red-400",
     }
   }
-
-  if (absAmount > 0) {
-    return {
-      kind: "neutral",
-      signedNet: 0,
-      absAmount,
-      netBalanceFormatted,
-      amount: absAmount,
-      amountFormatted: amtStr,
-      amountChipLabel: `Balance ${amtStr}`,
-      directionLabel: "Outstanding balance",
-      summary: `Net balance is ${amtStr}.`,
-      badgeClassName: "bg-muted text-muted-foreground",
-      amountTextClassName: "text-muted-foreground",
-    }
-  }
-
   return {
     kind: "neutral",
     signedNet: 0,
@@ -286,7 +330,7 @@ export function getPersonUdharListSummary(person: Person): PersonUdharListSummar
     netBalanceFormatted: formatCurrency(0),
     amount: 0,
     amountFormatted: formatCurrency(0),
-    amountChipLabel: "No balance due",
+    amountChipLabel: `Net Balance ${formatCurrency(0)}`,
     directionLabel: "No activity",
     summary: "There is no net balance with this person.",
     badgeClassName: "bg-muted text-muted-foreground",

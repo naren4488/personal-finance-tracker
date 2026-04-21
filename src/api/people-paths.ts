@@ -1,4 +1,4 @@
-/** Relative to API base URL (see `getApiBaseUrl()` + Vite proxy → `/api/v1`). */
+/** Relative to the centralized API base URL. */
 export const PEOPLE_PATHS = {
   list: "/people",
   create: "/people",

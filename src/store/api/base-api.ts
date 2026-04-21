@@ -13,7 +13,7 @@ import { USER_PATHS } from "@/api/user-paths"
 import { DASHBOARD_PATHS } from "@/api/dashboard-paths"
 import { COMMITMENT_PATHS } from "@/api/commitment-paths"
 import { isAccountCreateApiDisabled } from "@/lib/feature-flags"
-import { getApiBaseUrl } from "@/lib/env"
+import { BASE_URL } from "@/lib/env"
 import { clearToken, getRefreshToken, setAuthTokens } from "@/lib/auth/token"
 import {
   parseApiFailureMessage,
@@ -194,12 +194,10 @@ function tryApplyAuthResponse(data: unknown, api: BaseQueryApi): boolean {
 }
 
 const rawBaseQuery = fetchBaseQuery({
-  baseUrl: getApiBaseUrl(),
+  baseUrl: BASE_URL,
   prepareHeaders: (headers) => {
-    const token = getToken()
-    if (token) {
-      headers.set("Authorization", `Bearer ${token}`)
-    }
+    const token = getToken() ?? ""
+    headers.set("Authorization", `Bearer ${token}`)
     headers.set("Accept", "application/json")
     headers.set("Content-Type", "application/json")
     return headers

@@ -9,17 +9,6 @@ const analyze = process.env.ANALYZE === "true"
 
 // https://vite.dev/config/
 export default defineConfig({
-  server: {
-    proxy: {
-      // Dev: browser `/api/*` (same origin) → `https://expensetracker-api.lazycoderz.com/api/v1/*` (no CORS).
-      // Requires `VITE_API_BASE_URL` empty so RTK uses relative `/api` (see .env.example).
-      "/api": {
-        target: "https://expensetracker-api.lazycoderz.com",
-        changeOrigin: true,
-        rewrite: (path) => path.replace(/^\/api/, "/api/v1"),
-      },
-    },
-  },
   plugins: [
     react(),
     tailwindcss(),

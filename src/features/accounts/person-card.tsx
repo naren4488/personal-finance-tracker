@@ -1,11 +1,9 @@
 import { useMemo } from "react"
 import { Skeleton } from "@/components/ui/skeleton"
-import type { UdharAccountPersonBalance } from "@/lib/api/udhar-summary-schemas"
 import type { Person } from "@/lib/api/people-schemas"
 import {
   getPersonDisplayPhone,
   getPersonUdharListSummary,
-  getPersonUdharListSummaryFromTotals,
   type PersonUdharListSummary,
 } from "@/lib/api/people-schemas"
 import { transactionEntryDeleteChipClass } from "@/features/entries/transaction-entry-delete-button"
@@ -25,10 +23,10 @@ export type PersonCardProps = {
   onViewClick?: (person: Person) => void
   onDelete?: (person: Person) => void
   /**
-   * When set, summary matches GET /transactions/ledger totals (e.g. after opening detail).
-   * When omitted, summary comes from the person list payload via {@link getPersonUdharListSummary}.
+   * Kept for compatibility with current callers. People list card now always uses people API
+   * payload (`totalBalance`) via `getPersonUdharListSummary(person)`.
    */
-  ledgerBalance?: UdharAccountPersonBalance
+  ledgerBalance?: unknown
   /** True while a ledger fetch is in flight for this row (batch / detail prefetch). */
   balancePending?: boolean
   balanceError?: string | null
@@ -48,12 +46,7 @@ export function PersonCard({
   const summary: PersonUdharListSummary | "loading" | "error" = useMemo(() => {
     if (balanceError) return "error"
     if (balancePending) return "loading"
-    if (ledgerBalance) {
-      return getPersonUdharListSummaryFromTotals(
-        ledgerBalance.totalLent,
-        ledgerBalance.totalBorrowed
-      )
-    }
+    void ledgerBalance
     return getPersonUdharListSummary(person)
   }, [balanceError, balancePending, ledgerBalance, person])
 
@@ -67,17 +60,38 @@ export function PersonCard({
       <p className="mt-1 text-sm text-destructive">{balanceError ?? "Could not load balance"}</p>
     ) : (
       <>
-        <p
-          className={cn(
-            "mt-1 text-sm font-semibold tabular-nums leading-snug",
-            summary.amountTextClassName
-          )}
-        >
-          {summary.amountChipLabel}
-        </p>
-        <p className="mt-0.5 text-sm leading-snug text-[#6B7280] dark:text-muted-foreground">
-          {summary.summary}
-        </p>
+        {(() => {
+          const netWithSign =
+            summary.signedNet < 0
+              ? `- ${summary.amountFormatted}`
+              : summary.signedNet > 0
+                ? `+ ${summary.amountFormatted}`
+                : summary.amountFormatted
+          return (
+            <>
+              <p
+                className={cn(
+                  "mt-1 text-sm font-semibold tabular-nums leading-snug",
+                  summary.amountTextClassName
+                )}
+              >
+                {summary.summary}
+              </p>
+              <p
+                className={cn(
+                  "mt-0.5 text-sm font-semibold tabular-nums leading-snug",
+                  summary.signedNet > 0
+                    ? "text-emerald-600 dark:text-emerald-400"
+                    : summary.signedNet < 0
+                      ? "text-red-600 dark:text-red-400"
+                      : "text-muted-foreground"
+                )}
+              >
+                {`Net Balance ${netWithSign}`}
+              </p>
+            </>
+          )
+        })()}
       </>
     )
 

@@ -1,8 +1,4 @@
-/**
- * Relative to API base (`/api` in dev). Vite proxy rewrites `/api` → `/api/v1` on the
- * backend, so use `/dashboard/...` here — not `/v1/dashboard/...` — or the path becomes
- * `/api/v1/v1/...` and returns 404.
- */
+/** Relative to the centralized API base URL. */
 export const DASHBOARD_PATHS = {
   root: "/dashboard",
   analytics: "/dashboard/analytics",
