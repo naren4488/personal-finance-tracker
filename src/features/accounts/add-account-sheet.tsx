@@ -109,6 +109,7 @@ function AddAccountSheetMounted({ open, onOpenChange }: MountedProps) {
 
   const [createAccount, { isLoading: isSubmitting }] = useCreateAccountMutation()
   const accountCreateDisabled = isAccountCreateApiDisabled()
+  const isLoanType = accountType === "loan"
 
   const dismiss = useCallback(() => {
     onOpenChange(false)
@@ -139,7 +140,9 @@ function AddAccountSheetMounted({ open, onOpenChange }: MountedProps) {
     let balanceInr = 0
     let bankNameOut = bankName.trim()
 
-    if (emiDue) {
+    const shouldUseEmiFlow = isLoanType && emiDue
+
+    if (shouldUseEmiFlow) {
       const p = emi.principal.replace(/\D/g, "")
       if (!p || Number(p) <= 0) {
         toast.error("Enter a valid principal amount")
@@ -361,7 +364,9 @@ function AddAccountSheetMounted({ open, onOpenChange }: MountedProps) {
           </Label>
           <p className="text-[11px] leading-relaxed text-muted-foreground sm:text-xs">
             Sent as <code className="rounded bg-muted px-1 py-0.5 text-[10px]">bankName</code>
-            {emiDue ? " — optional if Bank / lender is set in EMI details below." : "."}
+            {isLoanType && emiDue
+              ? " — optional if Bank / lender is set in EMI details below."
+              : "."}
           </p>
           <Input
             id={bankNameId}
@@ -393,28 +398,30 @@ function AddAccountSheetMounted({ open, onOpenChange }: MountedProps) {
           />
         </section>
 
-        <section className={APP_FORM_SWITCH_ROW_CLASS}>
-          <div className="min-w-0 space-y-0.5">
-            <Label
-              htmlFor="account-emi-due"
-              className="text-xs font-bold text-foreground sm:text-sm"
-            >
-              EMI due
-            </Label>
-            <p className="text-[11px] leading-relaxed text-muted-foreground sm:text-xs">
-              Track EMIs on this account
-            </p>
-          </div>
-          <Switch
-            id="account-emi-due"
-            checked={emiDue}
-            onCheckedChange={setEmiDue}
-            aria-label="EMI due tracking"
-            className="shrink-0"
-          />
-        </section>
+        {isLoanType ? (
+          <section className={APP_FORM_SWITCH_ROW_CLASS}>
+            <div className="min-w-0 space-y-0.5">
+              <Label
+                htmlFor="account-emi-due"
+                className="text-xs font-bold text-foreground sm:text-sm"
+              >
+                EMI due
+              </Label>
+              <p className="text-[11px] leading-relaxed text-muted-foreground sm:text-xs">
+                Track EMIs on this account
+              </p>
+            </div>
+            <Switch
+              id="account-emi-due"
+              checked={emiDue}
+              onCheckedChange={setEmiDue}
+              aria-label="EMI due tracking"
+              className="shrink-0"
+            />
+          </section>
+        ) : null}
 
-        {!emiDue ? (
+        {!isLoanType || !emiDue ? (
           <section className="space-y-2 sm:space-y-2.5">
             <div className="space-y-2">
               <Label htmlFor={balanceId} className={APP_FORM_LABEL_CLASS}>
