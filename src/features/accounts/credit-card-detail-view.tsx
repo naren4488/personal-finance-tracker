@@ -188,16 +188,14 @@ function CreditCardRecentTransactionsSection({
 }
 
 export function CreditCardDetailView({
-  open,
-  onOpenChange,
+  onBack,
   account,
   onCardUpdated,
   onPayBill,
   onAddSpend,
   onCardDeleted,
 }: {
-  open: boolean
-  onOpenChange: (open: boolean) => void
+  onBack: () => void
   account: Account | null
   onCardUpdated?: (account: Account) => void
   /** Pay Bill — opens shared Add Transaction (transfer → credit card bill). */
@@ -211,7 +209,7 @@ export function CreditCardDetailView({
   const [deleteAccount, { isLoading: isDeletingAccount }] = useDeleteAccountMutation()
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false)
   const txDelete = useDeleteTransactionFlow()
-  const { data: allAccounts = [] } = useGetAccountsQuery(undefined, { skip: !open || !account })
+  const { data: allAccounts = [] } = useGetAccountsQuery(undefined, { skip: !account })
   const [isEditing, setIsEditing] = useState(false)
   const [draft, setDraft] = useState<Account | null>(null)
   const {
@@ -221,15 +219,15 @@ export function CreditCardDetailView({
     refetch: refetchRecentTransactions,
   } = useGetAccountLedgerQuery(
     { accountId: String(account?.id ?? ""), limit: 500 },
-    { skip: !open || !account }
+    { skip: !account }
   )
 
   const dismiss = useCallback(() => {
     setIsEditing(false)
     setDraft(null)
     setDeleteConfirmOpen(false)
-    onOpenChange(false)
-  }, [onOpenChange])
+    onBack()
+  }, [onBack])
 
   const cancelEdit = useCallback(() => {
     setIsEditing(false)
@@ -377,15 +375,15 @@ export function CreditCardDetailView({
       setDeleteConfirmOpen(false)
       setIsEditing(false)
       setDraft(null)
-      onOpenChange(false)
+      onBack()
       onCardDeleted?.()
     } catch (e) {
       toast.error(getErrorMessage(e) || "Failed to delete")
     }
-  }, [account, deleteAccount, onCardDeleted, onOpenChange])
+  }, [account, deleteAccount, onCardDeleted, onBack])
 
   useEffect(() => {
-    if (!open) return
+    if (!account) return
     function onKey(e: KeyboardEvent) {
       if (e.key !== "Escape") return
       if (isEditing) cancelEdit()
@@ -393,16 +391,7 @@ export function CreditCardDetailView({
     }
     window.addEventListener("keydown", onKey)
     return () => window.removeEventListener("keydown", onKey)
-  }, [open, isEditing, cancelEdit, dismiss])
-
-  useEffect(() => {
-    if (!open) return
-    const prev = document.body.style.overflow
-    document.body.style.overflow = "hidden"
-    return () => {
-      document.body.style.overflow = prev
-    }
-  }, [open])
+  }, [account, isEditing, cancelEdit, dismiss])
 
   const networkOptions = useMemo(() => {
     if (!draft) return [...CARD_NETWORKS]
@@ -417,11 +406,11 @@ export function CreditCardDetailView({
 
   const selectedCardId = String(account?.id ?? "").trim()
   useEffect(() => {
-    if (!open || !selectedCardId) return
+    if (!account || !selectedCardId) return
     void refetchRecentTransactions()
-  }, [open, selectedCardId, refetchRecentTransactions])
+  }, [account, selectedCardId, refetchRecentTransactions])
 
-  if (!open || !account) return null
+  if (!account) return null
 
   const working = isEditing && draft ? draft : account
   const model = mapAccountToCreditCardView(working)
@@ -478,400 +467,388 @@ export function CreditCardDetailView({
         isDeleting={txDelete.isDeleting}
         onConfirm={txDelete.confirmDelete}
       />
-      <div className="fixed inset-0 z-60 flex items-stretch justify-center sm:items-center sm:p-3">
-        <button
-          type="button"
-          className="absolute inset-0 bg-black/45 backdrop-blur-[1px]"
-          aria-label="Close"
-          onClick={dismiss}
-        />
+      <main
+        className="flex min-h-0 w-full max-w-lg flex-1 flex-col overflow-hidden bg-background"
+        aria-labelledby="cc-detail-card-name"
+      >
+        <div className="shrink-0 flex items-center gap-2 px-4 pb-2 pt-3 sm:px-5 sm:pt-3.5">
+          <button
+            type="button"
+            onClick={dismiss}
+            className="inline-flex shrink-0 items-center gap-1 text-sm font-semibold text-slate-500 transition-colors hover:text-foreground"
+          >
+            <ArrowLeft className="size-4 shrink-0" strokeWidth={2} aria-hidden />
+            Back
+          </button>
+          <p
+            id="cc-detail-card-name"
+            className="min-w-0 flex-1 truncate text-base font-bold opacity-0"
+          >
+            {model.name}
+          </p>
+          <span className="inline-block size-8 shrink-0" aria-hidden />
+        </div>
+
         <div
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="cc-detail-card-name"
           className={cn(
-            "relative z-10 flex min-h-0 w-full max-w-lg flex-1 flex-col overflow-hidden bg-background shadow-2xl sm:max-h-[min(92dvh,calc(100dvh-1.5rem))] sm:rounded-2xl"
+            "min-h-0 flex-1 overflow-y-auto overflow-x-hidden overscroll-y-contain px-4 pb-24 pt-0 [-ms-overflow-style:none] [scrollbar-width:thin] sm:px-5 sm:pb-6"
           )}
         >
-          <div className="shrink-0 flex items-center gap-2 px-4 pb-2 pt-3 sm:px-5 sm:pt-3.5">
-            <button
-              type="button"
-              onClick={dismiss}
-              className="inline-flex shrink-0 items-center gap-1 text-sm font-semibold text-slate-500 transition-colors hover:text-foreground"
-            >
-              <ArrowLeft className="size-4 shrink-0" strokeWidth={2} aria-hidden />
-              Back
-            </button>
-            <p
-              id="cc-detail-card-name"
-              className="min-w-0 flex-1 truncate text-base font-bold opacity-0"
-            >
-              {model.name}
-            </p>
-            <span className="inline-block size-8 shrink-0" aria-hidden />
-          </div>
-
-          <div
-            className={cn(
-              "min-h-0 flex-1 overflow-y-auto overflow-x-hidden overscroll-y-contain px-4 pb-5 pt-0 [-ms-overflow-style:none] [scrollbar-width:thin] sm:px-5 sm:pb-6"
-            )}
-          >
-            <div className="overflow-hidden rounded-3xl border border-[#1D2E77]/70 bg-[#0B1C66] text-primary-foreground shadow-[0_12px_30px_rgba(8,18,70,0.35)]">
-              <div className="px-4 pb-4 pt-3.5 sm:px-5 sm:pb-5 sm:pt-4">
-                <div className="flex items-start justify-between gap-3">
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate text-xl font-bold tracking-tight text-white sm:text-2xl">
-                      {model.name || "Credit Card"}
-                    </p>
-                    <p className="mt-0.5 truncate text-sm font-medium text-white/80">
-                      {subtitle || networkDisplay || "credit card"}
-                    </p>
-                  </div>
-                  <div className="flex items-center gap-1">
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="icon-sm"
-                      className="size-8 shrink-0 rounded-full text-white/85 hover:bg-white/12 hover:text-white"
-                      aria-label={isEditing ? "Editing card" : "Edit card"}
-                      disabled={isEditing}
-                      onClick={startEdit}
-                    >
-                      <Pencil className="size-4" strokeWidth={2.1} aria-hidden />
-                    </Button>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="icon-sm"
-                      className="size-8 shrink-0 rounded-full text-white/85 hover:bg-white/12 hover:text-white"
-                      aria-label="Pay bill"
-                      onClick={() => onPayBill?.()}
-                    >
-                      <WalletCards className="size-4" strokeWidth={2.1} aria-hidden />
-                    </Button>
-                  </div>
-                </div>
-
-                {masked ? (
-                  <p className="mt-2 truncate text-xs font-medium tracking-[0.12em] text-white/85 sm:text-sm">
-                    {masked}
+          <div className="overflow-hidden rounded-3xl border border-[#1D2E77]/70 bg-[#0B1C66] text-primary-foreground shadow-[0_12px_30px_rgba(8,18,70,0.35)]">
+            <div className="px-4 pb-4 pt-3.5 sm:px-5 sm:pb-5 sm:pt-4">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-xl font-bold tracking-tight text-white sm:text-2xl">
+                    {model.name || "Credit Card"}
                   </p>
-                ) : null}
+                  <p className="mt-0.5 truncate text-sm font-medium text-white/80">
+                    {subtitle || networkDisplay || "credit card"}
+                  </p>
+                </div>
+                <div className="flex items-center gap-1">
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon-sm"
+                    className="size-8 shrink-0 rounded-full text-white/85 hover:bg-white/12 hover:text-white"
+                    aria-label={isEditing ? "Editing card" : "Edit card"}
+                    disabled={isEditing}
+                    onClick={startEdit}
+                  >
+                    <Pencil className="size-4" strokeWidth={2.1} aria-hidden />
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon-sm"
+                    className="size-8 shrink-0 rounded-full text-white/85 hover:bg-white/12 hover:text-white"
+                    aria-label="Pay bill"
+                    onClick={() => onPayBill?.()}
+                  >
+                    <WalletCards className="size-4" strokeWidth={2.1} aria-hidden />
+                  </Button>
+                </div>
+              </div>
 
-                <p className="mt-5 text-[11px] font-medium uppercase tracking-wide text-white/70">
-                  Available Credit
+              {masked ? (
+                <p className="mt-2 truncate text-xs font-medium tracking-[0.12em] text-white/85 sm:text-sm">
+                  {masked}
                 </p>
-                <p className="mt-1 text-3xl font-bold tabular-nums text-white sm:text-4xl">
-                  {formatCurrency(available)}
-                </p>
-                <div className="mt-2 flex items-end justify-between gap-4">
-                  <div className="min-w-0">
-                    <p className="text-[11px] font-medium uppercase tracking-wide text-white/70">
-                      Outstanding
-                    </p>
-                    <p className="mt-0.5 text-sm font-semibold tabular-nums text-white/90 sm:text-base">
-                      {formatCurrency(outstanding)}
-                    </p>
-                  </div>
-                  <div className="min-w-0 text-right">
-                    <p className="text-[11px] font-medium uppercase tracking-wide text-white/70">
-                      Credit Limit
-                    </p>
-                    <p className="mt-0.5 text-sm font-semibold tabular-nums text-white/90 sm:text-base">
-                      {formatCurrency(limit)}
-                    </p>
-                  </div>
+              ) : null}
+
+              <p className="mt-5 text-[11px] font-medium uppercase tracking-wide text-white/70">
+                Available Credit
+              </p>
+              <p className="mt-1 text-3xl font-bold tabular-nums text-white sm:text-4xl">
+                {formatCurrency(available)}
+              </p>
+              <div className="mt-2 flex items-end justify-between gap-4">
+                <div className="min-w-0">
+                  <p className="text-[11px] font-medium uppercase tracking-wide text-white/70">
+                    Outstanding
+                  </p>
+                  <p className="mt-0.5 text-sm font-semibold tabular-nums text-white/90 sm:text-base">
+                    {formatCurrency(outstanding)}
+                  </p>
+                </div>
+                <div className="min-w-0 text-right">
+                  <p className="text-[11px] font-medium uppercase tracking-wide text-white/70">
+                    Credit Limit
+                  </p>
+                  <p className="mt-0.5 text-sm font-semibold tabular-nums text-white/90 sm:text-base">
+                    {formatCurrency(limit)}
+                  </p>
                 </div>
               </div>
             </div>
+          </div>
 
-            {isEditing && draft ? (
-              <div className="mt-4 rounded-2xl border border-border bg-card p-4 shadow-sm sm:mt-5">
-                <h2 className="mb-3 text-base font-bold text-foreground">Edit Card</h2>
-                <div className="space-y-3">
+          {isEditing && draft ? (
+            <div className="mt-4 rounded-2xl border border-border bg-card p-4 shadow-sm sm:mt-5">
+              <h2 className="mb-3 text-base font-bold text-foreground">Edit Card</h2>
+              <div className="space-y-3">
+                <div>
+                  <Label htmlFor="cc-edit-name" className={labelSm}>
+                    Card Name
+                  </Label>
+                  <Input
+                    id="cc-edit-name"
+                    value={draft.name}
+                    onChange={(e) => patchDraft({ name: e.target.value })}
+                    className={cn(fieldIn, "h-10 text-left")}
+                  />
+                </div>
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                   <div>
-                    <Label htmlFor="cc-edit-name" className={labelSm}>
-                      Card Name
-                    </Label>
+                    <Label className={labelSm}>Credit Limit (₹)</Label>
                     <Input
-                      id="cc-edit-name"
-                      value={draft.name}
-                      onChange={(e) => patchDraft({ name: e.target.value })}
+                      inputMode="numeric"
+                      value={String(asRec(draft).creditLimit ?? "").replace(/\D/g, "")}
+                      onChange={(e) =>
+                        patchDraft({ creditLimit: e.target.value.replace(/\D/g, "") })
+                      }
+                      className={cn(fieldIn, "h-10 text-left tabular-nums")}
+                    />
+                  </div>
+                  <div>
+                    <Label className={labelSm}>Bank Name</Label>
+                    <Input
+                      value={String(asRec(draft).bankName ?? "")}
+                      onChange={(e) => patchDraft({ bankName: e.target.value })}
                       className={cn(fieldIn, "h-10 text-left")}
                     />
                   </div>
-                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                    <div>
-                      <Label className={labelSm}>Credit Limit (₹)</Label>
-                      <Input
-                        inputMode="numeric"
-                        value={String(asRec(draft).creditLimit ?? "").replace(/\D/g, "")}
-                        onChange={(e) =>
-                          patchDraft({ creditLimit: e.target.value.replace(/\D/g, "") })
-                        }
-                        className={cn(fieldIn, "h-10 text-left tabular-nums")}
-                      />
-                    </div>
-                    <div>
-                      <Label className={labelSm}>Bank Name</Label>
-                      <Input
-                        value={String(asRec(draft).bankName ?? "")}
-                        onChange={(e) => patchDraft({ bankName: e.target.value })}
-                        className={cn(fieldIn, "h-10 text-left")}
-                      />
-                    </div>
-                  </div>
-                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                    <div>
-                      <Label htmlFor="cc-edit-network" className={labelSm}>
-                        Card network
-                      </Label>
-                      <div className="relative mt-1">
-                        <select
-                          id="cc-edit-network"
-                          value={String(asRec(draft).cardNetwork ?? "").toLowerCase()}
-                          onChange={(e) => patchDraft({ cardNetwork: e.target.value })}
-                          className={cn(
-                            fieldIn,
-                            "h-10 w-full appearance-none bg-background pl-2 pr-9 text-left capitalize"
-                          )}
-                        >
-                          <option value="">Select network</option>
-                          {networkOptions.map((o) => (
-                            <option key={o.value} value={o.value}>
-                              {o.label}
-                            </option>
-                          ))}
-                        </select>
-                        <ChevronDown
-                          className="pointer-events-none absolute right-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground"
-                          strokeWidth={2}
-                          aria-hidden
-                        />
-                      </div>
-                    </div>
-                    <div>
-                      <Label className={labelSm}>Last 4 digits</Label>
-                      <Input
-                        inputMode="numeric"
-                        maxLength={4}
-                        value={String(asRec(draft).last4Digits ?? "")
-                          .replace(/\D/g, "")
-                          .slice(0, 4)}
-                        onChange={(e) =>
-                          patchDraft({ last4Digits: e.target.value.replace(/\D/g, "").slice(0, 4) })
-                        }
-                        className={cn(fieldIn, "h-10 text-left tabular-nums tracking-widest")}
+                </div>
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  <div>
+                    <Label htmlFor="cc-edit-network" className={labelSm}>
+                      Card network
+                    </Label>
+                    <div className="relative mt-1">
+                      <select
+                        id="cc-edit-network"
+                        value={String(asRec(draft).cardNetwork ?? "").toLowerCase()}
+                        onChange={(e) => patchDraft({ cardNetwork: e.target.value })}
+                        className={cn(
+                          fieldIn,
+                          "h-10 w-full appearance-none bg-background pl-2 pr-9 text-left capitalize"
+                        )}
+                      >
+                        <option value="">Select network</option>
+                        {networkOptions.map((o) => (
+                          <option key={o.value} value={o.value}>
+                            {o.label}
+                          </option>
+                        ))}
+                      </select>
+                      <ChevronDown
+                        className="pointer-events-none absolute right-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground"
+                        strokeWidth={2}
+                        aria-hidden
                       />
                     </div>
                   </div>
-                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                    <div>
-                      <Label htmlFor="cc-edit-bill-day" className={labelSm}>
-                        Bill Generation Day
-                      </Label>
-                      <div className="relative mt-1">
-                        <select
-                          id="cc-edit-bill-day"
-                          value={(() => {
-                            const n = parseDigitsInt(String(asRec(draft).billGenerationDay ?? ""))
-                            return n >= 1 && n <= 31 ? String(n) : ""
-                          })()}
-                          onChange={(e) => patchDraft({ billGenerationDay: e.target.value })}
-                          className={cn(
-                            fieldIn,
-                            "h-10 w-full appearance-none bg-background pl-2 pr-9 text-left"
-                          )}
-                        >
-                          <option value="">Select day</option>
-                          {BILL_DAY_OPTIONS.map((o) => (
-                            <option key={o.value} value={o.value}>
-                              {o.label}
-                            </option>
-                          ))}
-                        </select>
-                        <ChevronDown
-                          className="pointer-events-none absolute right-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground"
-                          strokeWidth={2}
-                          aria-hidden
-                        />
-                      </div>
+                  <div>
+                    <Label className={labelSm}>Last 4 digits</Label>
+                    <Input
+                      inputMode="numeric"
+                      maxLength={4}
+                      value={String(asRec(draft).last4Digits ?? "")
+                        .replace(/\D/g, "")
+                        .slice(0, 4)}
+                      onChange={(e) =>
+                        patchDraft({ last4Digits: e.target.value.replace(/\D/g, "").slice(0, 4) })
+                      }
+                      className={cn(fieldIn, "h-10 text-left tabular-nums tracking-widest")}
+                    />
+                  </div>
+                </div>
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  <div>
+                    <Label htmlFor="cc-edit-bill-day" className={labelSm}>
+                      Bill Generation Day
+                    </Label>
+                    <div className="relative mt-1">
+                      <select
+                        id="cc-edit-bill-day"
+                        value={(() => {
+                          const n = parseDigitsInt(String(asRec(draft).billGenerationDay ?? ""))
+                          return n >= 1 && n <= 31 ? String(n) : ""
+                        })()}
+                        onChange={(e) => patchDraft({ billGenerationDay: e.target.value })}
+                        className={cn(
+                          fieldIn,
+                          "h-10 w-full appearance-none bg-background pl-2 pr-9 text-left"
+                        )}
+                      >
+                        <option value="">Select day</option>
+                        {BILL_DAY_OPTIONS.map((o) => (
+                          <option key={o.value} value={o.value}>
+                            {o.label}
+                          </option>
+                        ))}
+                      </select>
+                      <ChevronDown
+                        className="pointer-events-none absolute right-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground"
+                        strokeWidth={2}
+                        aria-hidden
+                      />
                     </div>
-                    <div>
-                      <Label htmlFor="cc-edit-pay-day" className={labelSm}>
-                        Payment Due Day
-                      </Label>
-                      <div className="relative mt-1">
-                        <select
-                          id="cc-edit-pay-day"
-                          value={(() => {
-                            const n = parseDigitsInt(String(asRec(draft).paymentDueDay ?? ""))
-                            return n >= 1 && n <= 31 ? String(n) : ""
-                          })()}
-                          onChange={(e) => patchDraft({ paymentDueDay: e.target.value })}
-                          className={cn(
-                            fieldIn,
-                            "h-10 w-full appearance-none bg-background pl-2 pr-9 text-left"
-                          )}
-                        >
-                          <option value="">Select day</option>
-                          {BILL_DAY_OPTIONS.map((o) => (
-                            <option key={o.value} value={o.value}>
-                              {o.label}
-                            </option>
-                          ))}
-                        </select>
-                        <ChevronDown
-                          className="pointer-events-none absolute right-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground"
-                          strokeWidth={2}
-                          aria-hidden
-                        />
-                      </div>
+                  </div>
+                  <div>
+                    <Label htmlFor="cc-edit-pay-day" className={labelSm}>
+                      Payment Due Day
+                    </Label>
+                    <div className="relative mt-1">
+                      <select
+                        id="cc-edit-pay-day"
+                        value={(() => {
+                          const n = parseDigitsInt(String(asRec(draft).paymentDueDay ?? ""))
+                          return n >= 1 && n <= 31 ? String(n) : ""
+                        })()}
+                        onChange={(e) => patchDraft({ paymentDueDay: e.target.value })}
+                        className={cn(
+                          fieldIn,
+                          "h-10 w-full appearance-none bg-background pl-2 pr-9 text-left"
+                        )}
+                      >
+                        <option value="">Select day</option>
+                        {BILL_DAY_OPTIONS.map((o) => (
+                          <option key={o.value} value={o.value}>
+                            {o.label}
+                          </option>
+                        ))}
+                      </select>
+                      <ChevronDown
+                        className="pointer-events-none absolute right-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground"
+                        strokeWidth={2}
+                        aria-hidden
+                      />
                     </div>
                   </div>
                 </div>
-                <div className="mt-4 flex flex-wrap items-center justify-center gap-2">
-                  <Button
-                    type="button"
-                    className="h-11 min-h-11 min-w-0 flex-3 rounded-xl bg-primary text-sm font-bold text-primary-foreground hover:bg-primary/90 sm:text-base"
-                    onClick={saveEdit}
-                    disabled={isSaving}
-                  >
-                    <Check className="mr-2 size-4 shrink-0" strokeWidth={2.5} aria-hidden />
-                    {isSaving ? "Saving..." : "Save"}
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    className="h-11 min-h-11 w-[28%] shrink-0 rounded-xl border-border px-3 text-sm font-semibold sm:px-4"
-                    onClick={cancelEdit}
-                    disabled={isSaving}
-                  >
-                    <X className="mr-1.5 size-4 shrink-0" strokeWidth={2} aria-hidden />
-                    Cancel
-                  </Button>
-                </div>
               </div>
-            ) : null}
-
-            <div className="mt-4 space-y-4 rounded-2xl bg-inherit p-4 sm:mt-5 sm:p-5">
-              <div>
-                <div className="mb-2 flex items-baseline justify-between gap-2 text-sm">
-                  <span className="font-medium text-muted-foreground">Used {usedPercent}%</span>
-                  <span className="font-semibold tabular-nums text-foreground">
-                    {formatCurrency(outstanding)}
-                  </span>
-                </div>
-                <div className="h-2 overflow-hidden rounded-full bg-muted">
-                  <div
-                    className="h-full rounded-full bg-income transition-[width] duration-300"
-                    style={{ width: `${usedPercent}%` }}
-                  />
-                </div>
+              <div className="mt-4 flex flex-wrap items-center justify-center gap-2">
+                <Button
+                  type="button"
+                  className="h-11 min-h-11 min-w-0 flex-3 rounded-xl bg-primary text-sm font-bold text-primary-foreground hover:bg-primary/90 sm:text-base"
+                  onClick={saveEdit}
+                  disabled={isSaving}
+                >
+                  <Check className="mr-2 size-4 shrink-0" strokeWidth={2.5} aria-hidden />
+                  {isSaving ? "Saving..." : "Save"}
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="h-11 min-h-11 w-[28%] shrink-0 rounded-xl border-border px-3 text-sm font-semibold sm:px-4"
+                  onClick={cancelEdit}
+                  disabled={isSaving}
+                >
+                  <X className="mr-1.5 size-4 shrink-0" strokeWidth={2} aria-hidden />
+                  Cancel
+                </Button>
               </div>
+            </div>
+          ) : null}
 
-              <div className="grid grid-cols-3 gap-2 sm:gap-3">
-                <div className={statTileClass}>
-                  <p className="text-[10px] font-medium text-muted-foreground sm:text-xs">
-                    Outstanding
-                  </p>
-                  <p className="mt-1 text-sm font-bold tabular-nums text-destructive sm:text-base">
-                    {formatCurrency(outstanding)}
-                  </p>
-                </div>
-                <div className={statTileClass}>
-                  <p className="text-[10px] font-medium text-muted-foreground sm:text-xs">
-                    Available
-                  </p>
-                  <p className="mt-1 text-sm font-bold tabular-nums text-income sm:text-base">
-                    {formatCurrency(available)}
-                  </p>
-                </div>
-                {rate !== null ? (
-                  <div className={statTileClass}>
-                    <p className="text-[10px] font-medium text-muted-foreground sm:text-xs">Rate</p>
-                    <p className="mt-1 text-sm font-bold tabular-nums text-foreground sm:text-base">
-                      {rate}%
-                    </p>
-                  </div>
-                ) : (
-                  <div className={statTileClass}>
-                    <p className="text-[10px] font-medium text-muted-foreground sm:text-xs">Rate</p>
-                    <p className="mt-1 text-sm font-bold tabular-nums text-foreground sm:text-base">
-                      —
-                    </p>
-                  </div>
-                )}
+          <div className="mt-4 space-y-4 rounded-2xl bg-inherit p-4 sm:mt-5 sm:p-5">
+            <div>
+              <div className="mb-2 flex items-baseline justify-between gap-2 text-sm">
+                <span className="font-medium text-muted-foreground">Used {usedPercent}%</span>
+                <span className="font-semibold tabular-nums text-foreground">
+                  {formatCurrency(outstanding)}
+                </span>
               </div>
-
-              {(billGenLabel || payDueLabel) && (
-                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 sm:gap-3">
-                  {billGenLabel ? (
-                    <div className={billingTileClass}>
-                      <p className="text-xs font-medium text-muted-foreground">Bill Generation</p>
-                      <p className="mt-1 text-sm font-bold text-foreground">{billGenLabel}</p>
-                    </div>
-                  ) : null}
-                  {payDueLabel ? (
-                    <div className={billingTileClass}>
-                      <p className="text-xs font-medium text-muted-foreground">Payment Due</p>
-                      <p className="mt-1 text-sm font-bold text-foreground">{payDueLabel}</p>
-                    </div>
-                  ) : null}
-                </div>
-              )}
-
-              {!isEditing ? (
-                <div className="grid grid-cols-2 gap-2.5 pt-1">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    className="h-12 rounded-xl border-0 bg-inherit font-semibold text-foreground shadow-none hover:bg-muted/40"
-                    onClick={() => onAddSpend?.()}
-                  >
-                    Add Spend
-                  </Button>
-                  <Button
-                    type="button"
-                    className="h-12 rounded-xl bg-primary font-semibold text-primary-foreground shadow-none hover:bg-primary/90"
-                    onClick={() => onPayBill?.()}
-                  >
-                    Pay Bill
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    className="h-12 rounded-xl border-0 bg-inherit font-semibold text-foreground shadow-none hover:bg-muted/40"
-                    onClick={() => comingSoon("Archive card")}
-                  >
-                    <Archive className="mr-2 size-4 shrink-0" strokeWidth={2} aria-hidden />
-                    Archive
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="destructive"
-                    className="h-12 rounded-xl font-semibold shadow-none"
-                    onClick={() => setDeleteConfirmOpen(true)}
-                  >
-                    <Trash2 className="mr-2 size-4 shrink-0" strokeWidth={2} aria-hidden />
-                    Delete
-                  </Button>
-                </div>
-              ) : null}
+              <div className="h-2 overflow-hidden rounded-full bg-muted">
+                <div
+                  className="h-full rounded-full bg-income transition-[width] duration-300"
+                  style={{ width: `${usedPercent}%` }}
+                />
+              </div>
             </div>
 
-            <CreditCardRecentTransactionsSection
-              key={selectedCardId}
-              selectedCardId={selectedCardId}
-              recentTransactions={recentTransactions}
-              txsError={txsError}
-              txsFetching={txsFetching}
-              accounts={allAccounts}
-              onDelete={txDelete.requestDelete}
-            />
+            <div className="grid grid-cols-3 gap-2 sm:gap-3">
+              <div className={statTileClass}>
+                <p className="text-[10px] font-medium text-muted-foreground sm:text-xs">
+                  Outstanding
+                </p>
+                <p className="mt-1 text-sm font-bold tabular-nums text-destructive sm:text-base">
+                  {formatCurrency(outstanding)}
+                </p>
+              </div>
+              <div className={statTileClass}>
+                <p className="text-[10px] font-medium text-muted-foreground sm:text-xs">
+                  Available
+                </p>
+                <p className="mt-1 text-sm font-bold tabular-nums text-income sm:text-base">
+                  {formatCurrency(available)}
+                </p>
+              </div>
+              {rate !== null ? (
+                <div className={statTileClass}>
+                  <p className="text-[10px] font-medium text-muted-foreground sm:text-xs">Rate</p>
+                  <p className="mt-1 text-sm font-bold tabular-nums text-foreground sm:text-base">
+                    {rate}%
+                  </p>
+                </div>
+              ) : (
+                <div className={statTileClass}>
+                  <p className="text-[10px] font-medium text-muted-foreground sm:text-xs">Rate</p>
+                  <p className="mt-1 text-sm font-bold tabular-nums text-foreground sm:text-base">
+                    —
+                  </p>
+                </div>
+              )}
+            </div>
+
+            {(billGenLabel || payDueLabel) && (
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 sm:gap-3">
+                {billGenLabel ? (
+                  <div className={billingTileClass}>
+                    <p className="text-xs font-medium text-muted-foreground">Bill Generation</p>
+                    <p className="mt-1 text-sm font-bold text-foreground">{billGenLabel}</p>
+                  </div>
+                ) : null}
+                {payDueLabel ? (
+                  <div className={billingTileClass}>
+                    <p className="text-xs font-medium text-muted-foreground">Payment Due</p>
+                    <p className="mt-1 text-sm font-bold text-foreground">{payDueLabel}</p>
+                  </div>
+                ) : null}
+              </div>
+            )}
+
+            {!isEditing ? (
+              <div className="grid grid-cols-2 gap-2.5 pt-1">
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="h-12 rounded-xl border-0 bg-inherit font-semibold text-foreground shadow-none hover:bg-muted/40"
+                  onClick={() => onAddSpend?.()}
+                >
+                  Add Spend
+                </Button>
+                <Button
+                  type="button"
+                  className="h-12 rounded-xl bg-primary font-semibold text-primary-foreground shadow-none hover:bg-primary/90"
+                  onClick={() => onPayBill?.()}
+                >
+                  Pay Bill
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="h-12 rounded-xl border-0 bg-inherit font-semibold text-foreground shadow-none hover:bg-muted/40"
+                  onClick={() => comingSoon("Archive card")}
+                >
+                  <Archive className="mr-2 size-4 shrink-0" strokeWidth={2} aria-hidden />
+                  Archive
+                </Button>
+                <Button
+                  type="button"
+                  variant="destructive"
+                  className="h-12 rounded-xl font-semibold shadow-none"
+                  onClick={() => setDeleteConfirmOpen(true)}
+                >
+                  <Trash2 className="mr-2 size-4 shrink-0" strokeWidth={2} aria-hidden />
+                  Delete
+                </Button>
+              </div>
+            ) : null}
           </div>
+
+          <CreditCardRecentTransactionsSection
+            key={selectedCardId}
+            selectedCardId={selectedCardId}
+            recentTransactions={recentTransactions}
+            txsError={txsError}
+            txsFetching={txsFetching}
+            accounts={allAccounts}
+            onDelete={txDelete.requestDelete}
+          />
         </div>
-      </div>
+      </main>
     </>
   )
 }

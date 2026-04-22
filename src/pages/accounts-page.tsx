@@ -14,7 +14,6 @@ import { AddLoanSheet } from "@/features/accounts/add-loan-sheet"
 import { AddUdharEntrySheet } from "@/features/accounts/add-udhar-entry-sheet"
 import { AdjustBalanceSheet } from "@/features/accounts/adjust-balance-sheet"
 import { AccountCard, AccountCardSkeleton } from "@/features/accounts/account-card"
-import { AccountDetailView } from "@/features/accounts/account-detail-view"
 import {
   ACCOUNTS_SEGMENT_META,
   type AccountsSegmentId,
@@ -24,12 +23,9 @@ import {
   ACCOUNTS_URL_ACCOUNT,
   ACCOUNTS_URL_CARD,
   ACCOUNTS_URL_LOAN,
-  applyAccountsDetailSearch,
   buildAccountsDetailPath,
 } from "@/features/accounts/accounts-route"
-import { CreditCardDetailView } from "@/features/accounts/credit-card-detail-view"
 import { CreditCardList } from "@/features/accounts/credit-card-list"
-import { LoanDetailView } from "@/features/accounts/loan-detail-view"
 import { LoanList } from "@/features/accounts/loan-list"
 import { PeopleList } from "@/features/accounts/people-list"
 import { useDeleteTransactionFlow } from "@/features/entries/use-delete-transaction-flow"
@@ -80,10 +76,6 @@ export default function AccountsPage() {
   const loanQ = searchParams.get(ACCOUNTS_URL_LOAN)
   const cardQ = searchParams.get(ACCOUNTS_URL_CARD)
   const accountQ = searchParams.get(ACCOUNTS_URL_ACCOUNT)
-  const highlightTxQ = searchParams.get(ACCOUNTS_HIGHLIGHT_TX)
-  const prevDetailLoanRef = useRef<string | null>(null)
-  const prevDetailCardRef = useRef<string | null>(null)
-  const prevDetailAccountRef = useRef<string | null>(null)
   const transferSuccessSkipExitRef = useRef(false)
   const [segment, setSegment] = useState<AccountsSegmentId>("accounts")
   const [udharOpen, setUdharOpen] = useState(false)
@@ -102,19 +94,11 @@ export default function AccountsPage() {
   const [udharInitialEntryType, setUdharInitialEntryType] = useState<UdharEntryType | undefined>(
     undefined
   )
-  const [selectedCreditCard, setSelectedCreditCard] = useState<Account | null>(null)
-  const [selectedLoan, setSelectedLoan] = useState<Account | null>(null)
-  const [selectedAccount, setSelectedAccount] = useState<Account | null>(null)
-  /** Full-screen loan detail — only when user opens a loan from the list (or URL deep link). */
-  const [loanDetailVisible, setLoanDetailVisible] = useState(false)
-  /** Full-screen card detail — only when user opens a card from the list (or URL deep link). */
-  const [cardDetailVisible, setCardDetailVisible] = useState(false)
-  /** Add spend sheet (single instance on this page; list or after leaving card detail). */
+  /** Card list “Add spend” — sheet prefill. */
+  const [cardForSpend, setCardForSpend] = useState<Account | null>(null)
   const [cardInlineSpendOpen, setCardInlineSpendOpen] = useState(false)
   const [transferModalOpen, setTransferModalOpen] = useState(false)
   const [transferPreset, setTransferPreset] = useState<TransferPaymentPreset | null>(null)
-  const [accountDetailStartInEdit, setAccountDetailStartInEdit] = useState(false)
-  const [accountDetailOpenNonce, setAccountDetailOpenNonce] = useState(0)
   const [pendingListDeleteAccount, setPendingListDeleteAccount] = useState<Account | null>(null)
   const [adjustBalanceAccount, setAdjustBalanceAccount] = useState<Account | null>(null)
   const [pendingDeletePerson, setPendingDeletePerson] = useState<Person | null>(null)
@@ -123,41 +107,20 @@ export default function AccountsPage() {
   const [deletePerson] = useDeletePersonMutation()
   const txDelete = useDeleteTransactionFlow()
 
-  const openPayBillFromCardDetail = useCallback(() => {
-    const a = selectedCreditCard
-    if (!a) return
+  const openPayBillForCard = useCallback((a: Account) => {
     setTransferPreset({ kind: "credit_card_bill", creditCardAccountId: String(a.id) })
     setTransferModalOpen(true)
-  }, [selectedCreditCard])
+  }, [])
 
-  const openPayEmiFromLoanDetail = useCallback(() => {
-    const a = selectedLoan
-    if (!a) return
+  const openPayEmiForLoan = useCallback((a: Account) => {
     setTransferPreset({ kind: "loan_emi", loanAccountId: String(a.id) })
     setTransferModalOpen(true)
-  }, [selectedLoan])
+  }, [])
 
-  const exitToLoansList = useCallback(() => {
-    setSegment("loans")
-    setLoanDetailVisible(false)
-    setSelectedLoan(null)
-    applyAccountsDetailSearch(setSearchParams, null)
-  }, [setSearchParams])
-
-  const exitToCardsList = useCallback(() => {
-    setSegment("cards")
-    setCardDetailVisible(false)
-    setCardInlineSpendOpen(false)
-    setSelectedCreditCard(null)
-    applyAccountsDetailSearch(setSearchParams, null)
-  }, [setSearchParams])
-
-  const openAddSpendFromCardDetail = useCallback(() => {
-    if (!selectedCreditCard) return
-    setCardDetailVisible(false)
-    applyAccountsDetailSearch(setSearchParams, null)
+  const openAddSpendForCard = useCallback((a: Account) => {
+    setCardForSpend(a)
     setCardInlineSpendOpen(true)
-  }, [selectedCreditCard, setSearchParams])
+  }, [])
 
   const confirmDeleteFromList = useCallback(async () => {
     if (!pendingListDeleteAccount) return
@@ -167,15 +130,10 @@ export default function AccountsPage() {
       const res = await deleteAccount(id).unwrap()
       toast.success(res.message ?? "Account deleted")
       setPendingListDeleteAccount(null)
-      if (selectedAccount && String(selectedAccount.id) === id) {
-        setSelectedAccount(null)
-        setAccountDetailStartInEdit(false)
-        applyAccountsDetailSearch(setSearchParams, null)
-      }
     } catch (e) {
       toast.error(getErrorMessage(e) || "Failed to delete")
     }
-  }, [deleteAccount, pendingListDeleteAccount, selectedAccount, setSearchParams])
+  }, [deleteAccount, pendingListDeleteAccount])
 
   const confirmDeletePerson = useCallback(async () => {
     if (!pendingDeletePerson) return
@@ -211,7 +169,6 @@ export default function AccountsPage() {
   const {
     data: creditCards = [],
     isLoading: creditCardsLoading,
-    isFetching: creditCardsFetching,
     isError: creditCardsError,
     error: creditCardsQueryError,
     refetch: refetchCreditCards,
@@ -220,7 +177,6 @@ export default function AccountsPage() {
   const {
     data: loans = [],
     isLoading: loansLoading,
-    isFetching: loansFetching,
     isError: loansError,
     error: loansQueryError,
     refetch: refetchLoans,
@@ -251,89 +207,29 @@ export default function AccountsPage() {
     else if (accountQ) setSegment("accounts")
   }, [loanQ, cardQ, accountQ])
 
-  /** Keep loan/card detail selection aligned with URL (back/forward, bookmarks, invalid id cleanup). */
-  useEffect(() => {
-    if (loanQ) {
-      prevDetailLoanRef.current = loanQ
-      prevDetailCardRef.current = null
-      if (loansLoading || loansFetching) return
-      const acc = loans.find((a) => String(a.id) === loanQ)
-      if (acc) {
-        setSelectedLoan((prev) => (prev && String(prev.id) === loanQ ? prev : acc))
-        setLoanDetailVisible(true)
-      } else {
-        setSelectedLoan(null)
-        setLoanDetailVisible(false)
-        applyAccountsDetailSearch(setSearchParams, null)
-      }
-      return
-    }
-    if (cardQ) {
-      prevDetailCardRef.current = cardQ
-      prevDetailLoanRef.current = null
-      if (creditCardsLoading || creditCardsFetching) return
-      const acc = creditCards.find((a) => String(a.id) === cardQ)
-      if (acc) {
-        setSelectedCreditCard((prev) => (prev && String(prev.id) === cardQ ? prev : acc))
-        setCardDetailVisible(true)
-      } else {
-        setSelectedCreditCard(null)
-        setCardDetailVisible(false)
-        applyAccountsDetailSearch(setSearchParams, null)
-      }
-      return
-    }
-    const hadDetailInUrl = prevDetailLoanRef.current || prevDetailCardRef.current
-    prevDetailLoanRef.current = null
-    prevDetailCardRef.current = null
-    if (hadDetailInUrl) {
-      setSelectedLoan(null)
-      setSelectedCreditCard(null)
-      setLoanDetailVisible(false)
-      setCardDetailVisible(false)
-      setCardInlineSpendOpen(false)
-    }
-  }, [
-    loanQ,
-    cardQ,
-    loans,
-    creditCards,
-    loansLoading,
-    loansFetching,
-    creditCardsLoading,
-    creditCardsFetching,
-    setSearchParams,
-  ])
-
   const normalAccounts = useMemo(() => filterNormalAccounts(apiAccounts ?? []), [apiAccounts])
 
-  /** Normal account detail: `?account=` (return from Add Transaction). */
+  /** Legacy query detail links → `/accounts/:id`, `/loans/:id`, `/cards/:id`. */
   useEffect(() => {
-    if (loanQ || cardQ) return
-    if (accountQ) {
-      prevDetailAccountRef.current = accountQ
-      if (accountsLoading) return
-      const acc = normalAccounts.find((a) => String(a.id) === accountQ)
-      if (acc) {
-        setSelectedLoan(null)
-        setSelectedCreditCard(null)
-        setLoanDetailVisible(false)
-        setCardDetailVisible(false)
-        setCardInlineSpendOpen(false)
-        setSelectedAccount((prev) => (prev && String(prev.id) === accountQ ? prev : acc))
-        setAccountDetailStartInEdit(false)
-      } else {
-        setSelectedAccount(null)
-        applyAccountsDetailSearch(setSearchParams, null)
-      }
+    const loan = searchParams.get(ACCOUNTS_URL_LOAN)?.trim()
+    const card = searchParams.get(ACCOUNTS_URL_CARD)?.trim()
+    const acc = searchParams.get(ACCOUNTS_URL_ACCOUNT)?.trim()
+    const highlight = searchParams.get(ACCOUNTS_HIGHLIGHT_TX)?.trim()
+    if (loan) {
+      navigate(`/loans/${encodeURIComponent(loan)}`, { replace: true })
       return
     }
-    const hadAccountInUrl = prevDetailAccountRef.current
-    prevDetailAccountRef.current = null
-    if (hadAccountInUrl) {
-      setSelectedAccount(null)
+    if (card) {
+      navigate(`/cards/${encodeURIComponent(card)}`, { replace: true })
+      return
     }
-  }, [accountQ, loanQ, cardQ, normalAccounts, accountsLoading, setSearchParams])
+    if (acc) {
+      const q = new URLSearchParams()
+      if (highlight) q.set(ACCOUNTS_HIGHLIGHT_TX, highlight)
+      const qs = q.toString()
+      navigate(`/accounts/${encodeURIComponent(acc)}${qs ? `?${qs}` : ""}`, { replace: true })
+    }
+  }, [searchParams, navigate])
 
   const resolvedPeopleAccountFilter = useMemo(() => {
     if (normalAccounts.length === 0) return ""
@@ -430,21 +326,9 @@ export default function AccountsPage() {
     [apiAccounts]
   )
 
-  const resolvedSelectedAccount = useMemo(
-    () => resolveAccountFromCache(selectedAccount),
-    [resolveAccountFromCache, selectedAccount]
-  )
   const resolvedAdjustBalanceAccount = useMemo(
     () => resolveAccountFromCache(adjustBalanceAccount),
     [resolveAccountFromCache, adjustBalanceAccount]
-  )
-  const resolvedSelectedCreditCard = useMemo(
-    () => resolveAccountFromCache(selectedCreditCard),
-    [resolveAccountFromCache, selectedCreditCard]
-  )
-  const resolvedSelectedLoan = useMemo(
-    () => resolveAccountFromCache(selectedLoan),
-    [resolveAccountFromCache, selectedLoan]
   )
 
   const showAccountsLoading = segment === "accounts" && accountsLoading
@@ -543,60 +427,20 @@ export default function AccountsPage() {
       <AddLoanSheet open={loanOpen} onOpenChange={setLoanOpen} />
       <AddCreditCardSheet open={cardOpen} onOpenChange={setCardOpen} />
       <AddCardSpendSheet
-        open={cardInlineSpendOpen && !!selectedCreditCard}
+        open={cardInlineSpendOpen && !!cardForSpend}
         onOpenChange={(v) => {
           setCardInlineSpendOpen(v)
-          if (!v) exitToCardsList()
+          if (!v) setCardForSpend(null)
         }}
-        account={resolvedSelectedCreditCard}
-      />
-      <CreditCardDetailView
-        open={!!selectedCreditCard && cardDetailVisible}
-        onOpenChange={(v) => {
-          if (!v) {
-            setSelectedCreditCard(null)
-            setCardDetailVisible(false)
-            applyAccountsDetailSearch(setSearchParams, null)
-          }
-        }}
-        account={resolvedSelectedCreditCard}
-        onCardUpdated={(a) => setSelectedCreditCard(a)}
-        onPayBill={openPayBillFromCardDetail}
-        onAddSpend={openAddSpendFromCardDetail}
-        onCardDeleted={() => {
-          setSelectedCreditCard(null)
-          setCardDetailVisible(false)
-        }}
-      />
-      <LoanDetailView
-        open={!!selectedLoan && loanDetailVisible}
-        onOpenChange={(v) => {
-          if (!v) {
-            setSelectedLoan(null)
-            setLoanDetailVisible(false)
-            applyAccountsDetailSearch(setSearchParams, null)
-          }
-        }}
-        account={resolvedSelectedLoan}
-        onLoanUpdated={(a) => setSelectedLoan(a)}
-        onPayEmi={openPayEmiFromLoanDetail}
-        onLoanDeleted={() => {
-          setSelectedLoan(null)
-          setLoanDetailVisible(false)
-        }}
+        account={cardForSpend}
       />
       <AddTransactionModal
         open={transferModalOpen}
         onOpenChange={(v) => {
           setTransferModalOpen(v)
           if (!v) {
-            const kind = transferPreset?.kind
-            const skipExit = transferSuccessSkipExitRef.current
             transferSuccessSkipExitRef.current = false
             setTransferPreset(null)
-            if (skipExit) return
-            if (kind === "loan_emi") exitToLoansList()
-            else if (kind === "credit_card_bill") exitToCardsList()
           }
         }}
         initialType="transfer"
@@ -616,41 +460,6 @@ export default function AccountsPage() {
           transferSuccessSkipExitRef.current = true
         }}
       />
-      {selectedAccount ? (
-        <AccountDetailView
-          key={`${selectedAccount.id}-${accountDetailOpenNonce}`}
-          open
-          onOpenChange={(v) => {
-            if (!v) {
-              setSelectedAccount(null)
-              setAccountDetailStartInEdit(false)
-              applyAccountsDetailSearch(setSearchParams, null)
-            }
-          }}
-          account={resolvedSelectedAccount}
-          onAccountUpdated={(a) => setSelectedAccount(a)}
-          initialEditing={accountDetailStartInEdit}
-          onAdjustBalance={() => {
-            if (resolvedSelectedAccount) setAdjustBalanceAccount(resolvedSelectedAccount)
-          }}
-          onAccountDeleted={() => {
-            setSelectedAccount(null)
-            setAccountDetailStartInEdit(false)
-            applyAccountsDetailSearch(setSearchParams, null)
-          }}
-          highlightTransactionId={highlightTxQ}
-          onHighlightTransactionConsumed={() => {
-            setSearchParams(
-              (prev) => {
-                const p = new URLSearchParams(prev)
-                p.delete(ACCOUNTS_HIGHLIGHT_TX)
-                return p
-              },
-              { replace: true }
-            )
-          }}
-        />
-      ) : null}
       <div
         className="mb-3 grid shrink-0 grid-cols-4 gap-1 sm:mb-4"
         role="tablist"
@@ -674,12 +483,8 @@ export default function AccountsPage() {
                   : "bg-muted/80 text-muted-foreground hover:bg-muted hover:text-foreground"
               )}
               onClick={() => {
-                if (id !== "accounts") setSelectedAccount(null)
-                if (id !== "loans") setSelectedLoan(null)
-                if (id !== "cards") setSelectedCreditCard(null)
-                setLoanDetailVisible(false)
-                setCardDetailVisible(false)
                 setCardInlineSpendOpen(false)
+                setCardForSpend(null)
                 setSearchParams(
                   (prev) => {
                     const p = new URLSearchParams(prev)
@@ -948,40 +753,19 @@ export default function AccountsPage() {
                   accounts={creditCards}
                   variant="entries"
                   onSelectCard={(a) => {
-                    setCardDetailVisible(true)
-                    setSelectedCreditCard(a)
-                    applyAccountsDetailSearch(setSearchParams, { kind: "card", id: String(a.id) })
+                    navigate(`/cards/${encodeURIComponent(String(a.id))}`)
                   }}
-                  onAddSpend={(a) => {
-                    setCardDetailVisible(false)
-                    setSelectedCreditCard(a)
-                    setCardInlineSpendOpen(true)
-                  }}
-                  onPayBill={(a) => {
-                    setCardDetailVisible(false)
-                    setSelectedCreditCard(a)
-                    setTransferPreset({
-                      kind: "credit_card_bill",
-                      creditCardAccountId: String(a.id),
-                    })
-                    setTransferModalOpen(true)
-                  }}
+                  onAddSpend={openAddSpendForCard}
+                  onPayBill={openPayBillForCard}
                 />
               ) : segment === "loans" ? (
                 <LoanList
                   accounts={loans}
                   variant="entries"
                   onSelectLoan={(a) => {
-                    setLoanDetailVisible(true)
-                    setSelectedLoan(a)
-                    applyAccountsDetailSearch(setSearchParams, { kind: "loan", id: String(a.id) })
+                    navigate(`/loans/${encodeURIComponent(String(a.id))}`)
                   }}
-                  onPayEmi={(a) => {
-                    setLoanDetailVisible(false)
-                    setSelectedLoan(a)
-                    setTransferPreset({ kind: "loan_emi", loanAccountId: String(a.id) })
-                    setTransferModalOpen(true)
-                  }}
+                  onPayEmi={openPayEmiForLoan}
                 />
               ) : (
                 <ul
@@ -993,21 +777,11 @@ export default function AccountsPage() {
                       <AccountCard
                         account={a}
                         onOpen={() => {
-                          setAccountDetailStartInEdit(false)
-                          setAccountDetailOpenNonce((n) => n + 1)
-                          setSelectedAccount(a)
-                          applyAccountsDetailSearch(setSearchParams, {
-                            kind: "account",
-                            id: String(a.id),
-                          })
+                          navigate(`/accounts/${encodeURIComponent(String(a.id))}`)
                         }}
                         onEdit={() => {
-                          setAccountDetailStartInEdit(true)
-                          setAccountDetailOpenNonce((n) => n + 1)
-                          setSelectedAccount(a)
-                          applyAccountsDetailSearch(setSearchParams, {
-                            kind: "account",
-                            id: String(a.id),
+                          navigate(`/accounts/${encodeURIComponent(String(a.id))}`, {
+                            state: { initialEditing: true },
                           })
                         }}
                         onAdjust={() => setAdjustBalanceAccount(a)}

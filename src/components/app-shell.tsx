@@ -1,5 +1,5 @@
 import { Suspense } from "react"
-import { Link, NavLink, Outlet, useLocation, useNavigate } from "react-router-dom"
+import { Link, matchPath, NavLink, Outlet, useLocation, useNavigate } from "react-router-dom"
 import { BarChart3, Home, LayoutGrid, Plus, Wallet } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { HeaderProfileMenu } from "@/components/header-profile-menu"
@@ -20,15 +20,25 @@ const tabs = [
   { to: "/analytics", label: "Analytics", icon: BarChart3, end: false },
 ] as const
 
+function isAccountEntityDetailPath(pathname: string): boolean {
+  return Boolean(
+    matchPath("/accounts/:accountId", pathname) ||
+    matchPath("/people/:personId", pathname) ||
+    matchPath("/loans/:loanId", pathname) ||
+    matchPath("/cards/:cardId", pathname)
+  )
+}
+
 export function AppShell() {
   const { pathname } = useLocation()
   const navigate = useNavigate()
+  const hideGlobalHeader = isAccountEntityDetailPath(pathname)
   const showFab =
     pathname !== "/analytics" &&
     pathname !== "/accounts" &&
     pathname !== "/profile" &&
     !pathname.startsWith("/transactions/") &&
-    !pathname.startsWith("/people/")
+    !isAccountEntityDetailPath(pathname)
 
   function handleFabClick() {
     if (pathname === "/entries") {
@@ -41,20 +51,22 @@ export function AppShell() {
 
   return (
     <div className="relative mx-auto flex h-dvh min-h-0 max-w-lg flex-col overflow-hidden bg-background">
-      <header className="shrink-0 z-40 rounded-b-2xl bg-primary px-4 py-3 text-primary-foreground">
-        <div className="flex items-center justify-between gap-3">
-          <Link
-            to="/"
-            className="min-w-0 flex-1 truncate text-lg font-bold tracking-tight text-primary-foreground hover:opacity-90"
-          >
-            Koin
-          </Link>
-          <div className="flex shrink-0 items-center gap-1">
-            <ThemeToggle />
-            <HeaderProfileMenu />
+      {hideGlobalHeader ? null : (
+        <header className="shrink-0 z-40 rounded-b-2xl bg-primary px-4 py-3 text-primary-foreground">
+          <div className="flex items-center justify-between gap-3">
+            <Link
+              to="/"
+              className="min-w-0 flex-1 truncate text-lg font-bold tracking-tight text-primary-foreground hover:opacity-90"
+            >
+              Koin
+            </Link>
+            <div className="flex shrink-0 items-center gap-1">
+              <ThemeToggle />
+              <HeaderProfileMenu />
+            </div>
           </div>
-        </div>
-      </header>
+        </header>
+      )}
 
       <ErrorBoundary>
         <Suspense fallback={<PageLoader />}>
