@@ -8,10 +8,7 @@ export type UdharQuadrantTotals = {
   taken: number
   receivedBack: number
   paidBack: number
-  /**
-   * Net position: Given − Taken + Received Back − Paid Back
-   * (equivalently (Given + Received Back) − (Taken + Paid Back) for typed rows).
-   */
+  /** Net position from ledger signedAmount sum (source-of-truth sign from backend). */
   net: number
 }
 
@@ -21,8 +18,7 @@ export type UdharQuadrantTotals = {
  * - `money_taken` → Taken
  * - `payment_received` → Received Back
  * - `payment_made` → Paid Back
- * Unknown rows: positive `signedAmount` → Given, negative → Taken (absolute), so `net` stays
- * consistent with the legacy sign split.
+ * Unknown rows are not forced into any category.
  */
 export function aggregateUdharLedgerQuadrantTotals(
   entries: RecentTransaction[]
@@ -31,8 +27,10 @@ export function aggregateUdharLedgerQuadrantTotals(
   let taken = 0
   let receivedBack = 0
   let paidBack = 0
+  let net = 0
 
   for (const tx of entries) {
+    net += parseSignedAmountString(tx.signedAmount)
     const mag = Math.abs(parseSignedAmountString(tx.signedAmount))
     const entryType = extractUdharEntryType(tx)
 
@@ -44,17 +42,9 @@ export function aggregateUdharLedgerQuadrantTotals(
       receivedBack += mag
     } else if (entryType === "payment_made") {
       paidBack += mag
-    } else {
-      const s = parseSignedAmountString(tx.signedAmount)
-      if (s > 0) {
-        given += s
-      } else if (s < 0) {
-        taken += -s
-      }
     }
   }
 
-  const net = given - taken + receivedBack - paidBack
   return { given, taken, receivedBack, paidBack, net }
 }
 

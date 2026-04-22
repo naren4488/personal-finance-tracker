@@ -14,12 +14,14 @@ export function getUdharEntryTypeLabel(tx: RecentTransaction): string {
     case "money_taken":
       return "Borrowed"
     case "payment_received":
-      return "Received"
+      return "Received Back"
     case "payment_made":
-      return "Paid"
+      return "Paid Back"
     default: {
       const effect: UdharBalanceEffect = getUdharEffect(tx)
-      return effect === "receivable" ? "Receivable" : "Payable"
+      if (effect === "receivable") return "Receivable"
+      if (effect === "payable") return "Payable"
+      return "Uncategorized"
     }
   }
 }
@@ -33,14 +35,14 @@ export function getUdharLedgerRowHeading(tx: RecentTransaction): { arrow: string
     case "money_taken":
       return { arrow: "↓", label: "Taken" }
     case "payment_received":
-      return { arrow: "←", label: "Received" }
+      return { arrow: "←", label: "Received Back" }
     case "payment_made":
-      return { arrow: "↑", label: "Paid back" }
+      return { arrow: "↑", label: "Paid Back" }
     default: {
       const effect: UdharBalanceEffect = getUdharEffect(tx)
-      return effect === "receivable"
-        ? { arrow: "→", label: "Receivable" }
-        : { arrow: "↓", label: "Payable" }
+      if (effect === "receivable") return { arrow: "→", label: "Receivable" }
+      if (effect === "payable") return { arrow: "↓", label: "Payable" }
+      return { arrow: "•", label: "Uncategorized" }
     }
   }
 }

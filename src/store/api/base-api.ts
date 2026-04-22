@@ -508,8 +508,10 @@ export const baseApi = createApi({
         }
       },
       invalidatesTags: [
-        { type: "Account", id: "LIST" },
+        "Accounts",
+        "Transactions",
         { type: "Dashboard", id: "HOME" },
+        { type: "Account", id: "LIST" },
       ],
     }),
 
@@ -546,8 +548,10 @@ export const baseApi = createApi({
         }
       },
       invalidatesTags: [
-        { type: "Account", id: "LIST" },
+        "Accounts",
+        "Transactions",
         { type: "Dashboard", id: "HOME" },
+        { type: "Account", id: "LIST" },
       ],
     }),
 
@@ -612,15 +616,15 @@ export const baseApi = createApi({
       invalidatesTags: [
         "Accounts",
         "Transactions",
+        { type: "PersonLedger" },
+        { type: "Dashboard", id: "HOME" },
         "Transaction",
         { type: "Account", id: "LIST" },
         { type: "Transaction", id: "LIST" },
         { type: "Transaction", id: "RECENT" },
         { type: "People", id: "LIST" },
         { type: "UdharSummary" },
-        { type: "PersonLedger" },
         { type: "DashboardAnalytics", id: "LIST" },
-        { type: "Dashboard", id: "HOME" },
       ],
     }),
 
@@ -663,10 +667,12 @@ export const baseApi = createApi({
         }
       },
       invalidatesTags: [
+        "Accounts",
+        "Transactions",
+        { type: "Dashboard", id: "HOME" },
         { type: "Account", id: "LIST" },
         { type: "Transaction", id: "LIST" },
         { type: "Transaction", id: "RECENT" },
-        { type: "Dashboard", id: "HOME" },
       ],
     }),
 
@@ -697,12 +703,15 @@ export const baseApi = createApi({
         return { data: { message: parsed.message } }
       },
       invalidatesTags: [
+        "Accounts",
+        "Transactions",
+        { type: "PersonLedger" },
+        { type: "Dashboard", id: "HOME" },
         { type: "People", id: "LIST" },
         { type: "Transaction", id: "LIST" },
         { type: "Transaction", id: "RECENT" },
         { type: "Account", id: "LIST" },
         { type: "UdharSummary" },
-        { type: "PersonLedger" },
       ],
     }),
 
@@ -772,7 +781,10 @@ export const baseApi = createApi({
         }
         return { data: parsed.transactions }
       },
-      providesTags: ["Transactions"],
+      providesTags: (_result, _error, arg) => [
+        "Transactions",
+        { type: "PersonLedger", id: arg.personId },
+      ],
     }),
 
     getAccountLedger: build.query<RecentTransaction[], { accountId: string; limit?: number }>({
@@ -812,37 +824,11 @@ export const baseApi = createApi({
         if (!id) {
           return { error: { status: 422, data: "Account id is required" } }
         }
-        const candidateUrls = [TRANSACTION_PATHS.udharSummary, "/transactions/udhar/summary"]
-        let res: Awaited<ReturnType<typeof baseQuery>> | null = null
-        for (const url of candidateUrls) {
-          // Prefer GET with query for REST-style summary endpoints.
-          const getRes = await baseQuery({
-            url,
-            method: "GET",
-            params: { accountId: id },
-          })
-          if (!getRes.error) {
-            res = getRes
-            break
-          }
-
-          // Retry POST for backends that model summary as an action endpoint.
-          const postRes = await baseQuery({
-            url,
-            method: "POST",
-            body: { accountId: id },
-          })
-          if (!postRes.error) {
-            res = postRes
-            break
-          }
-
-          // Preserve the latest error if all candidates fail.
-          res = postRes
-        }
-        if (!res) {
-          return { error: { status: 500, data: "Unable to fetch udhar summary" } }
-        }
+        const res = await baseQuery({
+          url: TRANSACTION_PATHS.udharSummary,
+          method: "GET",
+          params: { accountId: id },
+        })
         if (res.error) {
           return { error: normalizeFetchError(res.error) }
         }
@@ -1062,29 +1048,6 @@ export const baseApi = createApi({
       providesTags: ["Transactions", { type: "Transaction", id: "RECENT" }],
     }),
 
-    getTransactions: build.query<RecentTransaction[], void>({
-      async queryFn(_arg, _api, _extraOptions, baseQuery) {
-        const res = await baseQuery({
-          url: TRANSACTION_PATHS.recent,
-          method: "GET",
-          params: { limit: "200" },
-        })
-        if (res.error) {
-          return { error: normalizeFetchError(res.error) }
-        }
-        const failMsg = parseApiFailureMessage(res.data)
-        if (failMsg) {
-          return { error: { status: 400, data: failMsg } }
-        }
-        const parsed = parseGetRecentTransactionsSuccess(res.data)
-        if (!parsed.ok) {
-          return { error: { status: 422, data: parsed.error } }
-        }
-        return { data: parsed.transactions }
-      },
-      providesTags: ["Transactions"],
-    }),
-
     /** Strict EMI flow endpoint: GET /transactions/recent */
     getRecentTransactionsForEmi: build.query<RecentTransaction[], void>({
       query: () => ({
@@ -1095,7 +1058,7 @@ export const baseApi = createApi({
         const parsed = parseGetRecentTransactionsSuccess(response)
         return parsed.ok ? parsed.transactions : []
       },
-      providesTags: [{ type: "Transaction", id: "RECENT" }],
+      providesTags: ["Transactions", { type: "Transaction", id: "RECENT" }],
     }),
 
     getDashboard: build.query<DashboardHomeView, DashboardHomeQueryArg | void>({
@@ -1129,7 +1092,7 @@ export const baseApi = createApi({
         }
         return { data: parsed.view }
       },
-      providesTags: [{ type: "Dashboard", id: "HOME" }],
+      providesTags: ["Dashboard", { type: "Dashboard", id: "HOME" }],
     }),
 
     getDashboardAnalytics: build.query<DashboardAnalyticsView, DashboardAnalyticsQueryArg>({
@@ -1164,7 +1127,7 @@ export const baseApi = createApi({
         }
         return { data: parsed.view }
       },
-      providesTags: [{ type: "DashboardAnalytics", id: "LIST" }],
+      providesTags: ["Dashboard", { type: "DashboardAnalytics", id: "LIST" }],
     }),
 
     getCommitments: build.query<Commitment[], GetCommitmentsQueryArg | void>({
@@ -1248,15 +1211,15 @@ export const baseApi = createApi({
       invalidatesTags: [
         "Accounts",
         "Transactions",
+        { type: "PersonLedger" },
+        { type: "Dashboard", id: "HOME" },
         "Transaction",
         { type: "Transaction", id: "LIST" },
         { type: "Transaction", id: "RECENT" },
         { type: "Account", id: "LIST" },
-        { type: "PersonLedger" },
         { type: "UdharSummary" },
         { type: "People", id: "LIST" },
         { type: "DashboardAnalytics", id: "LIST" },
-        { type: "Dashboard", id: "HOME" },
       ],
     }),
 
@@ -1283,6 +1246,7 @@ export const baseApi = createApi({
           "[transactions] create — POST body (exact JSON):",
           JSON.stringify(validated.data, null, 2)
         )
+        console.log("Final Payload:", validated.data)
 
         const res = await baseQuery({
           url: TRANSACTION_PATHS.create,
@@ -1325,13 +1289,13 @@ export const baseApi = createApi({
       invalidatesTags: [
         "Accounts",
         "Transactions",
+        { type: "PersonLedger" },
+        { type: "Dashboard", id: "HOME" },
         { type: "Transaction", id: "LIST" },
         { type: "Transaction", id: "RECENT" },
         { type: "Account", id: "LIST" },
         { type: "UdharSummary" },
-        { type: "PersonLedger" },
         { type: "DashboardAnalytics", id: "LIST" },
-        { type: "Dashboard", id: "HOME" },
       ],
     }),
 
@@ -1386,15 +1350,17 @@ export const baseApi = createApi({
         }
       },
       invalidatesTags: [
+        "Accounts",
+        "Transactions",
+        { type: "Dashboard", id: "HOME" },
+        { type: "PersonLedger" },
         { type: "Transaction", id: "LIST" },
         { type: "Transaction", id: "RECENT" },
         { type: "People", id: "LIST" },
         { type: "Account", id: "LIST" },
         { type: "UdharSummary" },
-        { type: "PersonLedger" },
         { type: "Commitment", id: "LIST" },
         { type: "DashboardAnalytics", id: "LIST" },
-        { type: "Dashboard", id: "HOME" },
       ],
     }),
   }),
@@ -1422,7 +1388,6 @@ export const {
   useGetAccountLedgerQuery,
   useCreatePersonMutation,
   useGetRecentTransactionsQuery,
-  useGetTransactionsQuery,
   useGetRecentTransactionsForEmiQuery,
   useGetDashboardQuery,
   useDeleteTransactionMutation,

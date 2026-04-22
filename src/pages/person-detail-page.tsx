@@ -6,7 +6,7 @@ import { DetailLayout } from "@/components/detail-layout"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 import { AddUdharEntrySheet } from "@/features/accounts/add-udhar-entry-sheet"
-import type { UdharEntryTypeScope } from "@/features/accounts/udhar-entry-form-model"
+import { AddTransactionModal } from "@/features/entries/add-transaction-modal"
 import {
   PersonUdharAvatarTitle,
   PersonUdharLedgerList,
@@ -43,31 +43,24 @@ export default function PersonDetailPage() {
   const txDelete = useDeleteTransactionFlow()
 
   const [udharOpen, setUdharOpen] = useState(false)
-  const [udharEntryTypeScope, setUdharEntryTypeScope] = useState<UdharEntryTypeScope>("all")
-  const [udharInitialEntryType, setUdharInitialEntryType] = useState<UdharEntryType | undefined>(
-    undefined
-  )
+  const [udharDefaultType, setUdharDefaultType] = useState<UdharEntryType | undefined>(undefined)
+  const [expenseOnBehalfOpen, setExpenseOnBehalfOpen] = useState(false)
 
   const handleUdharOpenChange = useCallback((open: boolean) => {
     setUdharOpen(open)
     if (!open) {
-      setUdharEntryTypeScope("all")
-      setUdharInitialEntryType(undefined)
+      setUdharDefaultType(undefined)
     }
   }, [])
 
-  /** Opens the shared Udhar form with both lend types in-form; Money Given is the default selection. */
-  const openLendTakeForm = useCallback(() => {
-    setUdharEntryTypeScope("lend_take")
-    setUdharInitialEntryType("money_given")
+  /** Opens shared Udhar form with no pre-selected type ("Add"). */
+  const openAddForm = useCallback(() => {
+    setUdharDefaultType(undefined)
     setUdharOpen(true)
   }, [])
 
-  /** Opens the shared Udhar form with both payment types in-form; Received Back is the default selection. */
-  const openRecordPaymentForm = useCallback(() => {
-    setUdharEntryTypeScope("payments")
-    setUdharInitialEntryType("payment_received")
-    setUdharOpen(true)
+  const openExpenseOnBehalfForm = useCallback(() => {
+    setExpenseOnBehalfOpen(true)
   }, [])
 
   const backToPeople = useCallback(() => {
@@ -93,8 +86,18 @@ export default function PersonDetailPage() {
           initialPersonId={pid}
           initialAccountId={accountIdFromQuery || undefined}
           personContext="from_people"
-          initialEntryType={udharInitialEntryType}
-          entryTypeScope={udharEntryTypeScope}
+          defaultType={udharDefaultType}
+        />
+        <AddTransactionModal
+          open={expenseOnBehalfOpen}
+          onOpenChange={setExpenseOnBehalfOpen}
+          expenseFlow
+          prefillAccountId={accountIdFromQuery || null}
+          expenseOnBehalfPreset={{
+            personId: pid,
+            personName,
+            lock: true,
+          }}
         />
 
         <div className="space-y-4 pb-6">
@@ -143,19 +146,19 @@ export default function PersonDetailPage() {
               <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                 <Button
                   type="button"
-                  className="h-11 w-full rounded-xl bg-[#071f78] font-semibold text-white hover:bg-[#071f78]/90]"
-                  onClick={openLendTakeForm}
+                  className="h-11 w-full rounded-xl bg-[#071f78] font-semibold text-white hover:bg-[#071f78]/90"
+                  onClick={openAddForm}
                 >
-                  Given / Taken
+                  Add
                 </Button>
 
                 <Button
                   type="button"
                   variant="outline"
                   className="h-11 w-full rounded-xl border-border font-semibold"
-                  onClick={openRecordPaymentForm}
+                  onClick={openExpenseOnBehalfForm}
                 >
-                  Record Payment
+                  Add expense on their behalf
                 </Button>
               </div>
 

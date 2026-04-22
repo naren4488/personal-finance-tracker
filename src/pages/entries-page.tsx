@@ -18,7 +18,6 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { AddAccountSheet } from "@/features/accounts/add-account-sheet"
 import { AddUdharEntrySheet } from "@/features/accounts/add-udhar-entry-sheet"
 import { PeopleList } from "@/features/accounts/people-list"
-import { usePeopleLedgerBalances } from "@/features/accounts/use-people-ledger-balances"
 import { AddTransactionModal } from "@/features/entries/add-transaction-modal"
 import { RecentTransactionRow } from "@/features/entries/recent-transaction-row"
 import { TransferTransactionRow } from "@/features/entries/transfer-transaction-row"
@@ -338,11 +337,6 @@ export default function EntriesPage() {
     }, 0)
     return () => window.clearTimeout(id)
   }, [user, addQuery, setSearchParams, openUdharSheetFree])
-
-  const { balanceByPersonId, balanceErrorByPersonId, pendingPersonIds } = usePeopleLedgerBalances(
-    people,
-    Boolean(user && segment === "udhar")
-  )
 
   const sortedServerList = useMemo(() => {
     let list = [...recentTransactions].sort((a, b) =>
@@ -804,9 +798,6 @@ export default function EntriesPage() {
                   onPersonClick={(person) => {
                     navigate(`/people/${encodeURIComponent(String(person.id))}`)
                   }}
-                  balanceByPersonId={balanceByPersonId}
-                  pendingPersonIds={pendingPersonIds}
-                  balanceErrorByPersonId={balanceErrorByPersonId}
                 />
               </div>
             )}

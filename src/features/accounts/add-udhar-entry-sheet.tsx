@@ -50,6 +50,10 @@ export type AddUdharEntrySheetProps = {
    */
   personContext?: "from_people" | "free"
   /** Quick-open preset (Give / Take / Record payment). */
+  defaultType?: UdharEntryType
+  /**
+   * @deprecated Use `defaultType`. Kept for compatibility with older call sites.
+   */
   initialEntryType?: UdharEntryType
   /** Narrows the Type tiles (Person view actions vs full form). */
   entryTypeScope?: UdharEntryTypeScope
@@ -66,6 +70,7 @@ type MountedProps = {
   initialPersonId?: string
   initialAccountId?: string
   personContext?: "from_people" | "free"
+  defaultType?: UdharEntryType
   initialEntryType?: UdharEntryType
   entryTypeScope?: UdharEntryTypeScope
 }
@@ -84,6 +89,7 @@ function AddUdharEntrySheetMounted({
   initialPersonId,
   initialAccountId,
   personContext = "free",
+  defaultType,
   initialEntryType,
   entryTypeScope = "all",
 }: MountedProps) {
@@ -114,7 +120,7 @@ function AddUdharEntrySheetMounted({
     return buildUdharFormInitialState(
       initialPersonId,
       initialAccountId,
-      initialEntryType,
+      defaultType ?? initialEntryType,
       entryTypeScope
     )
   })
@@ -364,6 +370,7 @@ export function AddUdharEntrySheet({
   initialPersonId,
   initialAccountId,
   personContext = "free",
+  defaultType,
   initialEntryType,
   entryTypeScope = "all",
 }: AddUdharEntrySheetProps) {
@@ -376,6 +383,7 @@ export function AddUdharEntrySheet({
       initialPersonId={initialPersonId}
       initialAccountId={initialAccountId}
       personContext={personContext}
+      defaultType={defaultType}
       initialEntryType={initialEntryType}
       entryTypeScope={entryTypeScope}
     />

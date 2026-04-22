@@ -1,7 +1,6 @@
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
-import type { UdharAccountPersonBalance } from "@/lib/api/udhar-summary-schemas"
 import type { Person } from "@/lib/api/people-schemas"
 import { getErrorMessage } from "@/lib/api/errors"
 import { ACTION_GROUP_ROW } from "@/lib/ui/action-group-classes"
@@ -35,9 +34,6 @@ export type PeopleListProps = {
   onAddClick?: () => void
   onPersonClick: (person: Person) => void
   onPersonDelete?: (person: Person) => void
-  balanceByPersonId: Map<string, UdharAccountPersonBalance>
-  pendingPersonIds: Set<string>
-  balanceErrorByPersonId: Map<string, string>
   /** Shown under "No people found" when the list is empty */
   emptyStateSubtext?: string
 }
@@ -50,9 +46,6 @@ export function PeopleList({
   onAddClick,
   onPersonClick,
   onPersonDelete,
-  balanceByPersonId,
-  pendingPersonIds,
-  balanceErrorByPersonId,
   emptyStateSubtext = "Add someone or link people to this account to see them here.",
 }: PeopleListProps) {
   if (loading) {
@@ -102,19 +95,9 @@ export function PeopleList({
   return (
     <ul className="flex list-none flex-col gap-2.5" aria-label="People list">
       {people.map((person) => {
-        const bal = balanceByPersonId.get(person.id)
-        const err = balanceErrorByPersonId.get(person.id)
-        const pending = pendingPersonIds.has(person.id)
         return (
           <li key={person.id}>
-            <PersonCard
-              person={person}
-              onClick={onPersonClick}
-              onDelete={onPersonDelete}
-              ledgerBalance={bal}
-              balancePending={pending && !err}
-              balanceError={err ?? null}
-            />
+            <PersonCard person={person} onClick={onPersonClick} onDelete={onPersonDelete} />
           </li>
         )
       })}

@@ -22,10 +22,16 @@ export const createTransactionIncomeBodySchema = z.object({
  */
 export const createTransactionCreditCardExpenseBodySchema = z.object({
   type: z.literal("expense"),
-  amount: z.number().finite().positive(),
+  amount: z.string().min(1),
   category: z.string().min(1),
+  sourceAccountId: z.string().min(1),
+  sourceType: z.literal("account"),
+  sourceName: z.string().min(1),
+  paymentMethod: z.string().min(1),
   creditCardAccountId: z.string().min(1),
-  feeAmount: z.number().finite().nonnegative(),
+  feeAmount: z.string().min(1),
+  personId: z.string().min(1).optional(),
+  paidOnBehalf: z.boolean().optional(),
   date: z.string(),
   note: z.string(),
   tags: z.array(z.string()),
@@ -40,7 +46,12 @@ export const createTransactionExpenseBodySchema = z.object({
   type: z.literal("expense"),
   amount: z.string().min(1),
   category: z.string().min(1),
-  accountId: z.string().min(1),
+  sourceAccountId: z.string().min(1),
+  sourceType: z.literal("account"),
+  sourceName: z.string().min(1),
+  paymentMethod: z.string().min(1),
+  personId: z.string().min(1).optional(),
+  paidOnBehalf: z.boolean().optional(),
   date: z.string(),
   note: z.string(),
   tags: z.array(z.string()),
@@ -213,6 +224,11 @@ function amountToApiString(amount: number): string {
   return String(Math.round(amount * 100) / 100)
 }
 
+function expenseAmountToApiString(amount: number): string {
+  if (!Number.isFinite(amount) || amount <= 0) return "0.00"
+  return (Math.round(amount * 100) / 100).toFixed(2)
+}
+
 function decimal2ApiString(amount: number): string {
   if (!Number.isFinite(amount) || amount < 0) return "0.00"
   return (Math.round(amount * 100) / 100).toFixed(2)
@@ -226,7 +242,7 @@ function transferAmountToApiString(amount: number): string {
 
 /**
  * Maps client payload → exact POST /transactions JSON per `type`.
- * Only fields the backend expects are included (no paymentMethod, etc.).
+ * Only fields the backend expects are included.
  */
 export function buildTransactionPostBody(body: CreateTransactionPayload): CreateTransactionApiBody {
   const amount = amountToApiString(body.amount)
@@ -250,10 +266,15 @@ export function buildTransactionPostBody(body: CreateTransactionPayload): Create
   }
 
   if (body.type === "expense") {
+    const paymentMethod = body.paymentMethod === "card" ? "credit_card" : "account_cash_upi"
+    const expenseAmount = expenseAmountToApiString(body.amount)
+    const sourceName = body.sourceName.trim()
+    if (!sourceName) {
+      throw new Error("expense requires sourceName")
+    }
     const ccId = body.creditCardAccountId?.trim()
     if (ccId) {
-      const amt = Math.round(body.amount * 100) / 100
-      if (!Number.isFinite(amt) || amt <= 0) {
+      if (!Number.isFinite(body.amount) || body.amount <= 0) {
         throw new Error("expense amount must be greater than zero")
       }
       let feeInr = 0
@@ -273,10 +294,15 @@ export function buildTransactionPostBody(body: CreateTransactionPayload): Create
       }
       return {
         type: "expense",
-        amount: amt,
+        amount: expenseAmount,
         category: body.category.trim() || "other",
+        sourceAccountId: ccId,
+        sourceType: "account",
+        sourceName,
+        paymentMethod,
         creditCardAccountId: ccId,
-        feeAmount: feeInr,
+        feeAmount: decimal2ApiString(feeInr),
+        ...(body.personId?.trim() ? { personId: body.personId.trim(), paidOnBehalf: true } : {}),
         date,
         note,
         tags,
@@ -287,9 +313,13 @@ export function buildTransactionPostBody(body: CreateTransactionPayload): Create
     }
     return {
       type: "expense",
-      amount,
+      amount: expenseAmount,
       category: body.category.trim() || "other",
-      accountId: body.accountId,
+      sourceAccountId: body.accountId,
+      sourceType: "account",
+      sourceName,
+      paymentMethod,
+      ...(body.personId?.trim() ? { personId: body.personId.trim(), paidOnBehalf: true } : {}),
       date,
       note,
       tags,

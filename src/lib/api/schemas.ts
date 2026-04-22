@@ -59,6 +59,7 @@ export type CreateTransactionPayload = {
   paymentMethod: "account" | "card"
   sourceName: string
   feeAmount: string
+  personId?: string
   paidOnBehalf: boolean
   scheduled: boolean
   date: string

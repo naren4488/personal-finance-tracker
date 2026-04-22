@@ -1,13 +1,7 @@
 import { useMemo } from "react"
-import { Skeleton } from "@/components/ui/skeleton"
 import type { Person } from "@/lib/api/people-schemas"
-import {
-  getPersonDisplayPhone,
-  getPersonUdharListSummary,
-  getPersonUdharListSummaryFromTotals,
-  type PersonUdharListSummary,
-} from "@/lib/api/people-schemas"
-import type { UdharAccountPersonBalance } from "@/lib/api/udhar-summary-schemas"
+import { getPersonDisplayPhone } from "@/lib/api/people-schemas"
+import { formatCurrency } from "@/lib/format"
 import { transactionEntryDeleteChipClass } from "@/features/entries/transaction-entry-delete-button"
 import { ACTION_GROUP_ROW } from "@/lib/ui/action-group-classes"
 import { cn } from "@/lib/utils"
@@ -19,82 +13,43 @@ export type PersonCardProps = {
   person: Person
   onClick: (person: Person) => void
   onDelete?: (person: Person) => void
-  /**
-   * Kept for compatibility with current callers. People list card now always uses people API
-   * payload (`totalBalance`) via `getPersonUdharListSummary(person)`.
-   */
-  ledgerBalance?: UdharAccountPersonBalance
-  /** True while a ledger fetch is in flight for this row (batch / detail prefetch). */
-  balancePending?: boolean
-  balanceError?: string | null
 }
 
-export function PersonCard({
-  person,
-  onClick,
-  onDelete,
-  ledgerBalance,
-  balancePending,
-  balanceError,
-}: PersonCardProps) {
+function parseTotalBalance(value: unknown): number {
+  if (typeof value === "number" && Number.isFinite(value)) return value
+  if (typeof value === "string") {
+    const parsed = Number(value.replace(/,/g, "").replace(/\s/g, ""))
+    if (Number.isFinite(parsed)) return parsed
+  }
+  return 0
+}
+
+export function PersonCard({ person, onClick, onDelete }: PersonCardProps) {
   const phone = getPersonDisplayPhone(person)
 
-  const summary: PersonUdharListSummary | "loading" | "error" = useMemo(() => {
-    if (balanceError) return "error"
-    if (balancePending) return "loading"
-    if (ledgerBalance) {
-      return getPersonUdharListSummaryFromTotals(
-        ledgerBalance.totalLent,
-        ledgerBalance.totalBorrowed
-      )
-    }
-    return getPersonUdharListSummary(person)
-  }, [balanceError, balancePending, ledgerBalance, person])
+  const totalBalance = useMemo(() => parseTotalBalance(person.totalBalance), [person.totalBalance])
+  const absFormatted = useMemo(() => formatCurrency(Math.abs(totalBalance)), [totalBalance])
 
-  const body =
-    summary === "loading" ? (
-      <div className="mt-2 space-y-2">
-        <Skeleton className="h-4 w-44 max-w-full" />
-        <Skeleton className="h-3 w-56 max-w-full" />
-      </div>
-    ) : summary === "error" ? (
-      <p className="mt-1 text-sm text-destructive">{balanceError ?? "Could not load balance"}</p>
-    ) : (
-      <>
-        {(() => {
-          const netWithSign =
-            summary.signedNet < 0
-              ? `- ${summary.amountFormatted}`
-              : summary.signedNet > 0
-                ? `+ ${summary.amountFormatted}`
-                : summary.amountFormatted
-          return (
-            <>
-              <p
-                className={cn(
-                  "mt-1 text-sm font-semibold tabular-nums leading-snug",
-                  summary.amountTextClassName
-                )}
-              >
-                {summary.summary}
-              </p>
-              <p
-                className={cn(
-                  "mt-0.5 text-sm font-semibold tabular-nums leading-snug",
-                  summary.signedNet > 0
-                    ? "text-emerald-600 dark:text-emerald-400"
-                    : summary.signedNet < 0
-                      ? "text-red-600 dark:text-red-400"
-                      : "text-muted-foreground"
-                )}
-              >
-                {`Net Balance ${netWithSign}`}
-              </p>
-            </>
-          )
-        })()}
-      </>
-    )
+  const body = (
+    <>
+      <p
+        className={cn(
+          "mt-1 text-sm font-semibold tabular-nums leading-snug",
+          totalBalance > 0
+            ? "text-emerald-600 dark:text-emerald-400"
+            : totalBalance < 0
+              ? "text-red-600 dark:text-red-400"
+              : "text-muted-foreground"
+        )}
+      >
+        {totalBalance > 0
+          ? `You will get ${absFormatted}`
+          : totalBalance < 0
+            ? `You will give ${absFormatted}`
+            : "Settled"}
+      </p>
+    </>
+  )
 
   return (
     <div

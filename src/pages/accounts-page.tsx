@@ -41,7 +41,6 @@ import { resolvePersonDeleteTarget } from "@/lib/people/person-delete"
 import type { Person } from "@/lib/api/people-schemas"
 import type { UdharEntryTypeScope } from "@/features/accounts/udhar-entry-form-model"
 import type { UdharEntryType } from "@/lib/api/udhar-schemas"
-import type { UdharAccountPersonBalance } from "@/lib/api/udhar-summary-schemas"
 import { cn } from "@/lib/utils"
 import {
   useGetAccountsQuery,
@@ -61,10 +60,6 @@ const SEGMENT_ICONS: Record<AccountsSegmentId, typeof Users> = {
   loans: Landmark,
   cards: CreditCard,
 }
-
-const EMPTY_LEDGER_BALANCE_MAP = new Map<string, UdharAccountPersonBalance>()
-const EMPTY_PENDING_IDS = new Set<string>()
-const EMPTY_LEDGER_ERR_MAP = new Map<string, string>()
 
 /** `<select>` value for People tab: list everyone with udhar across accounts (GET /people with no filter). */
 const PEOPLE_ACCOUNT_ALL_VALUE = "__all_accounts__"
@@ -597,9 +592,6 @@ export default function AccountsPage() {
               onRetry={() => void refetchAccounts()}
               onAddClick={openPeopleUdharSheet}
               onPersonClick={() => {}}
-              balanceByPersonId={EMPTY_LEDGER_BALANCE_MAP}
-              pendingPersonIds={EMPTY_PENDING_IDS}
-              balanceErrorByPersonId={EMPTY_LEDGER_ERR_MAP}
             />
           ) : segment === "people" && accountsError ? (
             <div className="space-y-3 rounded-2xl border border-destructive/30 bg-destructive/5 px-4 py-4">
@@ -666,9 +658,6 @@ export default function AccountsPage() {
                 onAddClick={openPeopleUdharSheet}
                 onPersonClick={navigateToPersonView}
                 onPersonDelete={(p) => setPendingDeletePerson(p)}
-                balanceByPersonId={EMPTY_LEDGER_BALANCE_MAP}
-                pendingPersonIds={EMPTY_PENDING_IDS}
-                balanceErrorByPersonId={EMPTY_LEDGER_ERR_MAP}
                 emptyStateSubtext={peopleEmptySubtext}
               />
             </div>

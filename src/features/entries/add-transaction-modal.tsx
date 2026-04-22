@@ -24,7 +24,7 @@ import {
 import { getErrorMessage } from "@/lib/api/errors"
 import { isLoanAccount } from "@/lib/api/loan-account-map"
 import { INCOME_SOURCE_OPTIONS } from "@/lib/api/transaction-schemas"
-import { FORM_OVERLAY_FILL_BODY, FORM_OVERLAY_SCROLL_BODY } from "@/lib/form-overlay-scroll"
+import { FORM_OVERLAY_FILL_BODY } from "@/lib/form-overlay-scroll"
 import {
   TX_FORM_DESCRIPTION_CLASS,
   TX_FORM_FIELDS_STACK_CLASS,
@@ -49,6 +49,7 @@ import {
   useGetAccountsQuery,
   useGetCreditCardAccountsForPaymentQuery,
   useGetLoanAccountsForEmiQuery,
+  useGetPeopleQuery,
   useGetRecentTransactionsForEmiQuery,
 } from "@/store/api/base-api"
 import {
@@ -421,6 +422,7 @@ export type AddTransactionModalProps = {
   open: boolean
   onOpenChange: (open: boolean) => void
   expenseFlow?: boolean
+  expenseOnBehalfPreset?: { personId: string; personName?: string; lock?: boolean } | null
   initialType?: TransactionType
   onOpenAddAccount?: () => void
   transferPaymentPreset?: TransferPaymentPreset | null
@@ -437,6 +439,7 @@ type MountedProps = {
   open: boolean
   onOpenChange: (open: boolean) => void
   expenseFlow: boolean
+  expenseOnBehalfPreset: { personId: string; personName?: string; lock?: boolean } | null
   initialType: TransactionType
   onOpenAddAccount?: () => void
   transferPaymentPreset: TransferPaymentPreset | null
@@ -450,6 +453,7 @@ function AddTransactionModalMounted({
   open,
   onOpenChange,
   expenseFlow,
+  expenseOnBehalfPreset,
   initialType,
   onOpenAddAccount,
   transferPaymentPreset,
@@ -503,6 +507,8 @@ function AddTransactionModalMounted({
 
   const [addTransaction, { isLoading: isSubmitting }] = useAddTransactionMutation()
 
+  const presetPersonId = expenseOnBehalfPreset?.personId?.trim() ?? ""
+  const presetPersonName = expenseOnBehalfPreset?.personName?.trim() ?? ""
   const [txType, setTxType] = useState<TransactionType>(() =>
     expenseFlow ? "expense" : lockTransferPayment ? "transfer" : initialType
   )
@@ -522,13 +528,18 @@ function AddTransactionModalMounted({
     transferPaymentPreset?.kind === "loan_emi" ? transferPaymentPreset.loanAccountId : ""
   )
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("account")
+  const forceAccountPayment = Boolean(
+    expenseOnBehalfPreset?.lock && presetPersonId && (expenseFlow ? true : txType === "expense")
+  )
+  const effectivePaymentMethod: PaymentMethod = forceAccountPayment ? "account" : paymentMethod
   /** Bank / cash / wallet for "Account / UPI"; credit cards only for "Credit Card". */
   const incomeExpensePayFromOptions = useMemo(
-    () => (paymentMethod === "account" ? transferSourceAccounts : creditCardAccounts),
-    [paymentMethod, transferSourceAccounts, creditCardAccounts]
+    () => (effectivePaymentMethod === "account" ? transferSourceAccounts : creditCardAccounts),
+    [effectivePaymentMethod, transferSourceAccounts, creditCardAccounts]
   )
-  const [paidOnBehalf, setPaidOnBehalf] = useState(false)
-  const [scheduleUpcoming, setScheduleUpcoming] = useState(false)
+  const [paidOnBehalf, setPaidOnBehalf] = useState(Boolean(presetPersonId))
+  const [behalfPersonId, setBehalfPersonId] = useState(presetPersonId)
+  const [expectedReturnDate, setExpectedReturnDate] = useState("")
   const [note, setNote] = useState("")
   const [tags, setTags] = useState<string[]>([])
   const [tagPreset, setTagPreset] = useState("")
@@ -549,13 +560,28 @@ function AddTransactionModalMounted({
 
   const effectiveType: TransactionType = expenseFlow ? "expense" : txType
   const hasAccount = accounts.length > 0
+  const showPaidOnBehalf = effectiveType === "expense"
+  const isOnBehalfLocked = Boolean(
+    showPaidOnBehalf && expenseOnBehalfPreset?.lock && presetPersonId
+  )
+  const effectiveOnBehalfEnabled = isOnBehalfLocked ? true : paidOnBehalf
+  const effectiveOnBehalfPersonId = isOnBehalfLocked ? presetPersonId : behalfPersonId.trim()
+
+  const {
+    data: people = [],
+    isLoading: peopleLoading,
+    isFetching: peopleFetching,
+  } = useGetPeopleQuery({}, { skip: !user || !showPaidOnBehalf || !paidOnBehalf })
 
   const selectedAccount = useMemo(
     () => (accountId ? accounts.find((a) => a.id === accountId) : undefined),
     [accounts, accountId]
   )
   const isCreditCardExpenseMode =
-    effectiveType === "expense" && !!selectedAccount && isCreditCardAccountType(selectedAccount)
+    effectiveType === "expense" &&
+    !isOnBehalfLocked &&
+    !!selectedAccount &&
+    isCreditCardAccountType(selectedAccount)
 
   const ccExpenseForm = useForm<CardExpenseFormValues>({
     resolver: zodResolver(cardExpenseFormSchema),
@@ -700,6 +726,8 @@ function AddTransactionModalMounted({
   const modalTitle = expenseFlow ? "Add Expense" : "Add Transaction"
   const submitLabel = expenseFlow ? "Add Expense" : "Add Transaction"
 
+  const peopleListLoading = peopleLoading || peopleFetching
+
   function dismiss() {
     onOpenChange(false)
   }
@@ -797,7 +825,19 @@ function AddTransactionModalMounted({
     if (!assertSourceAccountCoversAmount(card, amt)) return
 
     const cardLabel = accountSelectLabel(card)
-    const mergedNote = [description.trim(), values.note.trim()].filter(Boolean).join(" — ")
+    if (effectiveOnBehalfEnabled && !effectiveOnBehalfPersonId) {
+      toast.error("Select a person")
+      return
+    }
+    const mergedNote = [
+      description.trim(),
+      values.note.trim(),
+      effectiveOnBehalfEnabled && expectedReturnDate.trim()
+        ? `Expected return date: ${expectedReturnDate.trim()}`
+        : "",
+    ]
+      .filter(Boolean)
+      .join(" — ")
     const payload: CreateTransactionPayload = {
       type: "expense",
       amount: amt,
@@ -806,7 +846,10 @@ function AddTransactionModalMounted({
       paymentMethod: "card",
       sourceName: cardLabel,
       feeAmount: String(feeParsed),
-      paidOnBehalf: false,
+      ...(effectiveOnBehalfEnabled && effectiveOnBehalfPersonId
+        ? { personId: effectiveOnBehalfPersonId }
+        : {}),
+      paidOnBehalf: effectiveOnBehalfEnabled && Boolean(effectiveOnBehalfPersonId),
       scheduled: false,
       date: values.date,
       note: mergedNote,
@@ -868,8 +911,12 @@ function AddTransactionModalMounted({
       effectiveType === "transfer" && transferDestinationType === "credit_card_bill"
         ? accountId || creditCardPayment.fromAccountId || ""
         : accountId
+    const validSourceAccountIdForSubmit =
+      isOnBehalfLocked && !transferSourceAccounts.some((a) => a.id === sourceAccountIdForSubmit)
+        ? ""
+        : sourceAccountIdForSubmit
 
-    if (!sourceAccountIdForSubmit) {
+    if (!validSourceAccountIdForSubmit) {
       toast.error(effectiveType === "transfer" ? "Select source account" : "Select an account")
       return
     }
@@ -922,13 +969,26 @@ function AddTransactionModalMounted({
       submitAmountNum = Number(amount.replace(/\D/g, ""))
     }
 
-    const acc = accounts.find((a) => a.id === sourceAccountIdForSubmit)
+    const acc = accounts.find((a) => a.id === validSourceAccountIdForSubmit)
     if (effectiveType !== "income" && !assertSourceAccountCoversAmount(acc, submitAmountNum)) {
       return
     }
 
     const displayTitle = [titleBase, ...tags].filter(Boolean).join(" · ")
     const noteForApi = [description.trim(), note.trim()].filter(Boolean).join(" — ")
+    const noteWithExpectedReturn = [
+      noteForApi,
+      effectiveOnBehalfEnabled && expectedReturnDate.trim()
+        ? `Expected return date: ${expectedReturnDate.trim()}`
+        : "",
+    ]
+      .filter(Boolean)
+      .join(" — ")
+
+    if (showPaidOnBehalf && effectiveOnBehalfEnabled && !effectiveOnBehalfPersonId) {
+      toast.error("Select a person")
+      return
+    }
 
     const payload = {
       type: effectiveType,
@@ -956,16 +1016,19 @@ function AddTransactionModalMounted({
           ? Number(loanInterestStr.trim()) || 0
           : undefined,
       transferDestination: effectiveType === "transfer" ? transferDestinationType : undefined,
-      paymentMethod,
+      paymentMethod: effectivePaymentMethod,
       sourceName: acc?.name ?? "",
       feeAmount: "0",
-      paidOnBehalf,
-      scheduled: scheduleUpcoming,
+      ...(effectiveOnBehalfEnabled && effectiveOnBehalfPersonId
+        ? { personId: effectiveOnBehalfPersonId }
+        : {}),
+      paidOnBehalf: effectiveOnBehalfEnabled && Boolean(effectiveOnBehalfPersonId),
+      scheduled: false,
       date,
-      note: noteForApi,
+      note: noteWithExpectedReturn,
       tags,
       displayTitle,
-      accountId: sourceAccountIdForSubmit,
+      accountId: validSourceAccountIdForSubmit,
       accountName: acc?.name,
     }
 
@@ -1087,7 +1150,7 @@ function AddTransactionModalMounted({
       )}
 
       {!isLoading && !isError && hasAccount && (
-        <div className={cn(FORM_OVERLAY_SCROLL_BODY, TX_FORM_FIELDS_STACK_CLASS)}>
+        <div className={TX_FORM_FIELDS_STACK_CLASS}>
           {!expenseFlow && !lockTransferPayment && (
             <section>
               <Label className={TX_FORM_LABEL_CLASS}>Type</Label>
@@ -1603,7 +1666,7 @@ function AddTransactionModalMounted({
                 <Label className={TX_FORM_LABEL_CLASS}>Payment Method</Label>
                 <div className="grid grid-cols-2 gap-2">
                   <ToggleTile
-                    selected={paymentMethod === "account"}
+                    selected={effectivePaymentMethod === "account"}
                     onClick={() => setPaymentMethod("account")}
                     className="h-10"
                   >
@@ -1615,9 +1678,12 @@ function AddTransactionModalMounted({
                     <span className="font-medium">Account / UPI</span>
                   </ToggleTile>
                   <ToggleTile
-                    selected={paymentMethod === "card"}
-                    onClick={() => setPaymentMethod("card")}
-                    className="h-10"
+                    selected={effectivePaymentMethod === "card"}
+                    onClick={() => {
+                      if (isOnBehalfLocked) return
+                      setPaymentMethod("card")
+                    }}
+                    className={cn("h-10", isOnBehalfLocked && "cursor-not-allowed opacity-60")}
                   >
                     <Gem className="size-4 shrink-0 text-primary" strokeWidth={2} aria-hidden />
                     <span className="font-medium">Credit Card</span>
@@ -1649,35 +1715,75 @@ function AddTransactionModalMounted({
             </>
           )}
 
-          {effectiveType !== "transfer" && !isCreditCardExpenseMode ? (
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          {showPaidOnBehalf ? (
+            <div className="grid grid-cols-1 gap-3">
               <label className="flex cursor-pointer items-start gap-2.5 rounded-xl border border-input bg-muted/5 px-3 py-2.5">
                 <input
                   type="checkbox"
-                  checked={paidOnBehalf}
-                  onChange={(e) => setPaidOnBehalf(e.target.checked)}
+                  checked={effectiveOnBehalfEnabled}
+                  disabled={isOnBehalfLocked}
+                  onChange={(e) => {
+                    if (isOnBehalfLocked) return
+                    const checked = e.target.checked
+                    setPaidOnBehalf(checked)
+                    if (!checked) {
+                      setBehalfPersonId("")
+                      setExpectedReturnDate("")
+                    }
+                  }}
                   className="mt-0.5 size-4 shrink-0 rounded border-input"
                 />
                 <span className="text-xs font-medium leading-tight text-foreground/90">
-                  Paid on behalf of someone (add to their dues)
+                  Paid on behalf of someone
                 </span>
               </label>
-              <div className="rounded-xl border border-input bg-muted/10 p-2.5">
-                <label className="flex cursor-pointer items-start justify-between gap-2">
-                  <div className="min-w-0">
-                    <span className="text-sm font-semibold text-foreground">Schedule upcoming</span>
-                    <p className="mt-0.5 text-xs text-muted-foreground">
-                      Planned only; no balance change yet.
-                    </p>
-                  </div>
-                  <input
-                    type="checkbox"
-                    checked={scheduleUpcoming}
-                    onChange={(e) => setScheduleUpcoming(e.target.checked)}
-                    className="mt-0.5 size-4 shrink-0 rounded border-input"
-                  />
-                </label>
-              </div>
+            </div>
+          ) : null}
+
+          {showPaidOnBehalf && effectiveOnBehalfEnabled ? (
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <section>
+                <Label htmlFor="at-person-on-behalf" className={TX_FORM_LABEL_CLASS}>
+                  Person
+                </Label>
+                <div className="relative">
+                  <select
+                    id="at-person-on-behalf"
+                    value={behalfPersonId}
+                    onChange={(e) => setBehalfPersonId(e.target.value)}
+                    disabled={isOnBehalfLocked}
+                    className={cn(TX_FORM_SELECT_CLASS, !behalfPersonId && "text-muted-foreground")}
+                    aria-required
+                  >
+                    {isOnBehalfLocked && presetPersonId ? (
+                      <option value={presetPersonId}>
+                        {presetPersonName || "Selected person"}
+                      </option>
+                    ) : null}
+                    <option value="">
+                      {peopleListLoading ? "Loading people..." : "Select person"}
+                    </option>
+                    {people.map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {p.name}
+                      </option>
+                    ))}
+                  </select>
+                  <SelectChevron />
+                </div>
+              </section>
+              <section>
+                <Label htmlFor="at-expected-return-date" className={TX_FORM_LABEL_CLASS}>
+                  Expected return date
+                </Label>
+                <Input
+                  id="at-expected-return-date"
+                  type="date"
+                  value={expectedReturnDate}
+                  onChange={(e) => setExpectedReturnDate(e.target.value)}
+                  className={cn(TX_FORM_FIELD_CLASS, "scheme-light dark:scheme-dark")}
+                />
+              </section>
             </div>
           ) : null}
 
@@ -1803,6 +1909,7 @@ export function AddTransactionModal({
   open,
   onOpenChange,
   expenseFlow = false,
+  expenseOnBehalfPreset = null,
   initialType = "expense",
   onOpenAddAccount,
   transferPaymentPreset = null,
@@ -1821,11 +1928,13 @@ export function AddTransactionModal({
       }`
     : "none"
   const prefillKey = prefillAccountId?.trim() || "none"
+  const onBehalfKey = expenseOnBehalfPreset?.personId?.trim() || "none"
   return (
     <AddTransactionModalMounted
-      key={`${typeKey}-${presetKey}-${prefillKey}`}
+      key={`${typeKey}-${presetKey}-${prefillKey}-${onBehalfKey}`}
       open={open}
       expenseFlow={expenseFlow}
+      expenseOnBehalfPreset={expenseOnBehalfPreset}
       initialType={expenseFlow ? "expense" : initialType}
       onOpenChange={onOpenChange}
       onOpenAddAccount={onOpenAddAccount}
