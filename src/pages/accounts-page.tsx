@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react"
-import { useNavigate, useSearchParams } from "react-router-dom"
+import { useLocation, useNavigate, useSearchParams } from "react-router-dom"
 import { toast } from "sonner"
 import { CreditCard, Landmark, Users, Wallet } from "lucide-react"
 import { ConfirmDeleteDialog } from "@/components/confirm-delete-dialog"
@@ -32,9 +32,7 @@ import { CreditCardList } from "@/features/accounts/credit-card-list"
 import { LoanDetailView } from "@/features/accounts/loan-detail-view"
 import { LoanList } from "@/features/accounts/loan-list"
 import { PeopleList } from "@/features/accounts/people-list"
-import { readPersonLedgerCache } from "@/features/accounts/use-people-ledger-balances"
 import { useDeleteTransactionFlow } from "@/features/entries/use-delete-transaction-flow"
-import { UdharDetailsModal } from "@/features/accounts/udhar-details-modal"
 import {
   AddTransactionModal,
   type TransferPaymentPreset,
@@ -45,8 +43,9 @@ import { accountSelectLabel, filterNormalAccounts } from "@/lib/api/account-sche
 import { getErrorMessage } from "@/lib/api/errors"
 import { resolvePersonDeleteTarget } from "@/lib/people/person-delete"
 import type { Person } from "@/lib/api/people-schemas"
+import type { UdharEntryTypeScope } from "@/features/accounts/udhar-entry-form-model"
+import type { UdharEntryType } from "@/lib/api/udhar-schemas"
 import type { UdharAccountPersonBalance } from "@/lib/api/udhar-summary-schemas"
-import type { RecentTransaction } from "@/lib/api/transaction-schemas"
 import { cn } from "@/lib/utils"
 import {
   useGetAccountsQuery,
@@ -55,7 +54,6 @@ import {
   useDeleteAccountMutation,
   useDeletePersonMutation,
   useGetPeopleQuery,
-  useLazyGetPersonLedgerQuery,
 } from "@/store/api/base-api"
 import { useAppSelector } from "@/store/hooks"
 
@@ -77,6 +75,7 @@ const PEOPLE_ACCOUNT_ALL_VALUE = "__all_accounts__"
 
 export default function AccountsPage() {
   const navigate = useNavigate()
+  const location = useLocation()
   const [searchParams, setSearchParams] = useSearchParams()
   const loanQ = searchParams.get(ACCOUNTS_URL_LOAN)
   const cardQ = searchParams.get(ACCOUNTS_URL_CARD)
@@ -91,15 +90,18 @@ export default function AccountsPage() {
   /** Prefill Add Udhar Entry when opened from a People row */
   const [udharPrefillPersonId, setUdharPrefillPersonId] = useState<string | null>(null)
   const [udharPrefillAccountId, setUdharPrefillAccountId] = useState<string | null>(null)
-  const [addPersonOpen, setAddPersonOpen] = useState(false)
+  const [udharEntryTypeScope, setUdharEntryTypeScope] = useState<UdharEntryTypeScope>("all")
   const [addAccountOpen, setAddAccountOpen] = useState(false)
   const [loanOpen, setLoanOpen] = useState(false)
   const [cardOpen, setCardOpen] = useState(false)
   /** User-picked account for People tab; falls back to first normal account when unset or stale. */
   const [peopleAccountPick, setPeopleAccountPick] = useState<string | null>(null)
-  const [udharLedgerOpen, setUdharLedgerOpen] = useState(false)
-  const [udharLedgerName, setUdharLedgerName] = useState("")
-  const [udharLedgerEntries, setUdharLedgerEntries] = useState<RecentTransaction[]>([])
+  const [udharSheetPersonContext, setUdharSheetPersonContext] = useState<"from_people" | "free">(
+    "free"
+  )
+  const [udharInitialEntryType, setUdharInitialEntryType] = useState<UdharEntryType | undefined>(
+    undefined
+  )
   const [selectedCreditCard, setSelectedCreditCard] = useState<Account | null>(null)
   const [selectedLoan, setSelectedLoan] = useState<Account | null>(null)
   const [selectedAccount, setSelectedAccount] = useState<Account | null>(null)
@@ -342,40 +344,44 @@ export default function AccountsPage() {
     return String(normalAccounts[0].id)
   }, [normalAccounts, peopleAccountPick])
 
-  const [fetchPersonLedger] = useLazyGetPersonLedgerQuery()
+  useEffect(() => {
+    const seg = (location.state as { accountsSegment?: AccountsSegmentId } | undefined)
+      ?.accountsSegment
+    if (!seg || !SEGMENT_ORDER.includes(seg)) return
+    setSegment(seg)
+    navigate(`${location.pathname}${location.search}`, { replace: true, state: {} })
+  }, [location.pathname, location.search, location.state, navigate])
 
-  const onPersonViewLedger = useCallback(
-    async (person: Person) => {
-      try {
-        const cached = readPersonLedgerCache(person.id)
-        const entries =
-          cached ?? (await fetchPersonLedger({ personId: person.id, limit: 500 }).unwrap())
-        setUdharLedgerName(person.name)
-        setUdharLedgerEntries(entries)
-        setUdharLedgerOpen(true)
-      } catch (err) {
-        toast.error(getErrorMessage(err))
-      }
-    },
-    [fetchPersonLedger]
-  )
-
-  const openUdharEntryForPerson = useCallback(
+  const navigateToPersonView = useCallback(
     (person: Person) => {
-      setUdharPrefillPersonId(person.id)
-      setUdharPrefillAccountId(
-        resolvedPeopleAccountFilter === PEOPLE_ACCOUNT_ALL_VALUE ? "" : resolvedPeopleAccountFilter
-      )
-      setUdharOpen(true)
+      const q =
+        resolvedPeopleAccountFilter !== PEOPLE_ACCOUNT_ALL_VALUE
+          ? `?accountId=${encodeURIComponent(resolvedPeopleAccountFilter)}`
+          : ""
+      navigate(`/people/${encodeURIComponent(String(person.id))}${q}`)
     },
-    [resolvedPeopleAccountFilter]
+    [navigate, resolvedPeopleAccountFilter]
   )
+
+  const openPeopleUdharSheet = useCallback(() => {
+    setUdharPrefillPersonId(null)
+    setUdharPrefillAccountId(
+      resolvedPeopleAccountFilter === PEOPLE_ACCOUNT_ALL_VALUE ? "" : resolvedPeopleAccountFilter
+    )
+    setUdharSheetPersonContext("free")
+    setUdharInitialEntryType(undefined)
+    setUdharEntryTypeScope("all")
+    setUdharOpen(true)
+  }, [resolvedPeopleAccountFilter])
 
   const handleUdharSheetOpenChange = useCallback((open: boolean) => {
     setUdharOpen(open)
     if (!open) {
       setUdharPrefillPersonId(null)
       setUdharPrefillAccountId(null)
+      setUdharSheetPersonContext("free")
+      setUdharInitialEntryType(undefined)
+      setUdharEntryTypeScope("all")
     }
   }, [])
 
@@ -451,15 +457,22 @@ export default function AccountsPage() {
 
   function openHeaderAdd() {
     if (segment === "accounts") setAddAccountOpen(true)
-    else if (segment === "people") setAddPersonOpen(true)
+    else if (segment === "people") openPeopleUdharSheet()
     else if (segment === "loans") setLoanOpen(true)
     else if (segment === "cards") setCardOpen(true)
-    else setUdharOpen(true)
+    else {
+      setUdharPrefillPersonId(null)
+      setUdharPrefillAccountId(null)
+      setUdharSheetPersonContext("free")
+      setUdharInitialEntryType(undefined)
+      setUdharEntryTypeScope("all")
+      setUdharOpen(true)
+    }
   }
 
   const headerAddAriaLabel: Record<AccountsSegmentId, string> = {
     accounts: "Add account",
-    people: "Add person",
+    people: "Add udhar entry",
     loans: "Add loan",
     cards: "Add credit card",
   }
@@ -523,8 +536,10 @@ export default function AccountsPage() {
         onOpenChange={handleUdharSheetOpenChange}
         initialPersonId={udharPrefillPersonId ?? undefined}
         initialAccountId={udharPrefillAccountId ?? undefined}
+        personContext={udharSheetPersonContext}
+        initialEntryType={udharInitialEntryType}
+        entryTypeScope={udharEntryTypeScope}
       />
-      <AddUdharEntrySheet open={addPersonOpen} onOpenChange={setAddPersonOpen} mode="person_only" />
       <AddLoanSheet open={loanOpen} onOpenChange={setLoanOpen} />
       <AddCreditCardSheet open={cardOpen} onOpenChange={setCardOpen} />
       <AddCardSpendSheet
@@ -636,19 +651,6 @@ export default function AccountsPage() {
           }}
         />
       ) : null}
-      <UdharDetailsModal
-        open={udharLedgerOpen}
-        onOpenChange={(v) => {
-          if (!v) {
-            setUdharLedgerOpen(false)
-            setUdharLedgerEntries([])
-          }
-        }}
-        personName={udharLedgerName}
-        entries={udharLedgerEntries}
-        onDeleteEntry={txDelete.requestDelete}
-      />
-
       <div
         className="mb-3 grid shrink-0 grid-cols-4 gap-1 sm:mb-4"
         role="tablist"
@@ -735,7 +737,7 @@ export default function AccountsPage() {
                 onClick={openHeaderAdd}
                 aria-label={headerAddAriaLabel[segment]}
               >
-                {segment === "people" ? "+ Add person" : "+ Add"}
+                {segment === "people" ? "+ Add" : "+ Add"}
               </Button>
             ) : (
               <span className="inline-block h-9 w-[3.25rem] shrink-0" aria-hidden />
@@ -788,7 +790,7 @@ export default function AccountsPage() {
               loading
               error={null}
               onRetry={() => void refetchAccounts()}
-              onAddPersonClick={() => setAddPersonOpen(true)}
+              onAddClick={openPeopleUdharSheet}
               onPersonClick={() => {}}
               balanceByPersonId={EMPTY_LEDGER_BALANCE_MAP}
               pendingPersonIds={EMPTY_PENDING_IDS}
@@ -856,9 +858,8 @@ export default function AccountsPage() {
                 loading={showPeopleLoading && !peopleListError}
                 error={peopleListError ? peopleQueryError : null}
                 onRetry={() => void refetchPeople()}
-                onAddPersonClick={() => setAddPersonOpen(true)}
-                onPersonClick={openUdharEntryForPerson}
-                onPersonViewClick={onPersonViewLedger}
+                onAddClick={openPeopleUdharSheet}
+                onPersonClick={navigateToPersonView}
                 onPersonDelete={(p) => setPendingDeletePerson(p)}
                 balanceByPersonId={EMPTY_LEDGER_BALANCE_MAP}
                 pendingPersonIds={EMPTY_PENDING_IDS}

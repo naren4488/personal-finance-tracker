@@ -1,18 +1,12 @@
-import { useMemo } from "react"
-import { X } from "lucide-react"
+import { ArrowLeft, X } from "lucide-react"
 import { Button } from "@/components/ui/button"
-import { TransactionEntryDeleteButton } from "@/features/entries/transaction-entry-delete-button"
-import { aggregateUdharLedgerEntries } from "@/lib/udhar/udhar-totals"
-import { getUdharEntryTypeLabel } from "@/lib/udhar/udhar-entry-labels"
-import { getUdharEffect, udharEffectTextClassName } from "@/lib/udhar/udhar-effect"
+import type { UdharEntryType } from "@/lib/api/udhar-schemas"
+import type { RecentTransaction } from "@/lib/api/transaction-schemas"
 import {
-  inferUdharPersonName,
-  parseSignedAmountString,
-  type RecentTransaction,
-} from "@/lib/api/transaction-schemas"
-import { ACTION_GROUP_ROW } from "@/lib/ui/action-group-classes"
-import { formatCurrency, formatDate } from "@/lib/format"
-import { cn } from "@/lib/utils"
+  PersonUdharAvatarTitle,
+  PersonUdharLedgerList,
+  PersonUdharNetAndQuadrants,
+} from "@/features/accounts/person-udhar-panels"
 
 export function UdharDetailsModal({
   open,
@@ -20,127 +14,121 @@ export function UdharDetailsModal({
   personName,
   entries,
   onDeleteEntry,
+  onOpenUdharEntry,
+  onAddExpenseOnBehalf,
 }: {
   open: boolean
   onOpenChange: (open: boolean) => void
   personName: string
   entries: RecentTransaction[]
   onDeleteEntry?: (tx: RecentTransaction) => void
+  /** Opens the shared Add Udhar sheet with this entry type (Give / Take / Record payment). */
+  onOpenUdharEntry: (preset: { entryType: UdharEntryType }) => void
+  /** Optional: e.g. navigate to add expense with account context. */
+  onAddExpenseOnBehalf?: () => void
 }) {
-  const totals = useMemo(() => {
-    const { totalLent, totalBorrowed, net } = aggregateUdharLedgerEntries(entries)
-    return { given: totalLent, taken: totalBorrowed, net }
-  }, [entries])
-
-  const netStr = formatCurrency(Math.abs(totals.net))
-
-  const headline = useMemo(() => {
-    if (totals.net > 0) return `Net receivable ${netStr}.`
-    if (totals.net < 0) return `Net payable ${netStr}.`
-    return "There is no net balance with this person."
-  }, [totals.net, netStr])
-
-  const netTileLabel = useMemo(() => {
-    if (totals.net === 0) return formatCurrency(0)
-    if (totals.net > 0) return `Receivable ${netStr}`
-    return `Payable ${netStr}`
-  }, [totals.net, netStr])
-
   if (!open) return null
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-3">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4">
       <button
         type="button"
         className="absolute inset-0 bg-black/45"
         onClick={() => onOpenChange(false)}
         aria-label="Close details"
       />
-      <div className="relative z-10 flex max-h-[88vh] w-full max-w-2xl flex-col overflow-hidden rounded-2xl border border-border bg-card p-4 shadow-2xl">
-        <div className="mb-3 flex shrink-0 items-center justify-between gap-2">
-          <div>
-            <h2 className="text-lg font-bold text-foreground">{personName}</h2>
-            <p className="mt-1 text-sm text-muted-foreground">{headline}</p>
-          </div>
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon-sm"
-            className="rounded-full"
-            onClick={() => onOpenChange(false)}
-          >
-            <X className="size-5" />
-          </Button>
-        </div>
-
-        <div className="mb-4 grid shrink-0 grid-cols-3 gap-2">
-          <div className="rounded-xl border border-border bg-muted/30 p-2">
-            <p className="text-xs text-muted-foreground">Receivable total</p>
-            <p className="text-base font-bold text-income">{formatCurrency(totals.given)}</p>
-          </div>
-          <div className="rounded-xl border border-border bg-muted/30 p-2">
-            <p className="text-xs text-muted-foreground">Payable total</p>
-            <p className="text-base font-bold text-destructive">{formatCurrency(totals.taken)}</p>
-          </div>
-          <div className="rounded-xl border border-border bg-muted/30 p-2">
-            <p className="text-xs text-muted-foreground">Net</p>
-            <p
-              className={
-                totals.net === 0
-                  ? "text-base font-bold text-muted-foreground"
-                  : totals.net > 0
-                    ? "text-base font-bold text-income"
-                    : "text-base font-bold text-destructive"
-              }
+      <div
+        className="relative z-10 flex max-h-[92vh] w-full max-w-lg flex-col overflow-hidden rounded-2xl border border-border bg-background shadow-2xl"
+        role="dialog"
+        aria-label={`Udhar — ${personName}`}
+      >
+        <div className="shrink-0 space-y-4 border-b border-border/80 p-4">
+          <div className="flex items-start justify-between gap-2">
+            <div className="min-w-0">
+              <button
+                type="button"
+                onClick={() => onOpenChange(false)}
+                className="mb-2 inline-flex items-center gap-1 text-sm font-medium text-muted-foreground hover:text-foreground"
+              >
+                <ArrowLeft className="size-4" />
+                Back
+              </button>
+              <PersonUdharAvatarTitle personName={personName} />
+            </div>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon-sm"
+              className="shrink-0 rounded-full"
+              onClick={() => onOpenChange(false)}
+              aria-label="Close"
             >
-              {netTileLabel}
-            </p>
+              <X className="size-5" />
+            </Button>
+          </div>
+
+          <PersonUdharNetAndQuadrants entries={entries} />
+
+          <div className="space-y-2">
+            <div className="grid grid-cols-2 gap-2">
+              <Button
+                type="button"
+                className="h-11 rounded-xl bg-[#071f78] font-semibold text-white hover:bg-[#071f78]/90"
+                onClick={() => onOpenUdharEntry({ entryType: "money_given" })}
+              >
+                Give
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                className="h-11 rounded-xl border-border font-semibold"
+                onClick={() => onOpenUdharEntry({ entryType: "money_taken" })}
+              >
+                Take
+              </Button>
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                className="h-11 rounded-xl border-border text-sm font-semibold sm:text-base"
+                onClick={() => onOpenUdharEntry({ entryType: "payment_received" })}
+              >
+                Record received
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                className="h-11 rounded-xl border-border text-sm font-semibold sm:text-base"
+                onClick={() => onOpenUdharEntry({ entryType: "payment_made" })}
+              >
+                Record paid
+              </Button>
+            </div>
+            {onAddExpenseOnBehalf ? (
+              <Button
+                type="button"
+                variant="secondary"
+                className="h-11 w-full rounded-xl bg-muted/80 font-semibold text-foreground hover:bg-muted"
+                onClick={onAddExpenseOnBehalf}
+              >
+                <span className="mr-2 inline-flex" aria-hidden>
+                  💸
+                </span>
+                Add Expense On Their Behalf
+              </Button>
+            ) : null}
           </div>
         </div>
 
-        <ul className="min-h-0 flex-1 space-y-2 overflow-y-auto overscroll-contain [-ms-overflow-style:none] [scrollbar-width:thin]">
-          {entries.map((tx) => {
-            const effect = getUdharEffect(tx)
-            const absAmt = Math.abs(parseSignedAmountString(tx.signedAmount))
-            const typeLabel = getUdharEntryTypeLabel(tx)
-            const amountLabel =
-              absAmt === 0
-                ? formatCurrency(0)
-                : typeLabel
-                  ? `${typeLabel} · ${formatCurrency(absAmt)}`
-                  : effect === "receivable"
-                    ? `Receivable ${formatCurrency(absAmt)}`
-                    : `Payable ${formatCurrency(absAmt)}`
-            const canDelete = Boolean(onDeleteEntry && String(tx.id ?? "").trim())
-
-            return (
-              <li key={tx.id} className="rounded-xl border border-border/70 bg-card p-3">
-                <p className="text-xs text-muted-foreground">{formatDate(tx.date)}</p>
-                <div className="mt-1 flex items-center justify-between gap-2">
-                  <p className="min-w-0 flex-1 truncate font-semibold text-foreground">
-                    {inferUdharPersonName(tx)}
-                  </p>
-                  <div className={cn(ACTION_GROUP_ROW, "shrink-0")}>
-                    {canDelete ? (
-                      <TransactionEntryDeleteButton onClick={() => onDeleteEntry?.(tx)} />
-                    ) : null}
-                    <p
-                      className={cn(
-                        "text-right font-bold tabular-nums",
-                        absAmt === 0 ? "text-muted-foreground" : udharEffectTextClassName(effect)
-                      )}
-                    >
-                      {amountLabel}
-                    </p>
-                  </div>
-                </div>
-                {tx.subtitle?.trim() ? (
-                  <p className="mt-1 text-xs text-muted-foreground">{tx.subtitle}</p>
-                ) : null}
-              </li>
-            )
-          })}
-        </ul>
+        <div className="flex min-h-0 flex-1 flex-col overflow-hidden bg-muted/20 px-2 pb-2 pt-3 sm:px-3">
+          <h3 className="shrink-0 px-1 pb-2 text-base font-bold text-foreground">Full Ledger</h3>
+          <PersonUdharLedgerList
+            entries={entries}
+            onDeleteEntry={onDeleteEntry}
+            listClassName="min-h-0 flex-1 overflow-y-auto overscroll-contain [-ms-overflow-style:none] [scrollbar-width:thin]"
+          />
+        </div>
       </div>
     </div>
   )

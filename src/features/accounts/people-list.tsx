@@ -31,10 +31,9 @@ export type PeopleListProps = {
   loading: boolean
   error: unknown | null
   onRetry: () => void
-  onAddPersonClick?: () => void
+  /** Empty state: opens shared Udhar entry sheet (e.g. from People tab). */
+  onAddClick?: () => void
   onPersonClick: (person: Person) => void
-  /** Ledger / transaction history for this person */
-  onPersonViewClick?: (person: Person) => void
   onPersonDelete?: (person: Person) => void
   balanceByPersonId: Map<string, UdharAccountPersonBalance>
   pendingPersonIds: Set<string>
@@ -48,9 +47,8 @@ export function PeopleList({
   loading,
   error,
   onRetry,
-  onAddPersonClick,
+  onAddClick,
   onPersonClick,
-  onPersonViewClick,
   onPersonDelete,
   balanceByPersonId,
   pendingPersonIds,
@@ -87,13 +85,13 @@ export function PeopleList({
           </div>
           <p className="text-base font-bold text-primary">No people found</p>
           <p className="mt-1 max-w-xs text-sm text-muted-foreground">{emptyStateSubtext}</p>
-          {onAddPersonClick ? (
+          {onAddClick ? (
             <Button
               type="button"
               className="mt-6 h-11 rounded-xl px-8 text-base font-semibold"
-              onClick={onAddPersonClick}
+              onClick={onAddClick}
             >
-              Add Person
+              + Add
             </Button>
           ) : null}
         </CardContent>
@@ -112,7 +110,6 @@ export function PeopleList({
             <PersonCard
               person={person}
               onClick={onPersonClick}
-              onViewClick={onPersonViewClick}
               onDelete={onPersonDelete}
               ledgerBalance={bal}
               balancePending={pending && !err}

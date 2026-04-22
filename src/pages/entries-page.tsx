@@ -27,6 +27,7 @@ import { TransferTransactionRow } from "@/features/entries/transfer-transaction-
 import { useDeleteTransactionFlow } from "@/features/entries/use-delete-transaction-flow"
 import { useDebouncedValue } from "@/hooks/use-debounced-value"
 import { getErrorMessage } from "@/lib/api/errors"
+import type { UdharEntryType } from "@/lib/api/udhar-schemas"
 import type { TransactionType } from "@/lib/api/schemas"
 import type { RecentTransactionsQueryArg } from "@/store/api/base-api"
 import {
@@ -168,6 +169,15 @@ export default function EntriesPage() {
   const [txModalInitialType, setTxModalInitialType] = useState<TransactionType>("expense")
   const [expenseModalOpen, setExpenseModalOpen] = useState(false)
   const [udharSheetOpen, setUdharSheetOpen] = useState(false)
+  const [udharSheetInitialPersonId, setUdharSheetInitialPersonId] = useState<string | undefined>(
+    undefined
+  )
+  const [udharSheetInitialAccountId, setUdharSheetInitialAccountId] = useState<string | undefined>(
+    undefined
+  )
+  const [udharSheetInitialEntryType, setUdharSheetInitialEntryType] = useState<
+    UdharEntryType | undefined
+  >(undefined)
   const [addAccountSheetOpen, setAddAccountSheetOpen] = useState(false)
   const [txTypeFilter, setTxTypeFilter] = useState<"all" | TransactionType>("all")
   const [directionFilter, setDirectionFilter] = useState<"all" | "debit" | "credit">("all")
@@ -175,6 +185,22 @@ export default function EntriesPage() {
   const txDelete = useDeleteTransactionFlow()
 
   const user = useAppSelector((s) => s.auth.user)
+
+  const handleUdharSheetOpenChange = useCallback((open: boolean) => {
+    setUdharSheetOpen(open)
+    if (!open) {
+      setUdharSheetInitialPersonId(undefined)
+      setUdharSheetInitialAccountId(undefined)
+      setUdharSheetInitialEntryType(undefined)
+    }
+  }, [])
+
+  const openUdharSheetFree = useCallback(() => {
+    setUdharSheetInitialPersonId(undefined)
+    setUdharSheetInitialAccountId(undefined)
+    setUdharSheetInitialEntryType(undefined)
+    setUdharSheetOpen(true)
+  }, [])
 
   const recentQueryArg = useMemo((): RecentTransactionsQueryArg => {
     const arg: RecentTransactionsQueryArg = { limit: ENTRIES_RECENT_DEFAULT_LIMIT }
@@ -261,9 +287,9 @@ export default function EntriesPage() {
       return
     }
     if (segment === "udhar") {
-      setUdharSheetOpen(true)
+      openUdharSheetFree()
     }
-  }, [segment, txTypeFilter])
+  }, [segment, txTypeFilter, openUdharSheetFree])
 
   const openEntriesHeaderAddRef = useRef(openEntriesHeaderAdd)
   useEffect(() => {
@@ -303,11 +329,11 @@ export default function EntriesPage() {
         setTxModalInitialType("transfer")
         setTxModalOpen(true)
       } else {
-        setUdharSheetOpen(true)
+        openUdharSheetFree()
       }
     }, 0)
     return () => window.clearTimeout(id)
-  }, [user, addQuery, setSearchParams])
+  }, [user, addQuery, setSearchParams, openUdharSheetFree])
 
   const udharTransactions = useMemo(
     () =>
@@ -414,7 +440,14 @@ export default function EntriesPage() {
           setAddAccountSheetOpen(true)
         }}
       />
-      <AddUdharEntrySheet open={udharSheetOpen} onOpenChange={setUdharSheetOpen} />
+      <AddUdharEntrySheet
+        open={udharSheetOpen}
+        onOpenChange={handleUdharSheetOpenChange}
+        personContext="free"
+        initialPersonId={udharSheetInitialPersonId}
+        initialAccountId={udharSheetInitialAccountId}
+        initialEntryType={udharSheetInitialEntryType}
+      />
       <UdharDetailsModal
         open={!!selectedUdharTx}
         onOpenChange={(v) => {
@@ -425,6 +458,37 @@ export default function EntriesPage() {
         }
         entries={selectedUdharPersonEntries}
         onDeleteEntry={txDelete.requestDelete}
+        onOpenUdharEntry={({ entryType }) => {
+          if (!selectedUdharTx) return
+          const rec = selectedUdharTx as unknown as Record<string, unknown>
+          const pidRaw = rec.personId ?? rec.person_id
+          const pid = typeof pidRaw === "string" ? pidRaw.trim() : ""
+          if (!pid) {
+            toast.error("This entry has no linked person — open Add Udhar from Accounts → People.")
+            return
+          }
+          const accRaw = rec.accountId ?? rec.account_id
+          const acc = typeof accRaw === "string" && accRaw.trim() ? accRaw.trim() : undefined
+          setUdharSheetInitialPersonId(pid)
+          setUdharSheetInitialAccountId(acc)
+          setUdharSheetInitialEntryType(entryType)
+          setSelectedUdharTx(null)
+          setUdharSheetOpen(true)
+        }}
+        onAddExpenseOnBehalf={() => {
+          if (!selectedUdharTx) return
+          const rec = selectedUdharTx as unknown as Record<string, unknown>
+          const accRaw = rec.accountId ?? rec.account_id
+          const acc = typeof accRaw === "string" && accRaw.trim() ? accRaw.trim() : ""
+          if (!acc) {
+            toast.message("No account on this entry", {
+              description: "Pick an account from Accounts, then add an expense from there.",
+            })
+            return
+          }
+          setSelectedUdharTx(null)
+          navigate(`/transactions/add?accountId=${encodeURIComponent(acc)}`)
+        }}
       />
       <ConfirmDeleteDialog
         open={txDelete.confirmOpen}
@@ -742,7 +806,7 @@ export default function EntriesPage() {
                   <Button
                     type="button"
                     className="mt-6 h-11 rounded-xl px-8 text-base font-semibold"
-                    onClick={() => setUdharSheetOpen(true)}
+                    onClick={() => openUdharSheetFree()}
                   >
                     Add Udhar Entry
                   </Button>

@@ -9,6 +9,7 @@ import { UnmatchedPathRedirect } from "@/features/auth/unmatched-path-redirect"
 const HomePage = lazy(() => import("@/pages/home-page"))
 const EntriesPage = lazy(() => import("@/pages/entries-page"))
 const AccountsPage = lazy(() => import("@/pages/accounts-page"))
+const PersonDetailPage = lazy(() => import("@/pages/person-detail-page"))
 const AnalyticsPage = lazy(() => import("@/pages/analytics-page"))
 const ProfilePage = lazy(() => import("@/pages/profile-page"))
 const AddTransactionPage = lazy(() => import("@/pages/add-transaction-page"))
@@ -41,6 +42,7 @@ export const router = createBrowserRouter([
       { path: "entries", element: suspense(<EntriesPage />) },
       { path: "transactions/add", element: suspense(<AddTransactionPage />) },
       { path: "accounts", element: suspense(<AccountsPage />) },
+      { path: "people/:personId", element: suspense(<PersonDetailPage />) },
       { path: "analytics", element: suspense(<AnalyticsPage />) },
       { path: "profile", element: suspense(<ProfilePage />) },
       { path: "*", element: <Navigate to="/" replace /> },

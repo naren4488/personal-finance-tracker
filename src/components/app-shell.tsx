@@ -27,7 +27,8 @@ export function AppShell() {
     pathname !== "/analytics" &&
     pathname !== "/accounts" &&
     pathname !== "/profile" &&
-    !pathname.startsWith("/transactions/")
+    !pathname.startsWith("/transactions/") &&
+    !pathname.startsWith("/people/")
 
   function handleFabClick() {
     if (pathname === "/entries") {

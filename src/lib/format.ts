@@ -8,6 +8,13 @@ export function formatCurrency(amount: number): string {
   }).format(amount)
 }
 
+/** ₹ with explicit +/− for non-zero (Udhar net balance, etc.). */
+export function formatSignedCurrencyInr(amount: number): string {
+  if (amount === 0) return formatCurrency(0)
+  const sign = amount > 0 ? "+" : "−"
+  return `${sign}${formatCurrency(Math.abs(amount))}`
+}
+
 /** e.g. "2 Apr 2026" */
 export function formatDate(date: string | Date): string {
   const d = typeof date === "string" ? new Date(date) : date
