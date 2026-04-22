@@ -17,10 +17,8 @@ import { Input } from "@/components/ui/input"
 import { Skeleton } from "@/components/ui/skeleton"
 import { AddAccountSheet } from "@/features/accounts/add-account-sheet"
 import { AddUdharEntrySheet } from "@/features/accounts/add-udhar-entry-sheet"
-import { UdharDetailsModal } from "@/features/accounts/udhar-details-modal"
-import { UdharEntryRow } from "@/features/accounts/udhar-entry-row"
-import { getUdharEntryTypeLabel } from "@/lib/udhar/udhar-entry-labels"
-import { getUdharEffect } from "@/lib/udhar/udhar-effect"
+import { PeopleList } from "@/features/accounts/people-list"
+import { usePeopleLedgerBalances } from "@/features/accounts/use-people-ledger-balances"
 import { AddTransactionModal } from "@/features/entries/add-transaction-modal"
 import { RecentTransactionRow } from "@/features/entries/recent-transaction-row"
 import { TransferTransactionRow } from "@/features/entries/transfer-transaction-row"
@@ -31,17 +29,15 @@ import type { UdharEntryType } from "@/lib/api/udhar-schemas"
 import type { TransactionType } from "@/lib/api/schemas"
 import type { RecentTransactionsQueryArg } from "@/store/api/base-api"
 import {
-  isUdharRecentTransaction,
   matchesRecentTransactionCreditCard,
   parseSignedAmountString,
-  resolveUdharPersonDisplayName,
   type RecentTransaction,
 } from "@/lib/api/transaction-schemas"
 import { formatCurrency } from "@/lib/format"
 import { cn } from "@/lib/utils"
 import {
   useGetAccountsQuery,
-  useGetCommitmentsQuery,
+  useGetPeopleQuery,
   useGetRecentTransactionsQuery,
 } from "@/store/api/base-api"
 import { useAppSelector } from "@/store/hooks"
@@ -83,7 +79,6 @@ const ENTRIES_RECENT_DEFAULT_LIMIT = 200
 
 /** "All" range: `fromDate` fixed far past, `toDate` = today — still valid YYYY-MM-DD pair for API. */
 const ALL_DAYS_FROM = "2000-01-01"
-
 function startOfLocalDay(d: Date): Date {
   const x = new Date(d)
   x.setHours(0, 0, 0, 0)
@@ -181,7 +176,6 @@ export default function EntriesPage() {
   const [addAccountSheetOpen, setAddAccountSheetOpen] = useState(false)
   const [txTypeFilter, setTxTypeFilter] = useState<"all" | TransactionType>("all")
   const [directionFilter, setDirectionFilter] = useState<"all" | "debit" | "credit">("all")
-  const [selectedUdharTx, setSelectedUdharTx] = useState<RecentTransaction | null>(null)
   const txDelete = useDeleteTransactionFlow()
 
   const user = useAppSelector((s) => s.auth.user)
@@ -231,7 +225,7 @@ export default function EntriesPage() {
     error,
     refetch,
   } = useGetRecentTransactionsQuery(recentQueryArg, {
-    skip: !user,
+    skip: !user || segment === "udhar",
   })
 
   const {
@@ -240,9 +234,19 @@ export default function EntriesPage() {
     error: accountsError,
   } = useGetAccountsQuery(undefined, { skip: !user })
 
-  const { data: commitments = [] } = useGetCommitmentsQuery(undefined, {
-    skip: !user,
-  })
+  const {
+    data: people = [],
+    isLoading: peopleLoading,
+    isFetching: peopleFetching,
+    isError: peopleError,
+    error: peopleErrorValue,
+    refetch: refetchPeople,
+  } = useGetPeopleQuery(
+    {},
+    {
+      skip: !user || segment !== "udhar",
+    }
+  )
 
   useEffect(() => {
     if (!isError || !error) return
@@ -335,21 +339,10 @@ export default function EntriesPage() {
     return () => window.clearTimeout(id)
   }, [user, addQuery, setSearchParams, openUdharSheetFree])
 
-  const udharTransactions = useMemo(
-    () =>
-      recentTransactions
-        .filter(isUdharRecentTransaction)
-        .sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0)),
-    [recentTransactions]
+  const { balanceByPersonId, balanceErrorByPersonId, pendingPersonIds } = usePeopleLedgerBalances(
+    people,
+    Boolean(user && segment === "udhar")
   )
-
-  const selectedUdharPersonEntries = useMemo(() => {
-    if (!selectedUdharTx) return []
-    const selectedName = resolveUdharPersonDisplayName(selectedUdharTx, commitments).toLowerCase()
-    return udharTransactions.filter(
-      (tx) => resolveUdharPersonDisplayName(tx, commitments).toLowerCase() === selectedName
-    )
-  }, [selectedUdharTx, udharTransactions, commitments])
 
   const sortedServerList = useMemo(() => {
     let list = [...recentTransactions].sort((a, b) =>
@@ -361,15 +354,22 @@ export default function EntriesPage() {
     return list
   }, [recentTransactions, creditCardFilterId])
 
-  const displayList: RecentTransaction[] =
-    segment === "udhar" ? udharTransactions : sortedServerList
+  const displayList: RecentTransaction[] = sortedServerList
 
   const entriesHasList = useMemo(() => {
-    if (segment === "udhar") {
-      return !isLoading && !isError && udharTransactions.length > 0
-    }
+    if (segment === "udhar")
+      return !peopleLoading && !peopleFetching && !peopleError && people.length > 0
     return !isLoading && !isError && sortedServerList.length > 0
-  }, [segment, isLoading, isError, udharTransactions.length, sortedServerList.length])
+  }, [
+    segment,
+    isLoading,
+    isError,
+    peopleLoading,
+    peopleFetching,
+    peopleError,
+    people.length,
+    sortedServerList.length,
+  ])
 
   const totalDisplay = headerTotalLabel(segment, displayList)
 
@@ -447,48 +447,6 @@ export default function EntriesPage() {
         initialPersonId={udharSheetInitialPersonId}
         initialAccountId={udharSheetInitialAccountId}
         initialEntryType={udharSheetInitialEntryType}
-      />
-      <UdharDetailsModal
-        open={!!selectedUdharTx}
-        onOpenChange={(v) => {
-          if (!v) setSelectedUdharTx(null)
-        }}
-        personName={
-          selectedUdharTx ? resolveUdharPersonDisplayName(selectedUdharTx, commitments) : ""
-        }
-        entries={selectedUdharPersonEntries}
-        onDeleteEntry={txDelete.requestDelete}
-        onOpenUdharEntry={({ entryType }) => {
-          if (!selectedUdharTx) return
-          const rec = selectedUdharTx as unknown as Record<string, unknown>
-          const pidRaw = rec.personId ?? rec.person_id
-          const pid = typeof pidRaw === "string" ? pidRaw.trim() : ""
-          if (!pid) {
-            toast.error("This entry has no linked person — open Add Udhar from Accounts → People.")
-            return
-          }
-          const accRaw = rec.accountId ?? rec.account_id
-          const acc = typeof accRaw === "string" && accRaw.trim() ? accRaw.trim() : undefined
-          setUdharSheetInitialPersonId(pid)
-          setUdharSheetInitialAccountId(acc)
-          setUdharSheetInitialEntryType(entryType)
-          setSelectedUdharTx(null)
-          setUdharSheetOpen(true)
-        }}
-        onAddExpenseOnBehalf={() => {
-          if (!selectedUdharTx) return
-          const rec = selectedUdharTx as unknown as Record<string, unknown>
-          const accRaw = rec.accountId ?? rec.account_id
-          const acc = typeof accRaw === "string" && accRaw.trim() ? accRaw.trim() : ""
-          if (!acc) {
-            toast.message("No account on this entry", {
-              description: "Pick an account from Accounts, then add an expense from there.",
-            })
-            return
-          }
-          setSelectedUdharTx(null)
-          navigate(`/transactions/add?accountId=${encodeURIComponent(acc)}`)
-        }}
       />
       <ConfirmDeleteDialog
         open={txDelete.confirmOpen}
@@ -836,24 +794,21 @@ export default function EntriesPage() {
             )}
 
             {segment === "udhar" && (
-              <ul
-                className="flex min-h-0 min-w-0 flex-1 list-none flex-col gap-2.5 overflow-y-auto overscroll-contain pb-4 [-ms-overflow-style:none] [scrollbar-width:thin]"
-                aria-label="Udhar list"
-              >
-                {displayList.map((tx) => (
-                  <li key={tx.id} className="shrink-0">
-                    <UdharEntryRow
-                      date={tx.date}
-                      personName={resolveUdharPersonDisplayName(tx, commitments)}
-                      economicEffect={getUdharEffect(tx)}
-                      amountMagnitudeInr={Math.abs(parseSignedAmountString(tx.signedAmount))}
-                      entryTypeLabel={getUdharEntryTypeLabel(tx)}
-                      onClick={() => setSelectedUdharTx(tx)}
-                      onDelete={() => txDelete.requestDelete(tx)}
-                    />
-                  </li>
-                ))}
-              </ul>
+              <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-y-auto overscroll-contain pb-4 [-ms-overflow-style:none] [scrollbar-width:thin]">
+                <PeopleList
+                  people={people}
+                  loading={peopleLoading || peopleFetching}
+                  error={peopleError ? peopleErrorValue : null}
+                  onRetry={() => void refetchPeople()}
+                  onAddClick={openUdharSheetFree}
+                  onPersonClick={(person) => {
+                    navigate(`/people/${encodeURIComponent(String(person.id))}`)
+                  }}
+                  balanceByPersonId={balanceByPersonId}
+                  pendingPersonIds={pendingPersonIds}
+                  balanceErrorByPersonId={balanceErrorByPersonId}
+                />
+              </div>
             )}
 
             {segment === "transfer" && (

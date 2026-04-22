@@ -32,11 +32,7 @@ import {
 import { getAccountDeleteWarning } from "@/lib/accounts/account-delete"
 import { RecentTransactionRow } from "@/features/entries/recent-transaction-row"
 import { useDeleteTransactionFlow } from "@/features/entries/use-delete-transaction-flow"
-import {
-  dedupeRecentTransactionsByIdLatestFirst,
-  transactionInvolvesCreditCard,
-  type RecentTransaction,
-} from "@/lib/api/transaction-schemas"
+import { type RecentTransaction } from "@/lib/api/transaction-schemas"
 import { formatCurrency } from "@/lib/format"
 import {
   useGetAccountLedgerQuery,
@@ -87,15 +83,13 @@ function parseDigitsInt(s: string): number {
 }
 
 function CreditCardRecentTransactionsSection({
-  selectedCardId,
-  recentTransactions,
+  ledgerTransactions,
   txsError,
   txsFetching,
   accounts,
   onDelete,
 }: {
-  selectedCardId: string
-  recentTransactions: RecentTransaction[]
+  ledgerTransactions: RecentTransaction[]
   txsError: boolean
   txsFetching: boolean
   accounts: Account[]
@@ -103,13 +97,10 @@ function CreditCardRecentTransactionsSection({
 }) {
   const [visibleTxCount, setVisibleTxCount] = useState(CARD_TX_PAGE_SIZE)
 
-  const cardLinkedTransactions = useMemo(() => {
-    if (!selectedCardId) return [] as RecentTransaction[]
-    const filtered = recentTransactions.filter((tx) =>
-      transactionInvolvesCreditCard(tx, selectedCardId)
-    )
-    return dedupeRecentTransactionsByIdLatestFirst(filtered)
-  }, [selectedCardId, recentTransactions])
+  const cardLinkedTransactions = useMemo(
+    () => [...ledgerTransactions].sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0)),
+    [ledgerTransactions]
+  )
 
   const totalCardTx = cardLinkedTransactions.length
   const effectiveVisibleCount = Math.min(visibleTxCount, totalCardTx)
@@ -213,10 +204,9 @@ export function CreditCardDetailView({
   const [isEditing, setIsEditing] = useState(false)
   const [draft, setDraft] = useState<Account | null>(null)
   const {
-    data: recentTransactions = [],
+    data: ledgerTransactions = [],
     isFetching: txsFetching,
     isError: txsError,
-    refetch: refetchRecentTransactions,
   } = useGetAccountLedgerQuery(
     { accountId: String(account?.id ?? ""), limit: 500 },
     { skip: !account }
@@ -403,12 +393,6 @@ export function CreditCardDetailView({
     }
     return [...CARD_NETWORKS]
   }, [draft])
-
-  const selectedCardId = String(account?.id ?? "").trim()
-  useEffect(() => {
-    if (!account || !selectedCardId) return
-    void refetchRecentTransactions()
-  }, [account, selectedCardId, refetchRecentTransactions])
 
   if (!account) return null
 
@@ -839,9 +823,8 @@ export function CreditCardDetailView({
           </div>
 
           <CreditCardRecentTransactionsSection
-            key={selectedCardId}
-            selectedCardId={selectedCardId}
-            recentTransactions={recentTransactions}
+            key={String(account.id)}
+            ledgerTransactions={ledgerTransactions}
             txsError={txsError}
             txsFetching={txsFetching}
             accounts={allAccounts}

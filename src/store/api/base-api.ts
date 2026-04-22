@@ -137,7 +137,6 @@ import {
   type CreateUdharEntryResult,
 } from "@/lib/api/udhar-schemas"
 import { type CreateTransactionPayload, type Transaction } from "@/lib/api/schemas"
-import { mockTransactions } from "@/lib/api/mock-transactions"
 import { getToken } from "@/lib/auth/token"
 import { getErrorMessage } from "@/lib/api/errors"
 import {
@@ -260,6 +259,8 @@ export const baseApi = createApi({
   reducerPath: "api",
   baseQuery: baseQueryWithReauth,
   tagTypes: [
+    "Accounts",
+    "Transactions",
     "Transaction",
     "People",
     "Account",
@@ -373,7 +374,7 @@ export const baseApi = createApi({
         }
         return { data: parsed.accounts }
       },
-      providesTags: [{ type: "Account", id: "LIST" }],
+      providesTags: ["Accounts", { type: "Account", id: "LIST" }],
     }),
 
     /** GET /accounts?kind=credit_card — same list endpoint, filtered for card UI. */
@@ -398,7 +399,7 @@ export const baseApi = createApi({
         const onlyCards = parsed.accounts.filter(isCreditCardAccount)
         return { data: onlyCards.length > 0 ? onlyCards : parsed.accounts }
       },
-      providesTags: [{ type: "Account", id: "LIST" }],
+      providesTags: ["Accounts", { type: "Account", id: "LIST" }],
     }),
 
     /** Strict credit card payment flow endpoint: GET /accounts?kind=credit_card */
@@ -412,7 +413,7 @@ export const baseApi = createApi({
         const parsed = parseGetAccountsSuccess(response)
         return parsed.ok ? parsed.accounts : []
       },
-      providesTags: [{ type: "Account", id: "LIST" }],
+      providesTags: ["Accounts", { type: "Account", id: "LIST" }],
     }),
 
     /** GET /accounts?kind=loan — same list endpoint, filtered for loan UI. */
@@ -437,7 +438,7 @@ export const baseApi = createApi({
         const onlyLoans = parsed.accounts.filter(isLoanAccount)
         return { data: onlyLoans.length > 0 ? onlyLoans : parsed.accounts }
       },
-      providesTags: [{ type: "Account", id: "LIST" }],
+      providesTags: ["Accounts", { type: "Account", id: "LIST" }],
     }),
 
     /** Strict EMI flow endpoint: GET /accounts?kind=loan */
@@ -451,7 +452,7 @@ export const baseApi = createApi({
         const parsed = parseGetAccountsSuccess(response)
         return parsed.ok ? parsed.accounts : []
       },
-      providesTags: [{ type: "Account", id: "LIST" }],
+      providesTags: ["Accounts", { type: "Account", id: "LIST" }],
     }),
 
     createAccount: build.mutation<CreateAccountResult, CreateAccountRequest>({
@@ -576,13 +577,49 @@ export const baseApi = createApi({
         }
         return { data: { message: parsed.message } }
       },
+      async onQueryStarted(accountId, { dispatch, queryFulfilled }) {
+        const id = accountId.trim()
+        if (!id) return
+        try {
+          await queryFulfilled
+          const stripDeleted = (accounts: Account[]) =>
+            accounts.filter((a) => String(a.id).trim() !== id)
+          dispatch(
+            baseApi.util.updateQueryData("getAccounts", undefined, (draft) => stripDeleted(draft))
+          )
+          dispatch(
+            baseApi.util.updateQueryData("getLoans", undefined, (draft) => stripDeleted(draft))
+          )
+          dispatch(
+            baseApi.util.updateQueryData("getCreditCards", undefined, (draft) =>
+              stripDeleted(draft)
+            )
+          )
+          dispatch(
+            baseApi.util.updateQueryData("getLoanAccountsForEmi", undefined, (draft) =>
+              stripDeleted(draft)
+            )
+          )
+          dispatch(
+            baseApi.util.updateQueryData("getCreditCardAccountsForPayment", undefined, (draft) =>
+              stripDeleted(draft)
+            )
+          )
+        } catch {
+          // No-op: error handling remains in calling UI via `.unwrap()` branch.
+        }
+      },
       invalidatesTags: [
+        "Accounts",
+        "Transactions",
+        "Transaction",
         { type: "Account", id: "LIST" },
         { type: "Transaction", id: "LIST" },
         { type: "Transaction", id: "RECENT" },
         { type: "People", id: "LIST" },
         { type: "UdharSummary" },
         { type: "PersonLedger" },
+        { type: "DashboardAnalytics", id: "LIST" },
         { type: "Dashboard", id: "HOME" },
       ],
     }),
@@ -735,7 +772,7 @@ export const baseApi = createApi({
         }
         return { data: parsed.transactions }
       },
-      providesTags: (_result, _error, arg) => [{ type: "PersonLedger", id: arg.personId }],
+      providesTags: ["Transactions"],
     }),
 
     getAccountLedger: build.query<RecentTransaction[], { accountId: string; limit?: number }>({
@@ -766,9 +803,7 @@ export const baseApi = createApi({
           data: applyAccountLedgerScopeToRecentTransactions(parsed.transactions, id),
         }
       },
-      providesTags: (_result, _error, arg) => [
-        { type: "Transaction", id: `LEDGER-${arg.accountId}` },
-      ],
+      providesTags: ["Transactions"],
     }),
 
     getUdharAccountBalances: build.query<UdharAccountPersonBalance[], { accountId: string }>({
@@ -1024,7 +1059,30 @@ export const baseApi = createApi({
         }
         return { data: parsed.transactions }
       },
-      providesTags: [{ type: "Transaction", id: "RECENT" }],
+      providesTags: ["Transactions", { type: "Transaction", id: "RECENT" }],
+    }),
+
+    getTransactions: build.query<RecentTransaction[], void>({
+      async queryFn(_arg, _api, _extraOptions, baseQuery) {
+        const res = await baseQuery({
+          url: TRANSACTION_PATHS.recent,
+          method: "GET",
+          params: { limit: "200" },
+        })
+        if (res.error) {
+          return { error: normalizeFetchError(res.error) }
+        }
+        const failMsg = parseApiFailureMessage(res.data)
+        if (failMsg) {
+          return { error: { status: 400, data: failMsg } }
+        }
+        const parsed = parseGetRecentTransactionsSuccess(res.data)
+        if (!parsed.ok) {
+          return { error: { status: 422, data: parsed.error } }
+        }
+        return { data: parsed.transactions }
+      },
+      providesTags: ["Transactions"],
     }),
 
     /** Strict EMI flow endpoint: GET /transactions/recent */
@@ -1188,6 +1246,8 @@ export const baseApi = createApi({
         return { data: { message: parsed.message } }
       },
       invalidatesTags: [
+        "Accounts",
+        "Transactions",
         "Transaction",
         { type: "Transaction", id: "LIST" },
         { type: "Transaction", id: "RECENT" },
@@ -1253,19 +1313,18 @@ export const baseApi = createApi({
             res.data
           )
           const tx = mapApiTransactionToClient({}, body)
-          mockTransactions.unshift(tx)
           console.log("[transactions] created (fallback) — client row:", tx)
           return { data: tx }
         }
 
         const tx = mapApiTransactionToClient(parsed.transaction, body)
-        mockTransactions.unshift(tx)
         console.log("[transactions] create — parsed transaction:", parsed.transaction)
         console.log("[transactions] create — client row:", tx)
         return { data: tx }
       },
-      // Refetch accounts (all GET /accounts subscribers) so balances match backend after debits/credits.
       invalidatesTags: [
+        "Accounts",
+        "Transactions",
         { type: "Transaction", id: "LIST" },
         { type: "Transaction", id: "RECENT" },
         { type: "Account", id: "LIST" },
@@ -1363,6 +1422,7 @@ export const {
   useGetAccountLedgerQuery,
   useCreatePersonMutation,
   useGetRecentTransactionsQuery,
+  useGetTransactionsQuery,
   useGetRecentTransactionsForEmiQuery,
   useGetDashboardQuery,
   useDeleteTransactionMutation,

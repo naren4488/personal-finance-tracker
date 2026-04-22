@@ -4,8 +4,10 @@ import type { Person } from "@/lib/api/people-schemas"
 import {
   getPersonDisplayPhone,
   getPersonUdharListSummary,
+  getPersonUdharListSummaryFromTotals,
   type PersonUdharListSummary,
 } from "@/lib/api/people-schemas"
+import type { UdharAccountPersonBalance } from "@/lib/api/udhar-summary-schemas"
 import { transactionEntryDeleteChipClass } from "@/features/entries/transaction-entry-delete-button"
 import { ACTION_GROUP_ROW } from "@/lib/ui/action-group-classes"
 import { cn } from "@/lib/utils"
@@ -21,7 +23,7 @@ export type PersonCardProps = {
    * Kept for compatibility with current callers. People list card now always uses people API
    * payload (`totalBalance`) via `getPersonUdharListSummary(person)`.
    */
-  ledgerBalance?: unknown
+  ledgerBalance?: UdharAccountPersonBalance
   /** True while a ledger fetch is in flight for this row (batch / detail prefetch). */
   balancePending?: boolean
   balanceError?: string | null
@@ -40,7 +42,12 @@ export function PersonCard({
   const summary: PersonUdharListSummary | "loading" | "error" = useMemo(() => {
     if (balanceError) return "error"
     if (balancePending) return "loading"
-    void ledgerBalance
+    if (ledgerBalance) {
+      return getPersonUdharListSummaryFromTotals(
+        ledgerBalance.totalLent,
+        ledgerBalance.totalBorrowed
+      )
+    }
     return getPersonUdharListSummary(person)
   }, [balanceError, balancePending, ledgerBalance, person])
 

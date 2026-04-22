@@ -22,8 +22,8 @@ import { formatCurrency } from "@/lib/format"
 import { parseSignedAmountString, type RecentTransaction } from "@/lib/api/transaction-schemas"
 import {
   useDeleteAccountMutation,
+  useGetAccountLedgerQuery,
   useGetAccountsQuery,
-  useGetRecentTransactionsQuery,
   useUpdateAccountMutation,
 } from "@/store/api/base-api"
 import { useAppSelector } from "@/store/hooks"
@@ -44,15 +44,6 @@ import { cn } from "@/lib/utils"
 
 function comingSoon(label: string) {
   toast.message("Coming soon", { description: `${label} will be available soon.` })
-}
-
-function txRelatesToAccount(t: RecentTransaction, accountId: string): boolean {
-  const id = accountId.trim()
-  if (t.accountId === id) return true
-  const r = t as unknown as Record<string, unknown>
-  if (typeof r.toAccountId === "string" && r.toAccountId === id) return true
-  if (typeof r.fromAccountId === "string" && r.fromAccountId === id) return true
-  return false
 }
 
 function isDateInCurrentMonth(dateStr: string, now: Date): boolean {
@@ -139,11 +130,9 @@ export function AccountDetailView({
     skip: !user || !account,
   })
 
-  const { data: recentTransactions = [] } = useGetRecentTransactionsQuery(
-    { limit: 5000 },
-    {
-      skip: !account,
-    }
+  const { data: accountLedgerEntries = [] } = useGetAccountLedgerQuery(
+    { accountId: String(account?.id ?? ""), limit: 500 },
+    { skip: !account }
   )
 
   const dismiss = useCallback(() => {
@@ -249,17 +238,14 @@ export function AccountDetailView({
 
   const { monthIn, monthOut } = useMemo(() => {
     if (!account) return { monthIn: 0, monthOut: 0 }
-    return monthInOutForAccount(recentTransactions, String(account.id), new Date())
-  }, [account, recentTransactions])
+    return monthInOutForAccount(accountLedgerEntries, String(account.id), new Date())
+  }, [account, accountLedgerEntries])
 
   const accountTxs = useMemo(() => {
-    if (!account) return []
-    const id = String(account.id).trim()
-    return recentTransactions
-      .filter((t) => txRelatesToAccount(t, id))
-      .sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0))
-      .slice(0, 100)
-  }, [account, recentTransactions])
+    return [...accountLedgerEntries].sort((a, b) =>
+      a.date < b.date ? 1 : a.date > b.date ? -1 : 0
+    )
+  }, [accountLedgerEntries])
 
   useLayoutEffect(() => {
     if (!account || !highlightTransactionId?.trim()) return

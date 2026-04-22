@@ -36,11 +36,6 @@ import { RecentTransactionRow } from "@/features/entries/recent-transaction-row"
 import { useDeleteTransactionFlow } from "@/features/entries/use-delete-transaction-flow"
 import { getAccountDeleteWarning } from "@/lib/accounts/account-delete"
 import { getErrorMessage } from "@/lib/api/errors"
-import {
-  dedupeRecentTransactionsByIdLatestFirst,
-  transactionInvolvesLoan,
-  type RecentTransaction,
-} from "@/lib/api/transaction-schemas"
 import { formatCurrency } from "@/lib/format"
 import {
   useGetAccountLedgerQuery,
@@ -108,10 +103,9 @@ export function LoanDetailView({
   const [draft, setDraft] = useState<Account | null>(null)
   const { data: allAccounts = [] } = useGetAccountsQuery(undefined, { skip: !account })
   const {
-    data: recentTransactions = [],
+    data: ledgerTransactions = [],
     isFetching: txsFetching,
     isError: txsError,
-    refetch: refetchRecentTransactions,
   } = useGetAccountLedgerQuery(
     { accountId: String(account?.id ?? ""), limit: 500 },
     { skip: !account }
@@ -319,16 +313,10 @@ export function LoanDetailView({
   }, [account, paymentOpen, isEditing, cancelEdit, dismiss])
 
   const labelSm = "text-[10px] font-medium text-muted-foreground sm:text-xs"
-  const selectedLoanId = String(account?.id ?? "").trim()
-  useEffect(() => {
-    if (!account || !selectedLoanId) return
-    void refetchRecentTransactions()
-  }, [account, selectedLoanId, refetchRecentTransactions])
-  const loanLedgerForUi = useMemo(() => {
-    if (!selectedLoanId) return [] as RecentTransaction[]
-    const filtered = recentTransactions.filter((tx) => transactionInvolvesLoan(tx, selectedLoanId))
-    return dedupeRecentTransactionsByIdLatestFirst(filtered)
-  }, [selectedLoanId, recentTransactions])
+  const loanLedgerForUi = useMemo(
+    () => [...ledgerTransactions].sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0)),
+    [ledgerTransactions]
+  )
 
   if (!account) return null
 
