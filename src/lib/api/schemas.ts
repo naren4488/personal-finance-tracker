@@ -60,6 +60,11 @@ export type CreateTransactionPayload = {
   sourceName: string
   feeAmount: string
   personId?: string
+  /**
+   * When `personId` is set (on-behalf expense), sent as API `dueDate` (YYYY-MM-DD).
+   * Must match the “expected return date” in the add-transaction UI.
+   */
+  dueDate?: string
   paidOnBehalf: boolean
   scheduled: boolean
   date: string

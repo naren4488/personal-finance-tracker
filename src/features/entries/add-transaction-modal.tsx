@@ -835,15 +835,11 @@ function AddTransactionModalMounted({
       toast.error("Select a person")
       return
     }
-    const mergedNote = [
-      description.trim(),
-      values.note.trim(),
-      effectiveOnBehalfEnabled && expectedReturnDate.trim()
-        ? `Expected return date: ${expectedReturnDate.trim()}`
-        : "",
-    ]
-      .filter(Boolean)
-      .join(" — ")
+    if (effectiveOnBehalfEnabled && effectiveOnBehalfPersonId && !expectedReturnDate.trim()) {
+      toast.error("Select expected return date")
+      return
+    }
+    const mergedNote = [description.trim(), values.note.trim()].filter(Boolean).join(" — ")
     const payload: CreateTransactionPayload = {
       type: "expense",
       amount: amt,
@@ -854,7 +850,10 @@ function AddTransactionModalMounted({
       sourceName: cardLabel,
       feeAmount: String(feeParsed),
       ...(effectiveOnBehalfEnabled && effectiveOnBehalfPersonId
-        ? { personId: effectiveOnBehalfPersonId }
+        ? {
+            personId: effectiveOnBehalfPersonId,
+            dueDate: expectedReturnDate.trim().slice(0, 10),
+          }
         : {}),
       paidOnBehalf: effectiveOnBehalfEnabled && Boolean(effectiveOnBehalfPersonId),
       scheduled: false,
@@ -983,17 +982,13 @@ function AddTransactionModalMounted({
 
     const displayTitle = [titleBase, ...tags].filter(Boolean).join(" · ")
     const noteForApi = [description.trim(), note.trim()].filter(Boolean).join(" — ")
-    const noteWithExpectedReturn = [
-      noteForApi,
-      effectiveOnBehalfEnabled && expectedReturnDate.trim()
-        ? `Expected return date: ${expectedReturnDate.trim()}`
-        : "",
-    ]
-      .filter(Boolean)
-      .join(" — ")
 
-    if (showPaidOnBehalf && effectiveOnBehalfEnabled && !effectiveOnBehalfPersonId) {
+    if (effectiveOnBehalfEnabled && !effectiveOnBehalfPersonId) {
       toast.error("Select a person")
+      return
+    }
+    if (effectiveOnBehalfEnabled && effectiveOnBehalfPersonId && !expectedReturnDate.trim()) {
+      toast.error("Select expected return date")
       return
     }
 
@@ -1027,12 +1022,15 @@ function AddTransactionModalMounted({
       sourceName: acc?.name ?? "",
       feeAmount: "0",
       ...(effectiveOnBehalfEnabled && effectiveOnBehalfPersonId
-        ? { personId: effectiveOnBehalfPersonId }
+        ? {
+            personId: effectiveOnBehalfPersonId,
+            dueDate: expectedReturnDate.trim().slice(0, 10),
+          }
         : {}),
       paidOnBehalf: effectiveOnBehalfEnabled && Boolean(effectiveOnBehalfPersonId),
       scheduled: false,
       date,
-      note: noteWithExpectedReturn,
+      note: noteForApi,
       tags,
       displayTitle,
       accountId: validSourceAccountIdForSubmit,

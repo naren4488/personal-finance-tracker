@@ -77,6 +77,8 @@ const expenseFeeAmountWireSchema = z
   .string()
   .regex(/^(0|[1-9]\d*)(\.\d{1,2})?$/, 'feeAmount must be "0" or a decimal string')
 
+const expenseDateOnlySchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/)
+
 /** Expense from a credit card: `creditCardAccountId` + `feeAmount` (wire uses `"0"` for zero). */
 export const createTransactionExpenseFromCardBodySchema = z
   .object({
@@ -86,11 +88,16 @@ export const createTransactionExpenseFromCardBodySchema = z
     creditCardAccountId: z.string().min(1),
     feeAmount: expenseFeeAmountWireSchema,
     date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
-    personId: z.string().min(1).optional(),
+    paidOnBehalfPersonId: z.string().min(1).optional(),
+    dueDate: expenseDateOnlySchema.optional(),
     note: z.string().optional(),
     tags: z.array(z.string()).optional(),
   })
   .strict()
+  .refine((o) => !o.paidOnBehalfPersonId || Boolean(o.dueDate?.trim()), {
+    message: "dueDate is required when paidOnBehalfPersonId is set",
+    path: ["dueDate"],
+  })
 
 /** Expense from a bank/cash account. */
 export const createTransactionExpenseFromAccountBodySchema = z
@@ -100,11 +107,16 @@ export const createTransactionExpenseFromAccountBodySchema = z
     category: expenseCategoryWireSlugEnum,
     accountId: z.string().min(1),
     date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
-    personId: z.string().min(1).optional(),
+    paidOnBehalfPersonId: z.string().min(1).optional(),
+    dueDate: expenseDateOnlySchema.optional(),
     note: z.string().optional(),
     tags: z.array(z.string()).optional(),
   })
   .strict()
+  .refine((o) => !o.paidOnBehalfPersonId || Boolean(o.dueDate?.trim()), {
+    message: "dueDate is required when paidOnBehalfPersonId is set",
+    path: ["dueDate"],
+  })
 
 export const createTransactionExpenseBodySchema = z.union([
   createTransactionExpenseFromCardBodySchema,
@@ -497,6 +509,12 @@ export function buildTransactionPostBody(body: CreateTransactionPayload): Create
     )
     const noteTrim = typeof noteRaw === "string" ? noteRaw.trim() : ""
     const personTrim = body.personId?.trim() ?? ""
+    const dueRaw = body.dueDate?.trim() ?? ""
+    if (personTrim) {
+      if (!dueRaw) {
+        throw new Error("dueDate is required when paying on behalf of someone")
+      }
+    }
 
     if (isCard) {
       const feeWire = expenseFeeAmountWireFromInr(parseExpenseFeeInr(body))
@@ -508,7 +526,8 @@ export function buildTransactionPostBody(body: CreateTransactionPayload): Create
         feeAmount: feeWire,
         date: dateIso,
       }
-      if (personTrim) o.personId = personTrim
+      if (personTrim) o.paidOnBehalfPersonId = personTrim
+      if (personTrim) o.dueDate = normalizeApiDateOnly(dueRaw)
       if (noteTrim) o.note = noteTrim
       if (tagsOut && tagsOut.length > 0) o.tags = tagsOut
       return o
@@ -521,7 +540,8 @@ export function buildTransactionPostBody(body: CreateTransactionPayload): Create
       accountId: sourceAccountId,
       date: dateIso,
     }
-    if (personTrim) o.personId = personTrim
+    if (personTrim) o.paidOnBehalfPersonId = personTrim
+    if (personTrim) o.dueDate = normalizeApiDateOnly(dueRaw)
     if (noteTrim) o.note = noteTrim
     if (tagsOut && tagsOut.length > 0) o.tags = tagsOut
     return o
