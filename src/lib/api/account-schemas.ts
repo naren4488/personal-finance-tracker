@@ -117,6 +117,17 @@ export function accountSelectLabel(account: Account): string {
   return sub ? `${account.name} (${sub})` : account.name
 }
 
+/** Prefer `type`, then `kind` — for mapping expense `sourceType` and `payFromAccountType`. */
+export function accountApiTypeOrKind(account: Pick<Account, "type" | "kind">): string {
+  const t = String(account.type ?? "")
+    .trim()
+    .toLowerCase()
+  if (t) return t
+  return String(account.kind ?? "")
+    .trim()
+    .toLowerCase()
+}
+
 /** Treat missing `isActive` as active. */
 export function filterActiveAccounts(accounts: Account[]): Account[] {
   return accounts.filter((a) => a.isActive !== false)

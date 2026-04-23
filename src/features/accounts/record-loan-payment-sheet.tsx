@@ -36,7 +36,8 @@ import { useAddTransactionMutation, useGetAccountsQuery } from "@/store/api/base
 import { useAppDispatch, useAppSelector } from "@/store/hooks"
 
 const TX_CATEGORIES = [
-  "Food & dining",
+  "Food",
+  "Drinking",
   "Transport",
   "Shopping",
   "Bills & utilities",

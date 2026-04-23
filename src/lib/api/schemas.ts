@@ -69,6 +69,11 @@ export type CreateTransactionPayload = {
   displayTitle?: string
   accountId?: string
   accountName?: string
+  /**
+   * Pay-from account `type` / `kind` from GET /accounts. Used to set expense `sourceType` when
+   * both `accountId` and `creditCardAccountId` are not both needed for inference.
+   */
+  payFromAccountType?: string
 }
 
 export function toQuickTransactionPayload(

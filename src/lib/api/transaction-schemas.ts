@@ -5,101 +5,162 @@ import { accountSelectLabel } from "@/lib/api/account-schemas"
 import type { CreateTransactionPayload, Transaction } from "@/lib/api/schemas"
 import { transactionTypeSchema } from "@/lib/api/schemas"
 
-/** POST /transactions — income (matches backend contract). */
-export const createTransactionIncomeBodySchema = z.object({
-  type: z.literal("income"),
-  amount: z.string().min(1),
-  incomeSource: z.string().min(1),
-  accountId: z.string().min(1),
-  date: z.string(),
-  note: z.string(),
-  tags: z.array(z.string()),
-})
+/** POST /transactions — income (2-decimal `amount`, `date` = YYYY-MM-DD; `note` / `tags` optional if absent). */
+export const createTransactionIncomeBodySchema = z
+  .object({
+    type: z.literal("income"),
+    amount: z.string().regex(/^\d+\.\d{2}$/),
+    incomeSource: z.string().min(1),
+    accountId: z.string().min(1),
+    date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+    note: z.string().optional(),
+    tags: z.array(z.string()).optional(),
+  })
+  .strict()
 
 /**
- * POST /transactions — expense charged to a credit card account (numeric amounts).
- * Distinct from `createTransactionExpenseBodySchema` (bank/cash `accountId` + string amount).
+ * POST /transactions — expense `category` after UI mapping (canonical labels for internal use).
+ * Wire POST uses lowercase slugs in `EXPENSE_CATEGORY_WIRE_SLUGS` via `mapExpenseCategoryToWireSlug`.
  */
-export const createTransactionCreditCardExpenseBodySchema = z.object({
-  type: z.literal("expense"),
-  amount: z.string().min(1),
-  category: z.string().min(1),
-  sourceAccountId: z.string().min(1),
-  sourceType: z.literal("account"),
-  sourceName: z.string().min(1),
-  paymentMethod: z.string().min(1),
-  creditCardAccountId: z.string().min(1),
-  feeAmount: z.string().min(1),
-  personId: z.string().min(1).optional(),
-  paidOnBehalf: z.boolean().optional(),
-  date: z.string(),
-  note: z.string(),
-  tags: z.array(z.string()),
-})
+export const EXPENSE_CATEGORY_API_VALUES = [
+  "Food",
+  "Drinking",
+  "Transport",
+  "Shopping",
+  "Bills & utilities",
+  "Health",
+  "Entertainment",
+  "Salary",
+  "Investments",
+  "Transfer",
+  "Other",
+] as const
 
-export type CreateTransactionCreditCardExpenseApiBody = z.infer<
-  typeof createTransactionCreditCardExpenseBodySchema
->
+export const expenseCategoryApiEnum = z.enum(EXPENSE_CATEGORY_API_VALUES)
 
-/** POST /transactions — expense. */
-export const createTransactionExpenseBodySchema = z.object({
-  type: z.literal("expense"),
-  amount: z.string().min(1),
-  category: z.string().min(1),
-  sourceAccountId: z.string().min(1),
-  sourceType: z.literal("account"),
-  sourceName: z.string().min(1),
-  paymentMethod: z.string().min(1),
-  personId: z.string().min(1).optional(),
-  paidOnBehalf: z.boolean().optional(),
-  date: z.string(),
-  note: z.string(),
-  tags: z.array(z.string()),
-})
+export type ExpenseCategoryApi = z.infer<typeof expenseCategoryApiEnum>
+
+/** POST /transactions expense `category` — backend wire values (lowercase slugs). */
+export const EXPENSE_CATEGORY_WIRE_SLUGS = [
+  "food",
+  "drinking",
+  "transport",
+  "shopping",
+  "bills_utilities",
+  "health",
+  "entertainment",
+  "salary",
+  "investments",
+  "transfer",
+  "other",
+] as const
+
+export const expenseCategoryWireSlugEnum = z.enum(EXPENSE_CATEGORY_WIRE_SLUGS)
+
+export type ExpenseCategoryWireSlug = z.infer<typeof expenseCategoryWireSlugEnum>
+
+const EXPENSE_CATEGORY_LABEL_TO_WIRE: Record<ExpenseCategoryApi, ExpenseCategoryWireSlug> = {
+  Food: "food",
+  Drinking: "drinking",
+  Transport: "transport",
+  Shopping: "shopping",
+  "Bills & utilities": "bills_utilities",
+  Health: "health",
+  Entertainment: "entertainment",
+  Salary: "salary",
+  Investments: "investments",
+  Transfer: "transfer",
+  Other: "other",
+}
+
+const expenseFeeAmountWireSchema = z
+  .string()
+  .regex(/^(0|[1-9]\d*)(\.\d{1,2})?$/, 'feeAmount must be "0" or a decimal string')
+
+/** Expense from a credit card: `creditCardAccountId` + `feeAmount` (wire uses `"0"` for zero). */
+export const createTransactionExpenseFromCardBodySchema = z
+  .object({
+    type: z.literal("expense"),
+    amount: z.string().regex(/^\d+\.\d{2}$/),
+    category: expenseCategoryWireSlugEnum,
+    creditCardAccountId: z.string().min(1),
+    feeAmount: expenseFeeAmountWireSchema,
+    date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+    personId: z.string().min(1).optional(),
+    note: z.string().optional(),
+    tags: z.array(z.string()).optional(),
+  })
+  .strict()
+
+/** Expense from a bank/cash account. */
+export const createTransactionExpenseFromAccountBodySchema = z
+  .object({
+    type: z.literal("expense"),
+    amount: z.string().regex(/^\d+\.\d{2}$/),
+    category: expenseCategoryWireSlugEnum,
+    accountId: z.string().min(1),
+    date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+    personId: z.string().min(1).optional(),
+    note: z.string().optional(),
+    tags: z.array(z.string()).optional(),
+  })
+  .strict()
+
+export const createTransactionExpenseBodySchema = z.union([
+  createTransactionExpenseFromCardBodySchema,
+  createTransactionExpenseFromAccountBodySchema,
+])
+
+export type CreateTransactionExpenseApiBody = z.infer<typeof createTransactionExpenseBodySchema>
 
 /** POST /transactions — transfer to another account. */
-export const createTransactionTransferToAccountSchema = z.object({
-  type: z.literal("transfer"),
-  amount: z.string().min(1),
-  accountId: z.string().min(1),
-  destinationType: z.literal("account"),
-  toAccountId: z.string().min(1),
-  date: z.string(),
-  note: z.string(),
-  tags: z.array(z.string()),
-})
+export const createTransactionTransferToAccountSchema = z
+  .object({
+    type: z.literal("transfer"),
+    amount: z.string().regex(/^\d+\.\d{2}$/),
+    accountId: z.string().min(1),
+    destinationType: z.literal("account"),
+    toAccountId: z.string().min(1),
+    date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+    note: z.string().optional(),
+    tags: z.array(z.string()).optional(),
+  })
+  .strict()
 
 /** POST /transactions — pay credit card bill from a bank/cash account. */
-export const createTransactionTransferCreditCardBillSchema = z.object({
-  type: z.literal("transfer"),
-  amount: z.string().min(1),
-  accountId: z.string().min(1),
-  destinationType: z.literal("credit_card_bill"),
-  creditCardAccountId: z.string().min(1),
-  principalComponent: z.string().min(1),
-  interestComponent: z.string().min(1),
-  date: z.string(),
-  note: z.string(),
-  tags: z.array(z.string()),
-})
+export const createTransactionTransferCreditCardBillSchema = z
+  .object({
+    type: z.literal("transfer"),
+    amount: z.string().regex(/^\d+\.\d{2}$/),
+    accountId: z.string().min(1),
+    destinationType: z.literal("credit_card_bill"),
+    creditCardAccountId: z.string().min(1),
+    principalComponent: z.string().regex(/^\d+\.\d{2}$/),
+    interestComponent: z.string().regex(/^\d+\.\d{2}$/),
+    date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+    note: z.string().optional(),
+    tags: z.array(z.string()).optional(),
+  })
+  .strict()
 
 /** POST /transactions — loan EMI / payment from a bank/cash account (backend enum). */
-export const createTransactionTransferLoanPaymentSchema = z.object({
-  type: z.literal("transfer"),
-  amount: z.string().min(1),
-  accountId: z.string().min(1),
-  destinationType: z.literal("loan_payment"),
-  loanAccountId: z.string().min(1),
-  principalComponent: z.string().min(1),
-  interestComponent: z.string().min(1),
-  date: z.string(),
-  note: z.string(),
-  tags: z.array(z.string()),
-})
+export const createTransactionTransferLoanPaymentSchema = z
+  .object({
+    type: z.literal("transfer"),
+    amount: z.string().regex(/^\d+\.\d{2}$/),
+    accountId: z.string().min(1),
+    destinationType: z.literal("loan_payment"),
+    loanAccountId: z.string().min(1),
+    principalComponent: z.string().regex(/^\d+\.\d{2}$/),
+    interestComponent: z.string().regex(/^\d+\.\d{2}$/),
+    date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+    note: z.string().optional(),
+    tags: z.array(z.string()).optional(),
+  })
+  .strict()
 
 export const createTransactionApiBodySchema = z.union([
   createTransactionIncomeBodySchema,
-  createTransactionCreditCardExpenseBodySchema,
   createTransactionExpenseBodySchema,
   createTransactionTransferToAccountSchema,
   createTransactionTransferCreditCardBillSchema,
@@ -107,6 +168,26 @@ export const createTransactionApiBodySchema = z.union([
 ])
 
 export type CreateTransactionApiBody = z.infer<typeof createTransactionApiBodySchema>
+
+/** Drop top-level keys with value `undefined` before JSON serialization. */
+export function omitUndefinedShallow(obj: Record<string, unknown>): Record<string, unknown> {
+  return Object.fromEntries(Object.entries(obj).filter(([, v]) => v !== undefined))
+}
+
+/**
+ * Final wire sanitizer: no `undefined`, no `null`, no empty `[]` or `""` (optional fields stay omitted).
+ */
+export function sanitizeApiRequestBody(obj: Record<string, unknown>): Record<string, unknown> {
+  const out: Record<string, unknown> = {}
+  for (const [k, v] of Object.entries(obj)) {
+    if (v === undefined) continue
+    if (v === null) continue
+    if (Array.isArray(v) && v.length === 0) continue
+    if (v === "") continue
+    out[k] = v
+  }
+  return out
+}
 
 export const INCOME_SOURCE_OPTIONS = [
   { value: "salary", label: "Salary" },
@@ -219,14 +300,145 @@ export function mapApiTransactionToClient(
   }
 }
 
-function amountToApiString(amount: number): string {
-  if (!Number.isFinite(amount) || amount <= 0) return "0"
-  return String(Math.round(amount * 100) / 100)
-}
-
-function expenseAmountToApiString(amount: number): string {
+/** API `amount`: always 2 decimal places, e.g. "77.00" */
+function moneyToApiString2(amount: number): string {
   if (!Number.isFinite(amount) || amount <= 0) return "0.00"
   return (Math.round(amount * 100) / 100).toFixed(2)
+}
+
+function normalizeApiDateOnly(raw: string): string {
+  const t = raw.trim()
+  if (/^\d{4}-\d{2}-\d{2}$/.test(t)) return t
+  if (/^\d{4}-\d{2}-\d{2}T/.test(t)) return t.slice(0, 10)
+  const d = new Date(t)
+  if (Number.isNaN(d.getTime())) return t.slice(0, 10)
+  return d.toISOString().slice(0, 10)
+}
+
+const EXPENSE_CATEGORY_ALIASES: Readonly<Record<string, ExpenseCategoryApi>> = {
+  "food & dining": "Food",
+  "food and dining": "Food",
+  "food & drinking": "Food",
+  "food and drinking": "Food",
+  food: "Food",
+  drinking: "Drinking",
+  transport: "Transport",
+  travel: "Transport",
+  shopping: "Shopping",
+  "bills & utilities": "Bills & utilities",
+  "bills and utilities": "Bills & utilities",
+  bills_utilities: "Bills & utilities",
+  health: "Health",
+  entertainment: "Entertainment",
+  salary: "Salary",
+  investments: "Investments",
+  transfer: "Transfer",
+  other: "Other",
+}
+
+/**
+ * Map UI / legacy text to backend expense `category` enum. Throws if no mapping (client-side 422).
+ */
+export function mapExpenseCategoryStrict(raw: string): ExpenseCategoryApi {
+  const t = raw.trim()
+  if (!t) {
+    throw new Error(
+      "Invalid category: value is required and must map to a backend enum (see EXPENSE_CATEGORY_API_VALUES)"
+    )
+  }
+  if (expenseCategoryApiEnum.safeParse(t).success) {
+    return t as ExpenseCategoryApi
+  }
+  const spaced = t.toLowerCase().replace(/\s+/g, " ")
+  const a = EXPENSE_CATEGORY_ALIASES[spaced] ?? EXPENSE_CATEGORY_ALIASES[t.toLowerCase()]
+  if (a) return a
+  throw new Error(
+    `Invalid category: could not map "${raw}" to a backend value. Expected one of: ${EXPENSE_CATEGORY_API_VALUES.join(", ")}`
+  )
+}
+
+/**
+ * Map UI / free text → backend expense `category` slug on the wire (POST body).
+ */
+export function mapExpenseCategoryToWireSlug(raw: string): ExpenseCategoryWireSlug {
+  const label = mapExpenseCategoryStrict(raw)
+  return EXPENSE_CATEGORY_LABEL_TO_WIRE[label]
+}
+
+function normalizeOptionalApiTags(tags: string[] | undefined): string[] | undefined {
+  if (!Array.isArray(tags) || tags.length === 0) return undefined
+  const seen = new Set<string>()
+  const out: string[] = []
+  for (const t of tags) {
+    const s = t.trim()
+    if (!s || seen.has(s)) continue
+    seen.add(s)
+    out.push(s)
+  }
+  return out.length > 0 ? out : undefined
+}
+
+/** Parsed card fee in INR (rounded to cents). */
+function parseExpenseFeeInr(body: CreateTransactionPayload): number {
+  let feeInr = 0
+  if (typeof body.feeAmount === "number" && Number.isFinite(body.feeAmount)) {
+    feeInr = Math.round(body.feeAmount * 100) / 100
+  } else {
+    const fs = String(body.feeAmount ?? "")
+      .replace(/,/g, "")
+      .trim()
+    if (fs) {
+      const n = Number(fs)
+      if (!Number.isFinite(n) || n < 0) {
+        throw new Error("feeAmount must be a non-negative number")
+      }
+      feeInr = Math.round(n * 100) / 100
+    }
+  }
+  return feeInr
+}
+
+/** POST wire: backend accepts `"0"` for zero fees; otherwise two decimal places. */
+function expenseFeeAmountWireFromInr(feeInr: number): string {
+  if (!Number.isFinite(feeInr) || feeInr <= 0) return "0"
+  return (Math.round(feeInr * 100) / 100).toFixed(2)
+}
+
+/**
+ * `sourceAccountId` is always the pay-from account id; `sourceType` is credit card vs not.
+ * Client uses `creditCardAccountId` OR `accountId` (never both) when `payFromAccountType` is absent.
+ */
+function resolveExpenseSourceAccountAndType(body: CreateTransactionPayload): {
+  sourceType: "account" | "credit_card"
+  sourceAccountId: string
+} {
+  const cardId = body.creditCardAccountId?.trim()
+  const acctId = body.accountId?.trim()
+  if (cardId && acctId) {
+    throw new Error(
+      "expense: use only one of accountId or creditCardAccountId (both map to sourceAccountId)"
+    )
+  }
+
+  const slug = (body.payFromAccountType ?? "").trim().toLowerCase().replace(/\s+/g, "_")
+
+  if (slug === "credit_card" || slug === "creditcard") {
+    const id = cardId || acctId || ""
+    if (!id) throw new Error("expense requires a pay-from id for sourceAccountId")
+    return { sourceType: "credit_card", sourceAccountId: id }
+  }
+  if (slug) {
+    const id = acctId || cardId || ""
+    if (!id) throw new Error("expense requires a pay-from id for sourceAccountId")
+    return { sourceType: "account", sourceAccountId: id }
+  }
+  if (cardId && !acctId) {
+    return { sourceType: "credit_card", sourceAccountId: cardId }
+  }
+  if (acctId && !cardId) {
+    return { sourceType: "account", sourceAccountId: acctId }
+  }
+  throw new Error("expense requires accountId or creditCardAccountId")
 }
 
 function decimal2ApiString(amount: number): string {
@@ -245,85 +457,74 @@ function transferAmountToApiString(amount: number): string {
  * Only fields the backend expects are included.
  */
 export function buildTransactionPostBody(body: CreateTransactionPayload): CreateTransactionApiBody {
-  const amount = amountToApiString(body.amount)
-  const date = body.date
-  const note = body.note
-  const tags = body.tags
+  const dateIso = normalizeApiDateOnly(body.date)
+  const noteRaw = body.note
+  const tagsIn = body.tags
 
   if (body.type === "income") {
     if (!body.accountId) {
       throw new Error("income requires accountId")
     }
+    if (!Number.isFinite(body.amount) || body.amount <= 0) {
+      throw new Error("income amount must be greater than zero")
+    }
+    const amountStr = moneyToApiString2(body.amount)
+    const noteTrim = typeof noteRaw === "string" ? noteRaw.trim() : ""
+    const tagsOut = normalizeOptionalApiTags(
+      Array.isArray(tagsIn) ? tagsIn.filter((t) => t.trim().length > 0) : undefined
+    )
     return {
       type: "income",
-      amount,
+      amount: amountStr,
       incomeSource: (body.incomeSource ?? "other").trim() || "other",
       accountId: body.accountId,
-      date,
-      note,
-      tags,
+      date: dateIso,
+      ...(noteTrim ? { note: noteTrim } : {}),
+      ...(tagsOut ? { tags: tagsOut } : {}),
     }
   }
 
   if (body.type === "expense") {
-    const paymentMethod = body.paymentMethod === "card" ? "credit_card" : "account_cash_upi"
-    const expenseAmount = expenseAmountToApiString(body.amount)
-    const sourceName = body.sourceName.trim()
-    if (!sourceName) {
-      throw new Error("expense requires sourceName")
+    if (!Number.isFinite(body.amount) || body.amount <= 0) {
+      throw new Error("expense amount must be greater than zero")
     }
-    const ccId = body.creditCardAccountId?.trim()
-    if (ccId) {
-      if (!Number.isFinite(body.amount) || body.amount <= 0) {
-        throw new Error("expense amount must be greater than zero")
-      }
-      let feeInr = 0
-      if (typeof body.feeAmount === "number" && Number.isFinite(body.feeAmount)) {
-        feeInr = Math.round(body.feeAmount * 100) / 100
-      } else {
-        const fs = String(body.feeAmount ?? "")
-          .replace(/,/g, "")
-          .trim()
-        if (fs) {
-          const n = Number(fs)
-          if (!Number.isFinite(n) || n < 0) {
-            throw new Error("feeAmount must be a non-negative number")
-          }
-          feeInr = Math.round(n * 100) / 100
-        }
-      }
-      return {
+    const amountStr = moneyToApiString2(body.amount)
+    const { sourceType, sourceAccountId } = resolveExpenseSourceAccountAndType(body)
+    const category = mapExpenseCategoryToWireSlug(body.category)
+    const isCard = sourceType === "credit_card"
+    const tagsOut = normalizeOptionalApiTags(
+      Array.isArray(tagsIn) ? tagsIn.filter((t) => t.trim().length > 0) : undefined
+    )
+    const noteTrim = typeof noteRaw === "string" ? noteRaw.trim() : ""
+    const personTrim = body.personId?.trim() ?? ""
+
+    if (isCard) {
+      const feeWire = expenseFeeAmountWireFromInr(parseExpenseFeeInr(body))
+      const o: CreateTransactionExpenseApiBody = {
         type: "expense",
-        amount: expenseAmount,
-        category: body.category.trim() || "other",
-        sourceAccountId: ccId,
-        sourceType: "account",
-        sourceName,
-        paymentMethod,
-        creditCardAccountId: ccId,
-        feeAmount: decimal2ApiString(feeInr),
-        ...(body.personId?.trim() ? { personId: body.personId.trim(), paidOnBehalf: true } : {}),
-        date,
-        note,
-        tags,
+        amount: amountStr,
+        category,
+        creditCardAccountId: sourceAccountId,
+        feeAmount: feeWire,
+        date: dateIso,
       }
+      if (personTrim) o.personId = personTrim
+      if (noteTrim) o.note = noteTrim
+      if (tagsOut && tagsOut.length > 0) o.tags = tagsOut
+      return o
     }
-    if (!body.accountId) {
-      throw new Error("expense requires accountId or creditCardAccountId")
-    }
-    return {
+
+    const o: CreateTransactionExpenseApiBody = {
       type: "expense",
-      amount: expenseAmount,
-      category: body.category.trim() || "other",
-      sourceAccountId: body.accountId,
-      sourceType: "account",
-      sourceName,
-      paymentMethod,
-      ...(body.personId?.trim() ? { personId: body.personId.trim(), paidOnBehalf: true } : {}),
-      date,
-      note,
-      tags,
+      amount: amountStr,
+      category,
+      accountId: sourceAccountId,
+      date: dateIso,
     }
+    if (personTrim) o.personId = personTrim
+    if (noteTrim) o.note = noteTrim
+    if (tagsOut && tagsOut.length > 0) o.tags = tagsOut
+    return o
   }
 
   if (body.type !== "transfer") {
@@ -353,6 +554,10 @@ export function buildTransactionPostBody(body: CreateTransactionPayload): Create
     if (Math.abs(pInr + iInr - totalInr) > 0.02) {
       iInr = Math.round((totalInr - pInr) * 100) / 100
     }
+    const noteT = typeof noteRaw === "string" ? noteRaw.trim() : ""
+    const tagOut = normalizeOptionalApiTags(
+      Array.isArray(tagsIn) ? tagsIn.filter((t) => t.trim().length > 0) : undefined
+    )
     return {
       type: "transfer",
       amount: transferAmount,
@@ -361,9 +566,9 @@ export function buildTransactionPostBody(body: CreateTransactionPayload): Create
       creditCardAccountId: body.creditCardAccountId.trim(),
       principalComponent: decimal2ApiString(pInr),
       interestComponent: decimal2ApiString(iInr),
-      date,
-      note,
-      tags,
+      date: dateIso,
+      ...(noteT ? { note: noteT } : {}),
+      ...(tagOut ? { tags: tagOut } : {}),
     }
   }
 
@@ -382,6 +587,10 @@ export function buildTransactionPostBody(body: CreateTransactionPayload): Create
     if (Math.abs(pInr + iInr - totalInr) > 0.02) {
       iInr = Math.round((totalInr - pInr) * 100) / 100
     }
+    const noteT2 = typeof noteRaw === "string" ? noteRaw.trim() : ""
+    const tagOut2 = normalizeOptionalApiTags(
+      Array.isArray(tagsIn) ? tagsIn.filter((t) => t.trim().length > 0) : undefined
+    )
     return {
       type: "transfer",
       amount: transferAmount,
@@ -390,24 +599,28 @@ export function buildTransactionPostBody(body: CreateTransactionPayload): Create
       loanAccountId: body.loanAccountId.trim(),
       principalComponent: decimal2ApiString(pInr),
       interestComponent: decimal2ApiString(iInr),
-      date,
-      note,
-      tags,
+      date: dateIso,
+      ...(noteT2 ? { note: noteT2 } : {}),
+      ...(tagOut2 ? { tags: tagOut2 } : {}),
     }
   }
 
   if (!body.toAccountId?.trim()) {
     throw new Error("transfer to account requires toAccountId")
   }
+  const noteT3 = typeof noteRaw === "string" ? noteRaw.trim() : ""
+  const tagOut3 = normalizeOptionalApiTags(
+    Array.isArray(tagsIn) ? tagsIn.filter((t) => t.trim().length > 0) : undefined
+  )
   return {
     type: "transfer",
     amount: transferAmount,
     accountId: body.accountId,
     destinationType: "account",
     toAccountId: body.toAccountId.trim(),
-    date,
-    note,
-    tags,
+    date: dateIso,
+    ...(noteT3 ? { note: noteT3 } : {}),
+    ...(tagOut3 ? { tags: tagOut3 } : {}),
   }
 }
 

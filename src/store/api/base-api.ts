@@ -125,6 +125,7 @@ import {
   mapApiTransactionToClient,
   parseCreateTransactionSuccess,
   parseGetRecentTransactionsSuccess,
+  sanitizeApiRequestBody,
   applyAccountLedgerScopeToRecentTransactions,
   type CreateTransactionApiBody,
   type RecentTransaction,
@@ -1240,24 +1241,23 @@ export const baseApi = createApi({
           return { error: { status: 422, data: "Invalid transaction payload" } }
         }
 
+        const finalBody = sanitizeApiRequestBody(
+          validated.data as unknown as Record<string, unknown>
+        ) as CreateTransactionApiBody
+
         console.log("[transactions] create — client payload (CreateTransactionPayload):", body)
-        console.log("[transactions] create — POST body (object):", validated.data)
-        console.log(
-          "[transactions] create — POST body (exact JSON):",
-          JSON.stringify(validated.data, null, 2)
-        )
-        console.log("Final Payload:", validated.data)
+        console.log("FINAL CLEAN PAYLOAD BEFORE POST", JSON.stringify(finalBody))
 
         const res = await baseQuery({
           url: TRANSACTION_PATHS.create,
           method: "POST",
-          body: validated.data,
+          body: finalBody,
         })
 
         if (res.error) {
           const err = normalizeFetchError(res.error)
           console.error("[transactions] create failed — HTTP error:", err)
-          console.error("[transactions] create failed — POST body was:", validated.data)
+          console.error("[transactions] create failed — POST body was:", finalBody)
           return { error: err }
         }
 

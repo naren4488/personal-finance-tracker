@@ -14,7 +14,11 @@ import { Label } from "@/components/ui/label"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Switch } from "@/components/ui/switch"
 import type { Account } from "@/lib/api/account-schemas"
-import { accountSelectLabel, filterActiveAccounts } from "@/lib/api/account-schemas"
+import {
+  accountApiTypeOrKind,
+  accountSelectLabel,
+  filterActiveAccounts,
+} from "@/lib/api/account-schemas"
 import {
   creditCardAvailableCreditInr,
   creditCardLimitInr,
@@ -72,8 +76,10 @@ import {
   type CardExpenseFormValues,
 } from "@/lib/forms/credit-card-expense-schema"
 
+/** Expense category labels map to POST wire slugs via `mapExpenseCategoryToWireSlug` (transaction-schemas). */
 const TX_CATEGORIES = [
-  "Food & dining",
+  "Food",
+  "Drinking",
   "Transport",
   "Shopping",
   "Bills & utilities",
@@ -843,6 +849,7 @@ function AddTransactionModalMounted({
       amount: amt,
       category: values.category.trim(),
       creditCardAccountId: values.creditCardAccountId,
+      payFromAccountType: accountApiTypeOrKind(card),
       paymentMethod: "card",
       sourceName: cardLabel,
       feeAmount: String(feeParsed),
@@ -1030,6 +1037,8 @@ function AddTransactionModalMounted({
       displayTitle,
       accountId: validSourceAccountIdForSubmit,
       accountName: acc?.name,
+      payFromAccountType:
+        effectiveType === "expense" && acc ? accountApiTypeOrKind(acc) : undefined,
     }
 
     console.log("[add-transaction] submit — CreateTransactionPayload:", payload)

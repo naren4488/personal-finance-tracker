@@ -16,9 +16,10 @@ import { Input } from "@/components/ui/input"
 import {
   quickTransactionFormSchema,
   toQuickTransactionPayload,
+  type CreateTransactionPayload,
   type QuickTransactionFormValues,
 } from "@/lib/api/schemas"
-import { filterActiveAccounts } from "@/lib/api/account-schemas"
+import { accountApiTypeOrKind, filterActiveAccounts } from "@/lib/api/account-schemas"
 import { assertSourceAccountCoversAmount } from "@/lib/validation/source-account-balance"
 import { getErrorMessage } from "@/lib/api/errors"
 import { APP_FORM_FIELD_CLASS, APP_FORM_SUBMIT_CLASS } from "@/lib/ui/app-form-styles"
@@ -55,9 +56,13 @@ export function QuickTransactionForm({ onSuccess, className }: QuickTransactionF
       return
     }
     try {
-      const payload = toQuickTransactionPayload(values, defaultAccountId)
+      const acc = accounts.find((a) => a.id === defaultAccountId)
+      const base = toQuickTransactionPayload(values, defaultAccountId)
+      const payload: CreateTransactionPayload =
+        values.type === "expense"
+          ? { ...base, payFromAccountType: acc ? accountApiTypeOrKind(acc) : undefined }
+          : base
       if (values.type === "expense") {
-        const acc = accounts.find((a) => a.id === defaultAccountId)
         if (!assertSourceAccountCoversAmount(acc, payload.amount)) return
       }
       console.log("[transactions] quick add — payload:", payload)
