@@ -1,3 +1,4 @@
+
 import { useEffect, useMemo, useRef, useState } from "react"
 import { useNavigate } from "react-router-dom"
 import { toast } from "sonner"
@@ -11,7 +12,19 @@ import {
   BarChart2,
   CreditCard,
 } from "lucide-react"
-import { PieChart, Pie, Cell, XAxis, YAxis, Tooltip, BarChart, Bar, Legend } from "recharts"
+import { 
+  PieChart, 
+  Pie, 
+  Cell, 
+  XAxis, 
+  YAxis, 
+  Tooltip, 
+  BarChart, 
+  Bar, 
+  Legend, 
+  CartesianGrid,
+  ResponsiveContainer 
+} from "recharts"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -176,6 +189,7 @@ export default function AnalyticsFullPage() {
         <button
           type="button"
           className="flex flex-col items-center gap-1 text-muted-foreground hover:text-foreground"
+          onClick={() => navigate("/home")}
         >
           <Home className="w-5 h-5" />
           <span className="text-[10px] font-medium">Home</span>
@@ -183,6 +197,7 @@ export default function AnalyticsFullPage() {
         <button
           type="button"
           className="flex flex-col items-center gap-1 text-muted-foreground hover:text-foreground"
+          onClick={() => navigate("/entries")}
         >
           <LayoutGrid className="w-5 h-5" />
           <span className="text-[10px] font-medium">Entries</span>
@@ -190,6 +205,7 @@ export default function AnalyticsFullPage() {
         <button
           type="button"
           className="flex flex-col items-center gap-1 text-muted-foreground hover:text-foreground"
+          onClick={() => navigate("/accounts")}
         >
           <Wallet className="w-5 h-5" />
           <span className="text-[10px] font-medium">Accounts</span>
@@ -367,16 +383,16 @@ function AnalyticsContent({
               No category data this period.
             </p>
           ) : (
-            <div className="flex items-center gap-2">
-              <div className="w-1/4 min-w-[96px]">
-                <MeasuredChart className="w-full h-[300px] min-h-[300px]">
+            <div className="flex items-center justify-between gap-6">
+              <div className="relative flex-1 max-w-[140px]">
+                <MeasuredChart className="h-[140px] w-full">
                   {(size) => (
                     <PieChart width={size.width} height={size.height}>
                       <Pie
                         data={dashboardData.categoryBreakdown}
-                        innerRadius={35}
-                        outerRadius={55}
-                        paddingAngle={2}
+                        innerRadius={45}
+                        outerRadius={65}
+                        paddingAngle={0}
                         dataKey="value"
                         nameKey="name"
                         stroke="none"
@@ -389,17 +405,19 @@ function AnalyticsContent({
                   )}
                 </MeasuredChart>
               </div>
-              <div className="w-3/4 space-y-2">
+              <div className="flex-1 space-y-3">
                 {dashboardData.categoryBreakdown.map((item) => (
-                  <div key={item.name} className="flex justify-between text-xs items-center">
+                  <div key={item.name} className="flex items-center justify-between text-xs">
                     <div className="flex items-center gap-2 min-w-0">
                       <div
-                        className="w-1.5 h-1.5 rounded-full shrink-0"
+                        className="h-2 w-2 rounded-full shrink-0"
                         style={{ backgroundColor: item.color }}
                       />
-                      <span className="truncate text-muted-foreground">{item.name}</span>
+                      <span className="truncate text-muted-foreground font-medium">
+                        {item.name}
+                      </span>
                     </div>
-                    <span className="font-semibold shrink-0">
+                    <span className="font-bold text-foreground tabular-nums">
                       ₹{item.value.toLocaleString("en-IN")}
                     </span>
                   </div>
@@ -476,78 +494,42 @@ function AnalyticsContent({
       <Card className="rounded-2xl border-border shadow-sm">
         <CardHeader className="pb-0">
           <CardTitle className="text-sm font-bold">Monthly Trends</CardTitle>
-          <p className="pt-1 text-[10px] font-normal text-muted-foreground">
-            Income, expenses, and optional loan / credit-card series from the dashboard API.
-          </p>
         </CardHeader>
         <CardContent className="min-w-0 pt-4">
           {dashboardData.monthlyTrends.length === 0 ? (
-            <p className="flex h-[300px] items-center justify-center text-sm text-muted-foreground">
+            <p className="flex h-[200px] items-center justify-center text-sm text-muted-foreground">
               No monthly trend data.
             </p>
           ) : (
             <div className="min-w-0">
-              <MeasuredChart className="w-full h-[300px] min-h-[300px]">
+              <MeasuredChart className="w-full h-[200px]">
                 {(size) => (
                   <BarChart
                     width={size.width}
                     height={size.height}
                     data={dashboardData.monthlyTrends}
-                    barSize={showExtendedMonthly ? 10 : 14}
-                    margin={{ top: 4, right: 4, left: 0, bottom: 0 }}
+                    margin={{ top: 10, right: 10, left: -15, bottom: 0 }}
                   >
+                    <CartesianGrid vertical={false} stroke="hsl(var(--border))" strokeDasharray="3 3" opacity={0.4} />
                     <XAxis
                       dataKey="month"
                       fontSize={10}
-                      tickLine={false}
-                      axisLine={{ stroke: "hsl(var(--border))" }}
+                      tickLine={true}
+                      axisLine={true}
                       tick={{ fill: "hsl(var(--muted-foreground))" }}
                       dy={10}
                     />
                     <YAxis
                       fontSize={10}
-                      tickLine={false}
-                      axisLine={{ stroke: "hsl(var(--border))" }}
+                      tickLine={true}
+                      axisLine={true}
                       tick={{ fill: "hsl(var(--muted-foreground))" }}
-                      tickFormatter={(val) => `₹${val / 1000}k`}
-                      dx={-10}
+                      tickFormatter={(val) => `₹${val >= 1000 ? `${val / 1000}k` : val}`}
                     />
-                    <Tooltip
-                      contentStyle={{
-                        backgroundColor: "hsl(var(--card))",
-                        borderColor: "hsl(var(--border))",
-                        color: "hsl(var(--foreground))",
-                      }}
-                      labelStyle={{ color: "hsl(var(--foreground))" }}
-                    />
-                    <Legend
-                      iconType="square"
-                      wrapperStyle={{ fontSize: "9px", color: "hsl(var(--muted-foreground))" }}
-                    />
-                    <Bar dataKey="income" name="Income" fill="#22c55e" radius={[2, 2, 0, 0]} />
-                    <Bar dataKey="expense" name="Expense" fill="#ef4444" radius={[2, 2, 0, 0]} />
-                    {showExtendedMonthly ? (
-                      <>
-                        <Bar
-                          dataKey="loanPayment"
-                          name="Loan payment"
-                          fill="#8b5cf6"
-                          radius={[2, 2, 0, 0]}
-                        />
-                        <Bar
-                          dataKey="creditCardBillPayment"
-                          name="CC bill pay"
-                          fill="#3b82f6"
-                          radius={[2, 2, 0, 0]}
-                        />
-                        <Bar
-                          dataKey="creditCardSpend"
-                          name="CC spend"
-                          fill="#06b6d4"
-                          radius={[2, 2, 0, 0]}
-                        />
-                      </>
-                    ) : null}
+                    <Tooltip cursor={{ fill: 'transparent' }} />
+                    <Legend verticalAlign="bottom" height={36} iconType="rect" iconSize={12} />
+                    <Bar dataKey="income" name="Income" fill="#22c55e" radius={[4, 4, 0, 0]} />
+                    <Bar dataKey="expense" name="Expense" fill="#ef4444" radius={[4, 4, 0, 0]} />
                   </BarChart>
                 )}
               </MeasuredChart>
@@ -562,44 +544,41 @@ function AnalyticsContent({
         </CardHeader>
         <CardContent className="min-w-0 pt-4">
           {dashboardData.dayOfWeek.length === 0 ? (
-            <p className="flex h-[300px] items-center justify-center text-sm text-muted-foreground">
+            <p className="flex h-[200px] items-center justify-center text-sm text-muted-foreground">
               No day-of-week data.
             </p>
           ) : (
             <div className="min-w-0">
-              <MeasuredChart className="w-full h-[300px] min-h-[300px]">
+              <MeasuredChart className="w-full h-[200px]">
                 {(size) => (
                   <BarChart
                     width={size.width}
                     height={size.height}
                     data={dashboardData.dayOfWeek}
-                    barSize={25}
+                    margin={{ top: 10, right: 10, left: -15, bottom: 0 }}
                   >
+                    <CartesianGrid vertical={false} stroke="hsl(var(--border))" strokeDasharray="3 3" opacity={0.4} />
                     <XAxis
                       dataKey="day"
                       fontSize={10}
-                      tickLine={false}
-                      axisLine={{ stroke: "hsl(var(--border))" }}
+                      tickLine={true}
+                      axisLine={true}
                       tick={{ fill: "hsl(var(--muted-foreground))" }}
                       dy={10}
                     />
                     <YAxis
                       fontSize={10}
-                      tickLine={false}
-                      axisLine={{ stroke: "hsl(var(--border))" }}
+                      tickLine={true}
+                      axisLine={true}
                       tick={{ fill: "hsl(var(--muted-foreground))" }}
-                      tickFormatter={(val) => `₹${val / 1000}k`}
-                      dx={-10}
+                      tickFormatter={(val) => `₹${val >= 1000 ? `${val / 1000}k` : val}`}
                     />
-                    <Tooltip
-                      contentStyle={{
-                        backgroundColor: "hsl(var(--card))",
-                        borderColor: "hsl(var(--border))",
-                        color: "hsl(var(--foreground))",
-                      }}
-                      labelStyle={{ color: "hsl(var(--foreground))" }}
+                    <Bar 
+                      dataKey="amount" 
+                      fill="#f59e0b" 
+                      radius={[4, 4, 0, 0]} 
+                      barSize={30} 
                     />
-                    <Bar dataKey="amount" fill="#f59e0b" radius={[2, 2, 0, 0]} />
                   </BarChart>
                 )}
               </MeasuredChart>
@@ -608,7 +587,7 @@ function AnalyticsContent({
         </CardContent>
       </Card>
 
-      <div className="grid grid-cols-3 gap-3">
+      <div className="grid grid-cols-2 gap-3">
         <Card className="rounded-2xl border-border p-4 shadow-sm">
           <p className="mb-1 text-[10px] text-muted-foreground">Total Fees Paid</p>
           <p className="text-lg font-bold text-red-500">
@@ -619,12 +598,6 @@ function AnalyticsContent({
           <p className="mb-1 text-[10px] text-muted-foreground">Total Transactions</p>
           <p className="text-lg font-bold text-foreground">
             {dashboardData.summary.totalTransactions}
-          </p>
-        </Card>
-        <Card className="rounded-2xl border-border p-4 shadow-sm">
-          <p className="mb-1 text-[10px] text-muted-foreground">Active Spend Days</p>
-          <p className="text-lg font-bold text-foreground">
-            {dashboardData.summary.activeSpendDays}
           </p>
         </Card>
       </div>
