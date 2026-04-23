@@ -1136,6 +1136,18 @@ function pickDisplayTitleForRecentRow(rec: Record<string, unknown>): string {
   return primary
 }
 
+function toDisplayCategory(raw: string): string {
+  const t = raw.trim()
+  if (!t) return ""
+  // Keep title-cased labels as-is; convert slug-like tokens to readable words.
+  if (/[A-Z]/.test(t)) return t
+  return t
+    .replace(/[_-]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .replace(/\b\w/g, (m) => m.toUpperCase())
+}
+
 function decorateOnBehalfExpenseTitle(
   baseTitle: string,
   type: unknown,
@@ -1151,11 +1163,11 @@ function decorateOnBehalfExpenseTitle(
   ])
   const personName = cleanDisplayText(personNameRaw)
   if (!personName) return baseTitle
-  const trimmedBase = baseTitle.trim()
-  if (!trimmedBase) return personName
-  const alreadyHasName = trimmedBase.toLowerCase().includes(personName.toLowerCase())
-  if (alreadyHasName) return trimmedBase
-  return `${trimmedBase} · ${personName}`
+  const category = toDisplayCategory(
+    firstStringFromRecord(rec, ["category", "categoryName", "category_name"]) ?? baseTitle
+  )
+  const prefix = category || "Expense"
+  return `${prefix} on behalf of ${personName}`
 }
 
 function normalizeRecentDate(rec: Record<string, unknown>): string | null {

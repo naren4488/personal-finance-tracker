@@ -29,7 +29,7 @@ function buildUdharPersonPhrase(tx: RecentTransaction): string {
   if (action === "given") return `Given to ${safePerson}`
   if (action === "taken") return `Taken from ${safePerson}`
   if (action === "received") return `Received from ${safePerson}`
-  return `Made to ${safePerson}`
+  return `Paid to ${safePerson}`
 }
 
 /** Subtitle line: `9 Apr 2026 · HSBC · note` (matches Entries screen design). */

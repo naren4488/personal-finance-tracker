@@ -5,6 +5,7 @@ import { getUdharLedgerRowHeading } from "@/lib/udhar/udhar-entry-labels"
 import { getUdharEffect, udharEffectTextClassName } from "@/lib/udhar/udhar-effect"
 import {
   getRecentTransactionCategoryLabel,
+  inferUdharPersonName,
   parseSignedAmountString,
   type RecentTransaction,
 } from "@/lib/api/transaction-schemas"
@@ -89,7 +90,20 @@ export function PersonUdharLedgerList({
         const rec = tx as unknown as Record<string, unknown>
         const personId = typeof rec.personId === "string" ? rec.personId.trim() : ""
         const paidOnBehalf = rec.paidOnBehalf === true || Boolean(personId)
+        const personName = inferUdharPersonName(tx)
         const category = getRecentTransactionCategoryLabel(tx)
+        const categoryDisplay =
+          typeof category === "string"
+            ? category
+                .trim()
+                .replace(/[_-]+/g, " ")
+                .replace(/\s+/g, " ")
+                .replace(/\b\w/g, (m) => m.toUpperCase())
+            : ""
+        const onBehalfHeading =
+          tx.type === "expense" && paidOnBehalf && personName && personName !== "Unknown"
+            ? `${categoryDisplay || "Expense"} on behalf of ${personName}`
+            : ""
         const showCategoryUnderHeading =
           tx.type === "expense" &&
           paidOnBehalf &&
@@ -103,9 +117,9 @@ export function PersonUdharLedgerList({
               <div className="min-w-0">
                 <p className="text-sm font-semibold text-foreground">
                   <span className="text-muted-foreground">{heading.arrow} </span>
-                  {heading.label}
+                  {onBehalfHeading || heading.label}
                 </p>
-                {showCategoryUnderHeading ? (
+                {showCategoryUnderHeading && !onBehalfHeading ? (
                   <p className="mt-0.5 truncate text-xs text-muted-foreground">{category}</p>
                 ) : null}
               </div>

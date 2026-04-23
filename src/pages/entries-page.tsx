@@ -346,8 +346,15 @@ export default function EntriesPage() {
     if (creditCardFilterId) {
       list = list.filter((tx) => matchesRecentTransactionCreditCard(tx, creditCardFilterId))
     }
-    if (segment === "transfer" || segment === "expenses") {
+    if (segment === "transfer") {
       list = list.filter((tx) => !isUdharRecentTransaction(tx))
+    }
+    if (segment === "expenses") {
+      list = list.filter((tx) => {
+        if (!isUdharRecentTransaction(tx)) return true
+        // Keep genuine expenses (including "on behalf") visible in Expenses tab.
+        return tx.type === "expense"
+      })
     }
     return list
   }, [recentTransactions, creditCardFilterId, segment])

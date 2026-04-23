@@ -38,13 +38,13 @@ export const TransferTransactionRow = memo(function TransferTransactionRow({
       .join(" ")
       .toLowerCase()
     if (raw.includes("payment_received") || raw.includes("payment received")) {
-      return `Transfer from ${safePerson}`
+      return `Received from ${safePerson}`
     }
     if (raw.includes("payment_made") || raw.includes("payment made")) {
-      return `Transfer to ${safePerson}`
+      return `Paid to ${safePerson}`
     }
     const dir = udharDirectionLabel(tx)
-    return dir === "given" ? `Transfer to ${safePerson}` : `Transfer from ${safePerson}`
+    return dir === "given" ? `Given to ${safePerson}` : `Taken from ${safePerson}`
   })()
 
   const { fromLabel, toLabel } = getTransferRouteLabels(tx, accounts)
