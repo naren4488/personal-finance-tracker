@@ -2,7 +2,10 @@ import { memo } from "react"
 import { TransactionEntryDeleteButton } from "@/features/entries/transaction-entry-delete-button"
 import {
   getTransferRouteLabels,
+  inferUdharPersonName,
+  isUdharRecentTransaction,
   parseSignedAmountString,
+  udharDirectionLabel,
   type RecentTransaction,
 } from "@/lib/api/transaction-schemas"
 import type { Account } from "@/lib/api/account-schemas"
@@ -21,9 +24,32 @@ export const TransferTransactionRow = memo(function TransferTransactionRow({
   onDelete?: (tx: RecentTransaction) => void
   className?: string
 }) {
+  const personTransferPhrase = (() => {
+    if (!isUdharRecentTransaction(tx)) return ""
+    const personName = inferUdharPersonName(tx)
+    const safePerson = personName === "Unknown" ? "Unknown person" : personName
+    const rec = tx as unknown as Record<string, unknown>
+    const raw = [
+      typeof rec.kind === "string" ? rec.kind : "",
+      typeof rec.title === "string" ? rec.title : "",
+      typeof rec.subtitle === "string" ? rec.subtitle : "",
+      typeof rec.note === "string" ? rec.note : "",
+    ]
+      .join(" ")
+      .toLowerCase()
+    if (raw.includes("payment_received") || raw.includes("payment received")) {
+      return `Transfer from ${safePerson}`
+    }
+    if (raw.includes("payment_made") || raw.includes("payment made")) {
+      return `Transfer to ${safePerson}`
+    }
+    const dir = udharDirectionLabel(tx)
+    return dir === "given" ? `Transfer to ${safePerson}` : `Transfer from ${safePerson}`
+  })()
+
   const { fromLabel, toLabel } = getTransferRouteLabels(tx, accounts)
   const route = `${fromLabel} → ${toLabel}`
-  const secondary = [formatDate(tx.date), route].filter(Boolean).join(" · ")
+  const secondary = [formatDate(tx.date), personTransferPhrase || route].filter(Boolean).join(" · ")
   const n = parseSignedAmountString(tx.signedAmount)
   const abs = formatCurrency(Math.abs(n))
   const amountText = n < 0 ? `−${abs}` : n > 0 ? `+${abs}` : abs

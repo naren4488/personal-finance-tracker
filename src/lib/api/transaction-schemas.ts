@@ -279,7 +279,7 @@ export function mapApiTransactionToClient(
     : fallback.tags
   const tagLine = tags.length ? tags.join(" · ") : ""
   const titleFromApi = typeof t.title === "string" ? t.title : ""
-  const title =
+  const baseTitle =
     titleFromApi ||
     fallback.displayTitle ||
     [note, tagLine].filter(Boolean).join(" · ") ||
@@ -288,6 +288,7 @@ export function mapApiTransactionToClient(
 
   const id = typeof t.id === "string" ? t.id : crypto.randomUUID()
   const type = t.type ?? fallback.type
+  const title = decorateOnBehalfExpenseTitle(baseTitle, type, apiTx)
   const date = typeof t.date === "string" ? t.date : fallback.date
   const category = typeof t.category === "string" ? t.category : fallback.category
   const sourceName =
@@ -680,6 +681,8 @@ export const recentTransactionItemSchema = z
     /** Counterparty label for person transfers (preferred over `title` for Udhar UI). */
     destinationName: z.string().optional(),
     destinationType: z.string().optional(),
+    entryType: z.string().optional(),
+    dueDate: z.string().optional(),
   })
   .passthrough()
 
@@ -688,6 +691,12 @@ export type RecentTransaction = z.infer<typeof recentTransactionItemSchema>
 function withCanonicalTransferFields(tx: RecentTransaction): RecentTransaction {
   const rec = tx as unknown as Record<string, unknown>
   const next = { ...rec } as Record<string, unknown>
+  if (typeof tx.title === "string" && tx.title.trim()) {
+    next.title = humanizeBackendTitleSlug(tx.title.trim())
+  }
+  if (typeof tx.subtitle === "string") {
+    next.subtitle = cleanDisplayText(tx.subtitle)
+  }
 
   const destinationType =
     firstStringFromRecord(rec, ["destinationType", "destination_type"]) ??
@@ -714,7 +723,129 @@ function withCanonicalTransferFields(tx: RecentTransaction): RecentTransaction {
   ])
   if (loanAccountId) next.loanAccountId = loanAccountId
 
+  const entryType = firstStringFromRecord(rec, ["entryType", "entry_type", "kind"])
+  if (entryType) next.entryType = entryType
+  const dueDateRaw = firstStringFromRecord(rec, ["dueDate", "due_date"])
+  if (dueDateRaw) next.dueDate = dueDateRaw.slice(0, 10)
+
   return next as RecentTransaction
+}
+
+function udharSubtitleLabelFromDestinationType(
+  destinationTypeRaw: string
+): "Given to" | "Taken from" | "Received from" | "Paid to" | null {
+  const t = destinationTypeRaw.trim().toLowerCase()
+  if (!t) return null
+  if (t === "person_lend") return "Given to"
+  if (t === "person_borrow") return "Taken from"
+  if (t === "person_repayment_in") return "Received from"
+  if (t === "person_repayment_out") return "Paid to"
+  return null
+}
+
+function looksLikeOpaqueId(value: string): boolean {
+  const t = value.trim()
+  if (!t) return false
+  if (/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(t))
+    return true
+  if (/^[0-9a-f]{24}$/i.test(t)) return true
+  if (/^[a-z0-9_-]{16,}$/i.test(t) && !/\s/.test(t)) return true
+  return false
+}
+
+function cleanDisplayText(value: string | undefined): string {
+  const t = String(value ?? "").trim()
+  if (!t) return ""
+  if (looksLikeOpaqueId(t)) return ""
+  return t
+}
+
+function humanizeBackendTitleSlug(value: string): string {
+  const t = value.trim().toLowerCase()
+  if (t === "person_borrow") return "Money Taken"
+  if (t === "person_lend") return "Money Given"
+  if (t === "person_repayment_in") return "Payment Received"
+  if (t === "person_repayment_out") return "Payment Made"
+  return value.trim()
+}
+
+function inferUdharEntryTypeFromRecord(
+  rec: Record<string, unknown>
+): "money_given" | "money_taken" | "payment_received" | "payment_made" | null {
+  const raw = (
+    firstStringFromRecord(rec, [
+      "entryType",
+      "entry_type",
+      "destinationType",
+      "destination_type",
+      "incomeSource",
+      "kind",
+      "title",
+    ]) ?? ""
+  )
+    .toLowerCase()
+    .replace(/\s+/g, "_")
+  if (!raw) return null
+  if (raw === "money_given" || raw === "person_lend") return "money_given"
+  if (raw === "money_taken" || raw === "person_borrow") return "money_taken"
+  if (raw === "payment_received" || raw === "person_repayment_in") return "payment_received"
+  if (raw === "payment_made" || raw === "person_repayment_out") return "payment_made"
+  return null
+}
+
+function withUdharPersonSubtitle(tx: RecentTransaction): RecentTransaction {
+  const rec = tx as unknown as Record<string, unknown>
+  const entryType = inferUdharEntryTypeFromRecord(rec)
+  const personNameRaw = firstStringFromRecord(rec, [
+    "personName",
+    "person_name",
+    "destinationName",
+    "destination_name",
+    "counterpartyName",
+    "contactName",
+  ])
+  const personName = cleanDisplayText(personNameRaw)
+  const relation =
+    entryType === "money_given"
+      ? "Given to"
+      : entryType === "money_taken"
+        ? "Taken from"
+        : entryType === "payment_received"
+          ? "Received from"
+          : entryType === "payment_made"
+            ? "Paid to"
+            : udharSubtitleLabelFromDestinationType(
+                firstStringFromRecord(rec, ["destinationType", "destination_type"]) ?? ""
+              )
+  // Legacy expense-on-behalf rows may not carry destinationType; treat them as "given".
+  const fallbackRelation =
+    !relation &&
+    String(tx.type ?? "").toLowerCase() === "expense" &&
+    Boolean(firstStringFromRecord(rec, ["personId", "person_id"]))
+      ? "Given to"
+      : null
+  const label = relation ?? fallbackRelation
+  if (!label || !personName) return tx
+
+  const destinationName = cleanDisplayText(
+    firstStringFromRecord(rec, ["destinationName", "destination_name"])
+  )
+  const sourceName = cleanDisplayText(firstStringFromRecord(rec, ["sourceName", "source_name"]))
+  const route =
+    label === "Taken from" || label === "Received from"
+      ? destinationName
+        ? `To ${destinationName}`
+        : ""
+      : sourceName && sourceName.toLowerCase() !== personName.toLowerCase()
+        ? `From ${sourceName}`
+        : destinationName
+          ? `To ${destinationName}`
+          : ""
+
+  const normalized = [`${label} ${personName}`.trim(), route].filter(Boolean).join(" · ")
+  const existing = cleanDisplayText(String(tx.subtitle ?? ""))
+  if (existing && existing.toLowerCase().includes(normalized.toLowerCase())) return tx
+  return { ...tx, subtitle: normalized }
 }
 
 /**
@@ -818,7 +949,10 @@ function normalizeRecentTitle(rec: Record<string, unknown>): string {
   const keys = ["title", "description", "note", "category", "sourceName", "merchantName"] as const
   for (const k of keys) {
     const v = rec[k]
-    if (typeof v === "string" && v.trim()) return v.trim()
+    if (typeof v === "string" && v.trim()) {
+      const t = humanizeBackendTitleSlug(v.trim())
+      if (!looksLikeOpaqueId(t)) return t
+    }
   }
   return "Transaction"
 }
@@ -986,16 +1120,42 @@ export function getRecentTransactionNote(tx: RecentTransaction): string {
 
 /** Prefer a human name when the primary title is a backend kind slug. */
 function pickDisplayTitleForRecentRow(rec: Record<string, unknown>): string {
-  const dest =
-    typeof rec.destinationName === "string" && rec.destinationName.trim()
-      ? rec.destinationName.trim()
-      : ""
-  if (dest) return dest
+  const entryType = inferUdharEntryTypeFromRecord(rec)
+  if (entryType === "money_given") return "Money Given"
+  if (entryType === "money_taken") return "Money Taken"
+  if (entryType === "payment_received") return "Payment Received"
+  if (entryType === "payment_made") return "Payment Made"
   const primary = normalizeRecentTitle(rec)
   if (!isTransactionKindSlugTitle(primary)) return primary
   const fromPerson = firstStringFromRecord(rec, PERSON_NAME_KEYS)
   if (fromPerson) return fromPerson
+  const dest = cleanDisplayText(
+    typeof rec.destinationName === "string" ? rec.destinationName.trim() : ""
+  )
+  if (dest) return dest
   return primary
+}
+
+function decorateOnBehalfExpenseTitle(
+  baseTitle: string,
+  type: unknown,
+  rec: Record<string, unknown>
+): string {
+  if (String(type).trim().toLowerCase() !== "expense") return baseTitle
+  const personNameRaw = firstStringFromRecord(rec, [
+    "personName",
+    "person_name",
+    "destinationName",
+    "destination_name",
+    "counterpartyName",
+  ])
+  const personName = cleanDisplayText(personNameRaw)
+  if (!personName) return baseTitle
+  const trimmedBase = baseTitle.trim()
+  if (!trimmedBase) return personName
+  const alreadyHasName = trimmedBase.toLowerCase().includes(personName.toLowerCase())
+  if (alreadyHasName) return trimmedBase
+  return `${trimmedBase} · ${personName}`
 }
 
 function normalizeRecentDate(rec: Record<string, unknown>): string | null {
@@ -1020,15 +1180,15 @@ function normalizeRawToRecentTransaction(rec: Record<string, unknown>): RecentTr
   if (!date) return null
 
   const id = rec.id !== undefined && rec.id !== null ? String(rec.id).trim() : crypto.randomUUID()
-  const title = pickDisplayTitleForRecentRow(rec)
-  const subtitle =
+  const type = normalizeRecentType(rec.type)
+  const title = decorateOnBehalfExpenseTitle(pickDisplayTitleForRecentRow(rec), type, rec)
+  const subtitle = cleanDisplayText(
     typeof rec.subtitle === "string"
       ? rec.subtitle
       : typeof rec.paymentMethod === "string"
         ? rec.paymentMethod
         : ""
-
-  const type = normalizeRecentType(rec.type)
+  )
   const directionParsed = recentTransactionDirectionSchema.safeParse(rec.direction)
   const direction = directionParsed.success ? directionParsed.data : undefined
 
@@ -1063,6 +1223,9 @@ function normalizeRawToRecentTransaction(rec: Record<string, unknown>): RecentTr
     "counterpartyName",
   ])
   const destinationType = firstStringFromRecord(rec, ["destinationType", "destination_type"])
+  const entryType = firstStringFromRecord(rec, ["entryType", "entry_type", "kind"])
+  const dueDateRaw = firstStringFromRecord(rec, ["dueDate", "due_date"])
+  const dueDate = dueDateRaw ? dueDateRaw.slice(0, 10) : undefined
 
   return {
     id,
@@ -1082,6 +1245,8 @@ function normalizeRawToRecentTransaction(rec: Record<string, unknown>): RecentTr
     ...(personName ? { personName } : {}),
     ...(destinationName ? { destinationName } : {}),
     ...(destinationType ? { destinationType } : {}),
+    ...(entryType ? { entryType } : {}),
+    ...(dueDate ? { dueDate } : {}),
   } as RecentTransaction
 }
 
@@ -1100,7 +1265,7 @@ export function parseGetRecentTransactionsSuccess(
   if (strict.success) {
     const txs = strict.data.data.transactions
       .filter((t) => !shouldExcludeAsNonTransactionRow(t as unknown as Record<string, unknown>))
-      .map((t) => withCanonicalTransferFields(t))
+      .map((t) => withUdharPersonSubtitle(withCanonicalTransferFields(t)))
     return { ok: true, transactions: txs }
   }
 
@@ -1119,7 +1284,7 @@ export function parseGetRecentTransactionsSuccess(
       continue
     }
     const row = normalizeRawToRecentTransaction(rec)
-    if (row) out.push(withCanonicalTransferFields(row))
+    if (row) out.push(withUdharPersonSubtitle(withCanonicalTransferFields(row)))
   }
 
   if (import.meta.env.DEV && excluded > 0) {
@@ -1215,17 +1380,24 @@ export function inferUdharPersonKey(tx: RecentTransaction): string {
 export function inferUdharPersonName(tx: RecentTransaction): string {
   const rec = tx as unknown as Record<string, unknown>
   if (typeof rec.destinationName === "string" && rec.destinationName.trim()) {
-    return rec.destinationName.trim()
+    const n = rec.destinationName.trim()
+    if (!looksLikeOpaqueId(n)) return n
   }
   if (typeof rec.personName === "string" && rec.personName.trim()) {
-    return rec.personName.trim()
+    const n = rec.personName.trim()
+    if (!looksLikeOpaqueId(n)) return n
   }
   const title = tx.title.trim()
-  if (title && title !== "Transaction" && !isTransactionKindSlugTitle(title)) {
+  if (
+    title &&
+    title !== "Transaction" &&
+    !isTransactionKindSlugTitle(title) &&
+    !looksLikeOpaqueId(title)
+  ) {
     return title
   }
   const sub = tx.subtitle.trim()
-  if (sub && !isTransactionKindSlugTitle(sub)) return sub
+  if (sub && !isTransactionKindSlugTitle(sub) && !looksLikeOpaqueId(sub)) return sub
   return "Unknown"
 }
 
@@ -1239,11 +1411,12 @@ export function resolveUdharPersonDisplayName(
 ): string {
   const rec = tx as unknown as Record<string, unknown>
   if (typeof rec.destinationName === "string" && rec.destinationName.trim()) {
-    return rec.destinationName.trim()
+    const n = rec.destinationName.trim()
+    if (!looksLikeOpaqueId(n)) return n
   }
   if (typeof rec.personName === "string" && rec.personName.trim()) {
     const n = rec.personName.trim()
-    if (!isTransactionKindSlugTitle(n)) return n
+    if (!isTransactionKindSlugTitle(n) && !looksLikeOpaqueId(n)) return n
   }
 
   const list = commitments?.length ? commitments : null

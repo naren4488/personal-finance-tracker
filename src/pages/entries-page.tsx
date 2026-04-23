@@ -28,6 +28,7 @@ import type { UdharEntryType } from "@/lib/api/udhar-schemas"
 import type { TransactionType } from "@/lib/api/schemas"
 import type { RecentTransactionsQueryArg } from "@/store/api/base-api"
 import {
+  isUdharRecentTransaction,
   matchesRecentTransactionCreditCard,
   parseSignedAmountString,
   type RecentTransaction,
@@ -345,8 +346,11 @@ export default function EntriesPage() {
     if (creditCardFilterId) {
       list = list.filter((tx) => matchesRecentTransactionCreditCard(tx, creditCardFilterId))
     }
+    if (segment === "transfer" || segment === "expenses") {
+      list = list.filter((tx) => !isUdharRecentTransaction(tx))
+    }
     return list
-  }, [recentTransactions, creditCardFilterId])
+  }, [recentTransactions, creditCardFilterId, segment])
 
   const displayList: RecentTransaction[] = sortedServerList
 

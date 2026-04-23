@@ -18,6 +18,15 @@ function firstString(rec: Record<string, unknown>, keys: readonly string[]): str
 
 function normalizeEntryTypeToken(raw: string): UdharEntryTypeNorm | null {
   const t = raw.trim().toLowerCase().replace(/\s+/g, "_")
+  /** Backend entry type values (POST /transactions/udhar). */
+  if (
+    t === "money_given" ||
+    t === "payment_received" ||
+    t === "money_taken" ||
+    t === "payment_made"
+  ) {
+    return t
+  }
   /** Backend destinationType slugs for person ledger rows. */
   if (t === "person_lend") return "money_given"
   if (t === "person_borrow") return "money_taken"
@@ -31,6 +40,15 @@ function normalizeEntryTypeToken(raw: string): UdharEntryTypeNorm | null {
  */
 export function extractUdharEntryType(tx: RecentTransaction): UdharEntryTypeNorm | null {
   const rec = asRec(tx)
+  const entryType = firstString(rec, ["entryType", "entry_type", "kind"])
+  const fromEntryType = entryType ? normalizeEntryTypeToken(entryType) : null
+  if (fromEntryType) return fromEntryType
+
+  // Recent endpoint sometimes encodes the udhar direction as income/expense source slug.
+  const sourceSlug = firstString(rec, ["incomeSource", "income_source", "category", "title"])
+  const fromSourceSlug = sourceSlug ? normalizeEntryTypeToken(sourceSlug) : null
+  if (fromSourceSlug) return fromSourceSlug
+
   const destinationType = firstString(rec, ["destinationType", "destination_type"])
   const fromDestination = destinationType ? normalizeEntryTypeToken(destinationType) : null
   if (fromDestination) return fromDestination

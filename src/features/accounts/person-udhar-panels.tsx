@@ -3,7 +3,11 @@ import { TransactionEntryDeleteButton } from "@/features/entries/transaction-ent
 import { aggregateUdharLedgerQuadrantTotals } from "@/lib/udhar/udhar-totals"
 import { getUdharLedgerRowHeading } from "@/lib/udhar/udhar-entry-labels"
 import { getUdharEffect, udharEffectTextClassName } from "@/lib/udhar/udhar-effect"
-import { parseSignedAmountString, type RecentTransaction } from "@/lib/api/transaction-schemas"
+import {
+  getRecentTransactionCategoryLabel,
+  parseSignedAmountString,
+  type RecentTransaction,
+} from "@/lib/api/transaction-schemas"
 import { ACTION_GROUP_ROW } from "@/lib/ui/action-group-classes"
 import { formatCurrency, formatDate, formatSignedCurrencyInr } from "@/lib/format"
 import { cn } from "@/lib/utils"
@@ -82,15 +86,29 @@ export function PersonUdharLedgerList({
         const effect = getUdharEffect(tx)
         const absAmt = Math.abs(parseSignedAmountString(tx.signedAmount))
         const heading = getUdharLedgerRowHeading(tx)
+        const rec = tx as unknown as Record<string, unknown>
+        const personId = typeof rec.personId === "string" ? rec.personId.trim() : ""
+        const paidOnBehalf = rec.paidOnBehalf === true || Boolean(personId)
+        const category = getRecentTransactionCategoryLabel(tx)
+        const showCategoryUnderHeading =
+          tx.type === "expense" &&
+          paidOnBehalf &&
+          typeof category === "string" &&
+          category.trim().length > 0
         const canDelete = Boolean(onDeleteEntry && String(tx.id ?? "").trim())
         return (
           <li key={tx.id} className="rounded-2xl border border-border/80 bg-card p-3.5">
             <p className="text-xs text-muted-foreground">{formatDate(tx.date)}</p>
             <div className="mt-1.5 flex items-start justify-between gap-2">
-              <p className="min-w-0 text-sm font-semibold text-foreground">
-                <span className="text-muted-foreground">{heading.arrow} </span>
-                {heading.label}
-              </p>
+              <div className="min-w-0">
+                <p className="text-sm font-semibold text-foreground">
+                  <span className="text-muted-foreground">{heading.arrow} </span>
+                  {heading.label}
+                </p>
+                {showCategoryUnderHeading ? (
+                  <p className="mt-0.5 truncate text-xs text-muted-foreground">{category}</p>
+                ) : null}
+              </div>
               <div className={cn(ACTION_GROUP_ROW, "shrink-0")}>
                 {canDelete ? (
                   <TransactionEntryDeleteButton onClick={() => onDeleteEntry?.(tx)} />
