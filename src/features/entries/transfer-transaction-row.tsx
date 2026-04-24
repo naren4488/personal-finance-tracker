@@ -1,15 +1,14 @@
 import { memo } from "react"
+import { TransactionBottomTag } from "@/features/entries/emi-transaction-bottom-tag"
 import { TransactionEntryDeleteButton } from "@/features/entries/transaction-entry-delete-button"
 import {
-  getTransferRouteLabels,
-  inferUdharPersonName,
-  isUdharRecentTransaction,
-  parseSignedAmountString,
-  udharDirectionLabel,
-  type RecentTransaction,
-} from "@/lib/api/transaction-schemas"
+  buildTransactionBottomLabel,
+  buildRecentTxPrimaryTitle,
+  buildRecentTxSubtitleParts,
+} from "@/features/entries/transaction-list-utils"
+import { parseSignedAmountString, type RecentTransaction } from "@/lib/api/transaction-schemas"
 import type { Account } from "@/lib/api/account-schemas"
-import { formatCurrency, formatDate } from "@/lib/format"
+import { formatCurrency } from "@/lib/format"
 import { ACTION_GROUP_ROW } from "@/lib/ui/action-group-classes"
 import { cn } from "@/lib/utils"
 
@@ -24,32 +23,9 @@ export const TransferTransactionRow = memo(function TransferTransactionRow({
   onDelete?: (tx: RecentTransaction) => void
   className?: string
 }) {
-  const personTransferPhrase = (() => {
-    if (!isUdharRecentTransaction(tx)) return ""
-    const personName = inferUdharPersonName(tx)
-    const safePerson = personName === "Unknown" ? "Unknown person" : personName
-    const rec = tx as unknown as Record<string, unknown>
-    const raw = [
-      typeof rec.kind === "string" ? rec.kind : "",
-      typeof rec.title === "string" ? rec.title : "",
-      typeof rec.subtitle === "string" ? rec.subtitle : "",
-      typeof rec.note === "string" ? rec.note : "",
-    ]
-      .join(" ")
-      .toLowerCase()
-    if (raw.includes("payment_received") || raw.includes("payment received")) {
-      return `Received from ${safePerson}`
-    }
-    if (raw.includes("payment_made") || raw.includes("payment made")) {
-      return `Paid to ${safePerson}`
-    }
-    const dir = udharDirectionLabel(tx)
-    return dir === "given" ? `Given to ${safePerson}` : `Taken from ${safePerson}`
-  })()
-
-  const { fromLabel, toLabel } = getTransferRouteLabels(tx, accounts)
-  const route = `${fromLabel} → ${toLabel}`
-  const secondary = [formatDate(tx.date), personTransferPhrase || route].filter(Boolean).join(" · ")
+  const primaryTitle = buildRecentTxPrimaryTitle(tx)
+  const sub = buildRecentTxSubtitleParts(tx, accounts)
+  const bottomLabel = buildTransactionBottomLabel(tx, accounts)
   const n = parseSignedAmountString(tx.signedAmount)
   const abs = formatCurrency(Math.abs(n))
   const amountText = n < 0 ? `−${abs}` : n > 0 ? `+${abs}` : abs
@@ -59,31 +35,41 @@ export const TransferTransactionRow = memo(function TransferTransactionRow({
   return (
     <div
       className={cn(
-        "flex w-full items-center justify-between gap-3 rounded-2xl border border-border/80 bg-card px-4 py-3.5 text-left shadow-sm",
+        "flex w-full flex-col overflow-hidden rounded-2xl border border-border/80 bg-card text-left shadow-sm",
         className
       )}
     >
-      <div className="min-w-0 flex-1">
-        <p className="truncate text-[15px] font-bold leading-tight text-[#111827] dark:text-foreground">
-          Transfer
-        </p>
-        <p className="mt-1 truncate text-xs leading-snug text-[#6B7280] dark:text-muted-foreground">
-          {secondary}
-        </p>
+      <div className="flex w-full items-start justify-between gap-3 px-4 py-3.5">
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-[15px] font-bold leading-tight text-[#111827] dark:text-foreground">
+            {primaryTitle}
+          </p>
+          {sub.line1 ? (
+            <p className="mt-1 text-xs leading-snug text-[#6B7280] dark:text-muted-foreground">
+              {sub.line1}
+            </p>
+          ) : null}
+          {sub.line2 ? (
+            <p className="mt-0.5 wrap-break-word text-xs leading-snug text-[#6B7280] dark:text-muted-foreground">
+              {sub.line2}
+            </p>
+          ) : null}
+        </div>
+        <div className={cn(ACTION_GROUP_ROW, "shrink-0 self-start")}>
+          {showDelete ? <TransactionEntryDeleteButton onClick={() => onDelete?.(tx)} /> : null}
+          <p
+            className={cn(
+              "text-right text-base font-bold tabular-nums tracking-tight",
+              n < 0 && "text-destructive",
+              n > 0 && "text-income",
+              n === 0 && "text-muted-foreground"
+            )}
+          >
+            {amountText}
+          </p>
+        </div>
       </div>
-      <div className={cn(ACTION_GROUP_ROW, "shrink-0")}>
-        {showDelete ? <TransactionEntryDeleteButton onClick={() => onDelete?.(tx)} /> : null}
-        <p
-          className={cn(
-            "text-right text-base font-bold tabular-nums tracking-tight",
-            n < 0 && "text-destructive",
-            n > 0 && "text-income",
-            n === 0 && "text-muted-foreground"
-          )}
-        >
-          {amountText}
-        </p>
-      </div>
+      <TransactionBottomTag label={bottomLabel} />
     </div>
   )
 })

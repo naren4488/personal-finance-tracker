@@ -1,5 +1,6 @@
 import { ArrowLeft, X } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import type { Account } from "@/lib/api/account-schemas"
 import type { UdharEntryType } from "@/lib/api/udhar-schemas"
 import type { RecentTransaction } from "@/lib/api/transaction-schemas"
 import {
@@ -13,6 +14,7 @@ export function UdharDetailsModal({
   onOpenChange,
   personName,
   entries,
+  accounts,
   onDeleteEntry,
   onOpenUdharEntry,
   onAddExpenseOnBehalf,
@@ -21,6 +23,7 @@ export function UdharDetailsModal({
   onOpenChange: (open: boolean) => void
   personName: string
   entries: RecentTransaction[]
+  accounts?: Account[]
   onDeleteEntry?: (tx: RecentTransaction) => void
   /** Opens the shared Add Udhar sheet with this entry type (Give / Take / Record payment). */
   onOpenUdharEntry: (preset: { entryType: UdharEntryType }) => void
@@ -125,6 +128,7 @@ export function UdharDetailsModal({
           <h3 className="shrink-0 px-1 pb-2 text-base font-bold text-foreground">Full Ledger</h3>
           <PersonUdharLedgerList
             entries={entries}
+            accounts={accounts}
             onDeleteEntry={onDeleteEntry}
             listClassName="min-h-0 flex-1 overflow-y-auto overscroll-contain [-ms-overflow-style:none] [scrollbar-width:thin]"
           />

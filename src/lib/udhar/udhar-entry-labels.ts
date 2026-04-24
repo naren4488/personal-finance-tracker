@@ -5,18 +5,18 @@ import {
   type UdharBalanceEffect,
 } from "@/lib/udhar/udhar-effect"
 
-/** Short label for list rows (Lent / Borrowed / Received / Paid). */
+/** Short label for summary chips (aligned with Money Given / Taken / …). */
 export function getUdharEntryTypeLabel(tx: RecentTransaction): string {
   const t = extractUdharEntryType(tx)
   switch (t) {
     case "money_given":
-      return "Lent"
+      return "Money Given"
     case "money_taken":
-      return "Borrowed"
+      return "Money Taken"
     case "payment_received":
-      return "Received Back"
+      return "Payment Received"
     case "payment_made":
-      return "Paid Back"
+      return "Payment Made"
     default: {
       const effect: UdharBalanceEffect = getUdharEffect(tx)
       if (effect === "receivable") return "Receivable"
@@ -31,13 +31,13 @@ export function getUdharLedgerRowHeading(tx: RecentTransaction): { arrow: string
   const t = extractUdharEntryType(tx)
   switch (t) {
     case "money_given":
-      return { arrow: "→", label: "Given" }
+      return { arrow: "→", label: "Money Given" }
     case "money_taken":
-      return { arrow: "↓", label: "Taken" }
+      return { arrow: "↓", label: "Money Taken" }
     case "payment_received":
-      return { arrow: "←", label: "Received Back" }
+      return { arrow: "←", label: "Payment Received" }
     case "payment_made":
-      return { arrow: "↑", label: "Paid Back" }
+      return { arrow: "↑", label: "Payment Made" }
     default: {
       const effect: UdharBalanceEffect = getUdharEffect(tx)
       if (effect === "receivable") return { arrow: "→", label: "Receivable" }

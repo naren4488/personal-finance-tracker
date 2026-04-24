@@ -15,7 +15,11 @@ import {
 import { useDeleteTransactionFlow } from "@/features/entries/use-delete-transaction-flow"
 import type { AccountsSegmentId } from "@/features/accounts/accounts-mock-data"
 import type { UdharEntryType } from "@/lib/api/udhar-schemas"
-import { useGetPeopleQuery, useGetPersonLedgerQuery } from "@/store/api/base-api"
+import {
+  useGetAccountsQuery,
+  useGetPeopleQuery,
+  useGetPersonLedgerQuery,
+} from "@/store/api/base-api"
 import { useAppSelector } from "@/store/hooks"
 
 export default function PersonDetailPage() {
@@ -39,6 +43,8 @@ export default function PersonDetailPage() {
     isError,
     refetch,
   } = useGetPersonLedgerQuery({ personId: pid, limit: 500 }, { skip: !user || !pid })
+
+  const { data: accounts = [] } = useGetAccountsQuery(undefined, { skip: !user })
 
   const txDelete = useDeleteTransactionFlow()
 
@@ -165,7 +171,11 @@ export default function PersonDetailPage() {
               {!loadingLedger && !isError ? (
                 <section className="space-y-2 pt-2">
                   <h3 className="text-base font-bold text-foreground">Full Ledger</h3>
-                  <PersonUdharLedgerList entries={entries} onDeleteEntry={txDelete.requestDelete} />
+                  <PersonUdharLedgerList
+                    entries={entries}
+                    accounts={accounts}
+                    onDeleteEntry={txDelete.requestDelete}
+                  />
                 </section>
               ) : null}
             </>

@@ -11,6 +11,7 @@ import { useDeleteTransactionMutation } from "@/store/api/base-api"
  * - `GET /transactions/recent` (global views like home/entries)
  * - `GET /transactions/ledger` (entity views like account/person detail)
  * - `GET /accounts` (balances — reverse of the deleted entry’s effect on accounts)
+ * - Dashboard/analytics/udhar/people rollups and commitment lists
  *
  * **Balance correctness:** Server is source of truth; refetch of `Account` list ensures balances match
  * backend after delete. Prefer this over optimistic balance math on the client.

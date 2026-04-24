@@ -1,5 +1,12 @@
 import { useMemo } from "react"
+import { TransactionBottomTag } from "@/features/entries/emi-transaction-bottom-tag"
 import { TransactionEntryDeleteButton } from "@/features/entries/transaction-entry-delete-button"
+import {
+  buildTransactionBottomLabel,
+  buildRecentTxPrimaryTitle,
+  buildRecentTxSubtitleParts,
+} from "@/features/entries/transaction-list-utils"
+import type { Account } from "@/lib/api/account-schemas"
 import { aggregateUdharLedgerQuadrantTotals } from "@/lib/udhar/udhar-totals"
 import { getUdharLedgerRowHeading } from "@/lib/udhar/udhar-entry-labels"
 import { getUdharEffect, udharEffectTextClassName } from "@/lib/udhar/udhar-effect"
@@ -7,6 +14,7 @@ import {
   getRecentTransactionCategoryLabel,
   inferUdharPersonName,
   parseSignedAmountString,
+  sanitizeUserFacingApiText,
   type RecentTransaction,
 } from "@/lib/api/transaction-schemas"
 import { ACTION_GROUP_ROW } from "@/lib/ui/action-group-classes"
@@ -43,25 +51,25 @@ export function PersonUdharNetAndQuadrants({ entries }: { entries: RecentTransac
 
       <div className="grid grid-cols-2 gap-2 sm:gap-2.5">
         <div className={quadrantTile}>
-          <p className="text-xs text-muted-foreground">Given</p>
+          <p className="text-xs text-muted-foreground">Money Given</p>
           <p className="mt-1 text-base font-bold tabular-nums text-income">
             {formatCurrency(totals.given)}
           </p>
         </div>
         <div className={quadrantTile}>
-          <p className="text-xs text-muted-foreground">Taken</p>
+          <p className="text-xs text-muted-foreground">Money Taken</p>
           <p className="mt-1 text-base font-bold tabular-nums text-destructive">
             {formatCurrency(totals.taken)}
           </p>
         </div>
         <div className={quadrantTile}>
-          <p className="text-xs text-muted-foreground">Received Back</p>
+          <p className="text-xs text-muted-foreground">Payment Received</p>
           <p className="mt-1 text-base font-bold tabular-nums text-foreground">
             {formatCurrency(totals.receivedBack)}
           </p>
         </div>
         <div className={quadrantTile}>
-          <p className="text-xs text-muted-foreground">Paid Back</p>
+          <p className="text-xs text-muted-foreground">Payment Made</p>
           <p className="mt-1 text-base font-bold tabular-nums text-foreground">
             {formatCurrency(totals.paidBack)}
           </p>
@@ -75,11 +83,14 @@ export function PersonUdharLedgerList({
   entries,
   onDeleteEntry,
   listClassName,
+  accounts,
 }: {
   entries: RecentTransaction[]
   onDeleteEntry?: (tx: RecentTransaction) => void
   /** e.g. modal: min-h-0 flex-1 overflow-y-auto overscroll-contain … */
   listClassName?: string
+  /** When provided, subtitle shows person + resolved account names (same as Entries). */
+  accounts?: Account[]
 }) {
   return (
     <ul className={cn("space-y-2 pr-0.5", listClassName)}>
@@ -110,36 +121,57 @@ export function PersonUdharLedgerList({
           typeof category === "string" &&
           category.trim().length > 0
         const canDelete = Boolean(onDeleteEntry && String(tx.id ?? "").trim())
+        const subParts =
+          accounts && accounts.length > 0
+            ? buildRecentTxSubtitleParts(tx, accounts, { includeDate: false })
+            : null
+        const ledgerFallback = !subParts ? sanitizeUserFacingApiText(tx.subtitle) : ""
+        const bottomLabel = buildTransactionBottomLabel(tx, accounts ?? [])
+        const primaryTitle = onBehalfHeading || buildRecentTxPrimaryTitle(tx)
         return (
-          <li key={tx.id} className="rounded-2xl border border-border/80 bg-card p-3.5">
-            <p className="text-xs text-muted-foreground">{formatDate(tx.date)}</p>
-            <div className="mt-1.5 flex items-start justify-between gap-2">
-              <div className="min-w-0">
-                <p className="text-sm font-semibold text-foreground">
-                  <span className="text-muted-foreground">{heading.arrow} </span>
-                  {onBehalfHeading || heading.label}
-                </p>
-                {showCategoryUnderHeading && !onBehalfHeading ? (
-                  <p className="mt-0.5 truncate text-xs text-muted-foreground">{category}</p>
-                ) : null}
-              </div>
-              <div className={cn(ACTION_GROUP_ROW, "shrink-0")}>
-                {canDelete ? (
-                  <TransactionEntryDeleteButton onClick={() => onDeleteEntry?.(tx)} />
-                ) : null}
-                <p
-                  className={cn(
-                    "text-right text-base font-bold tabular-nums",
-                    absAmt === 0 ? "text-muted-foreground" : udharEffectTextClassName(effect)
-                  )}
-                >
-                  {formatCurrency(absAmt)}
-                </p>
+          <li
+            key={tx.id}
+            className="flex flex-col overflow-hidden rounded-2xl border border-border/80 bg-card"
+          >
+            <div className="p-3.5">
+              <p className="text-xs text-muted-foreground">{formatDate(tx.date)}</p>
+              <div className="mt-1.5 flex items-start justify-between gap-2">
+                <div className="min-w-0">
+                  <p className="text-sm font-semibold text-foreground">
+                    <span className="text-muted-foreground">{heading.arrow} </span>
+                    {primaryTitle}
+                  </p>
+                  {showCategoryUnderHeading && !onBehalfHeading ? (
+                    <p className="mt-0.5 truncate text-xs text-muted-foreground">{category}</p>
+                  ) : null}
+                  {subParts?.line1 ? (
+                    <p className="mt-1 text-xs text-muted-foreground">{subParts.line1}</p>
+                  ) : null}
+                  {subParts?.line2 ? (
+                    <p className="mt-0.5 wrap-break-word text-xs text-muted-foreground">
+                      {subParts.line2}
+                    </p>
+                  ) : null}
+                  {ledgerFallback ? (
+                    <p className="mt-1 text-xs text-muted-foreground">{ledgerFallback}</p>
+                  ) : null}
+                </div>
+                <div className={cn(ACTION_GROUP_ROW, "shrink-0 self-start")}>
+                  {canDelete ? (
+                    <TransactionEntryDeleteButton onClick={() => onDeleteEntry?.(tx)} />
+                  ) : null}
+                  <p
+                    className={cn(
+                      "text-right text-base font-bold tabular-nums",
+                      absAmt === 0 ? "text-muted-foreground" : udharEffectTextClassName(effect)
+                    )}
+                  >
+                    {formatCurrency(absAmt)}
+                  </p>
+                </div>
               </div>
             </div>
-            {tx.subtitle?.trim() ? (
-              <p className="mt-1 text-xs text-muted-foreground">{tx.subtitle}</p>
-            ) : null}
+            <TransactionBottomTag label={bottomLabel} className="px-3.5" />
           </li>
         )
       })}

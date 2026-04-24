@@ -30,7 +30,8 @@ export const authUserSchema = z
   .object({
     id: z.string(),
     name: z.string(),
-    email: z.string().email(),
+    /** Backend may send values that are not strict RFC emails; keep lenient like profile. */
+    email: z.string(),
     role: z.string().optional(),
     createdAt: z.string().optional(),
     updatedAt: z.string().optional(),
@@ -42,7 +43,8 @@ export type AuthUser = z.infer<typeof authUserSchema>
 export const authTokensSchema = z.object({
   accessToken: z.string(),
   refreshToken: z.string(),
-  tokenType: z.string(),
+  /** Present on most responses; default matches Bearer APIs. */
+  tokenType: z.string().optional().default("Bearer"),
 })
 
 /** Same envelope for successful register and login */

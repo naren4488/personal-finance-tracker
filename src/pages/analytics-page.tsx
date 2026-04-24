@@ -1,4 +1,3 @@
-
 import { useEffect, useMemo, useRef, useState } from "react"
 import { useNavigate } from "react-router-dom"
 import { toast } from "sonner"
@@ -12,18 +11,17 @@ import {
   BarChart2,
   CreditCard,
 } from "lucide-react"
-import { 
-  PieChart, 
-  Pie, 
-  Cell, 
-  XAxis, 
-  YAxis, 
-  Tooltip, 
-  BarChart, 
-  Bar, 
-  Legend, 
+import {
+  PieChart,
+  Pie,
+  Cell,
+  XAxis,
+  YAxis,
+  Tooltip,
+  BarChart,
+  Bar,
+  Legend,
   CartesianGrid,
-  ResponsiveContainer 
 } from "recharts"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -321,7 +319,7 @@ function AnalyticsContent({
             placeholder="Search (filters analytics from server)…"
             value={searchInput}
             onChange={(e) => onSearchChange(e.target.value)}
-            className="rounded-xl border-border bg-card pl-9 shadow-sm"
+            className="h-10 rounded-xl border-border bg-card pl-9 shadow-sm"
             autoComplete="off"
           />
         </div>
@@ -510,7 +508,12 @@ function AnalyticsContent({
                     data={dashboardData.monthlyTrends}
                     margin={{ top: 10, right: 10, left: -15, bottom: 0 }}
                   >
-                    <CartesianGrid vertical={false} stroke="hsl(var(--border))" strokeDasharray="3 3" opacity={0.4} />
+                    <CartesianGrid
+                      vertical={false}
+                      stroke="hsl(var(--border))"
+                      strokeDasharray="3 3"
+                      opacity={0.4}
+                    />
                     <XAxis
                       dataKey="month"
                       fontSize={10}
@@ -526,10 +529,37 @@ function AnalyticsContent({
                       tick={{ fill: "hsl(var(--muted-foreground))" }}
                       tickFormatter={(val) => `₹${val >= 1000 ? `${val / 1000}k` : val}`}
                     />
-                    <Tooltip cursor={{ fill: 'transparent' }} />
-                    <Legend verticalAlign="bottom" height={36} iconType="rect" iconSize={12} />
+                    <Tooltip cursor={{ fill: "transparent" }} />
+                    <Legend
+                      verticalAlign="bottom"
+                      height={showExtendedMonthly ? 48 : 36}
+                      iconType="rect"
+                      iconSize={12}
+                    />
                     <Bar dataKey="income" name="Income" fill="#22c55e" radius={[4, 4, 0, 0]} />
                     <Bar dataKey="expense" name="Expense" fill="#ef4444" radius={[4, 4, 0, 0]} />
+                    {showExtendedMonthly ? (
+                      <>
+                        <Bar
+                          dataKey="loanPayment"
+                          name="Loan payment"
+                          fill="#8b5cf6"
+                          radius={[4, 4, 0, 0]}
+                        />
+                        <Bar
+                          dataKey="creditCardBillPayment"
+                          name="CC bill pay"
+                          fill="#6366f1"
+                          radius={[4, 4, 0, 0]}
+                        />
+                        <Bar
+                          dataKey="creditCardSpend"
+                          name="CC spend"
+                          fill="#f59e0b"
+                          radius={[4, 4, 0, 0]}
+                        />
+                      </>
+                    ) : null}
                   </BarChart>
                 )}
               </MeasuredChart>
@@ -557,7 +587,12 @@ function AnalyticsContent({
                     data={dashboardData.dayOfWeek}
                     margin={{ top: 10, right: 10, left: -15, bottom: 0 }}
                   >
-                    <CartesianGrid vertical={false} stroke="hsl(var(--border))" strokeDasharray="3 3" opacity={0.4} />
+                    <CartesianGrid
+                      vertical={false}
+                      stroke="hsl(var(--border))"
+                      strokeDasharray="3 3"
+                      opacity={0.4}
+                    />
                     <XAxis
                       dataKey="day"
                       fontSize={10}
@@ -573,12 +608,7 @@ function AnalyticsContent({
                       tick={{ fill: "hsl(var(--muted-foreground))" }}
                       tickFormatter={(val) => `₹${val >= 1000 ? `${val / 1000}k` : val}`}
                     />
-                    <Bar 
-                      dataKey="amount" 
-                      fill="#f59e0b" 
-                      radius={[4, 4, 0, 0]} 
-                      barSize={30} 
-                    />
+                    <Bar dataKey="amount" fill="#f59e0b" radius={[4, 4, 0, 0]} barSize={30} />
                   </BarChart>
                 )}
               </MeasuredChart>

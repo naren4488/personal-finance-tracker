@@ -132,7 +132,7 @@ export const createTransactionTransferToAccountSchema = z
     amount: z.string().regex(/^\d+\.\d{2}$/),
     accountId: z.string().min(1),
     destinationType: z.literal("account"),
-    toAccountId: z.string().min(1),
+    destinationAccountId: z.string().min(1),
     date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
     note: z.string().optional(),
     tags: z.array(z.string()).optional(),
@@ -638,7 +638,7 @@ export function buildTransactionPostBody(body: CreateTransactionPayload): Create
     amount: transferAmount,
     accountId: body.accountId,
     destinationType: "account",
-    toAccountId: body.toAccountId.trim(),
+    destinationAccountId: body.toAccountId.trim(),
     date: dateIso,
     ...(noteT3 ? { note: noteT3 } : {}),
     ...(tagOut3 ? { tags: tagOut3 } : {}),
@@ -753,11 +753,28 @@ function looksLikeOpaqueId(value: string): boolean {
   return false
 }
 
+/** Remove UUID / ObjectId-like tokens anywhere in backend-built sentences (e.g. ledger subtitles). */
+function stripEmbeddedOpaqueIds(text: string): string {
+  let s = text
+  s = s.replace(/[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}/gi, "")
+  s = s.replace(/\b[0-9a-f]{24}\b/gi, "")
+  s = s.replace(/\(\s*\)/g, "")
+  s = s.replace(/\s*·\s*·+/g, " · ")
+  s = s.replace(/\s{2,}/g, " ")
+  s = s.replace(/^\s*·\s*|\s*·\s*$/g, "")
+  return s.trim()
+}
+
 function cleanDisplayText(value: string | undefined): string {
-  const t = String(value ?? "").trim()
+  const t = stripEmbeddedOpaqueIds(String(value ?? "").trim())
   if (!t) return ""
   if (looksLikeOpaqueId(t)) return ""
   return t
+}
+
+/** Safe string for UI: strips embedded UUIDs / ObjectIds and drops purely opaque values. */
+export function sanitizeUserFacingApiText(value: string | undefined): string {
+  return cleanDisplayText(value)
 }
 
 function humanizeBackendTitleSlug(value: string): string {
@@ -1222,9 +1239,12 @@ function normalizeRawToRecentTransaction(rec: Record<string, unknown>): RecentTr
           : undefined
 
   const toAccountId =
-    typeof rec.toAccountId === "string" && rec.toAccountId.trim()
+    (typeof rec.toAccountId === "string" && rec.toAccountId.trim()
       ? rec.toAccountId.trim()
-      : undefined
+      : undefined) ||
+    (typeof rec.destinationAccountId === "string" && rec.destinationAccountId.trim()
+      ? rec.destinationAccountId.trim()
+      : undefined)
 
   const personId = firstStringFromRecord(rec, ["personId", "person_id"])
   const commitmentId = firstStringFromRecord(rec, ["commitmentId", "commitment_id"])
@@ -1494,4 +1514,19 @@ export function getTransferRouteLabels(
     fromLabel: fromA ? accountSelectLabel(fromA) : fromId ? "Unknown account" : "—",
     toLabel: toA ? accountSelectLabel(toA) : toId ? "Unknown account" : "—",
   }
+}
+
+/**
+ * For structured transfers (loan EMI / credit card bill pay), a short label for list subtitles.
+ * Shown in addition to existing route and date copy.
+ */
+export function getStructuredEmiPaymentTag(tx: RecentTransaction): string | null {
+  if (String(tx.type ?? "").toLowerCase() !== "transfer") return null
+  const rec = tx as unknown as Record<string, unknown>
+  const dest = String(rec.destinationType ?? rec.destination_type ?? tx.destinationType ?? "")
+    .trim()
+    .toLowerCase()
+  if (dest === "loan_payment") return "Paid Loan EMI"
+  if (dest === "credit_card_bill") return "Paid Credit Card EMI"
+  return null
 }

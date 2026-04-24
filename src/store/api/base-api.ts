@@ -563,8 +563,10 @@ export const baseApi = createApi({
           return { error: { status: 422, data: "Account id is required" } }
         }
         const res = await baseQuery({
-          url: `${ACCOUNT_PATHS.create}/${encodeURIComponent(id)}`,
+          url: `${ACCOUNT_PATHS.list}/${encodeURIComponent(id)}`,
           method: "DELETE",
+          // Backend may support cascading deletion of account-linked transactions.
+          params: { cascade: "true" },
         })
         if (res.error) {
           return { error: normalizeFetchError(res.error) }
@@ -626,6 +628,7 @@ export const baseApi = createApi({
         { type: "People", id: "LIST" },
         { type: "UdharSummary" },
         { type: "DashboardAnalytics", id: "LIST" },
+        { type: "Commitment", id: "LIST" },
       ],
     }),
 
@@ -684,8 +687,10 @@ export const baseApi = createApi({
           return { error: { status: 422, data: "Person id is required" } }
         }
         const res = await baseQuery({
-          url: `${PEOPLE_PATHS.create}/${encodeURIComponent(id)}`,
+          url: `${PEOPLE_PATHS.list}/${encodeURIComponent(id)}`,
           method: "DELETE",
+          // Backend may support cascading deletion of person-linked records.
+          params: { cascade: "true" },
         })
         if (res.error) {
           return { error: normalizeFetchError(res.error) }
@@ -713,6 +718,8 @@ export const baseApi = createApi({
         { type: "Transaction", id: "RECENT" },
         { type: "Account", id: "LIST" },
         { type: "UdharSummary" },
+        { type: "DashboardAnalytics", id: "LIST" },
+        { type: "Commitment", id: "LIST" },
       ],
     }),
 
@@ -1221,6 +1228,7 @@ export const baseApi = createApi({
         { type: "UdharSummary" },
         { type: "People", id: "LIST" },
         { type: "DashboardAnalytics", id: "LIST" },
+        { type: "Commitment", id: "LIST" },
       ],
     }),
 
