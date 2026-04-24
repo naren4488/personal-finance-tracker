@@ -1,9 +1,15 @@
-import { useId } from "react"
+import { useEffect, useId, useMemo } from "react"
 import { ChevronDown } from "lucide-react"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
 import type { LoanEmiFormModel } from "@/features/accounts/loan-emi-model"
+import { formatCurrency } from "@/lib/format"
+import {
+  computeReducingBalanceMonthlyEmi,
+  formatInterestRateForForm,
+  solveAnnualRatePercentForMonthlyEmi,
+} from "@/lib/loan/loan-emi-math"
 import { BILLING_DAY_OPTIONS } from "@/lib/billing-day-options"
 import {
   APP_FORM_FIELD_CLASS,
@@ -36,6 +42,50 @@ export function LoanEmiFormFields({
   loanSheetDense?: boolean
 }) {
   const overdueAmountId = useId()
+
+  const principalNum = useMemo(
+    () => Number(String(value.principal).replace(/\D/g, "")) || 0,
+    [value.principal]
+  )
+  const tenureNum = useMemo(
+    () => Number(String(value.tenureMonths).replace(/\D/g, "")) || 0,
+    [value.tenureMonths]
+  )
+  const rateNum = useMemo(
+    () => Number(String(value.interestRate).replace(/[^\d.]/g, "")) || 0,
+    [value.interestRate]
+  )
+  const overrideEmiNum = useMemo(
+    () => Number(String(value.overrideEmiAmount).replace(/\D/g, "")) || 0,
+    [value.overrideEmiAmount]
+  )
+
+  const overdueNum = useMemo(
+    () => Number(String(value.overdueAmount).replace(/\D/g, "")) || 0,
+    [value.overdueAmount]
+  )
+
+  /** Matches POST `openingBalance`: principal + overdue when overdue is on. */
+  const openingBalanceSentInr = useMemo(() => {
+    const extra = value.overdue ? overdueNum : 0
+    return principalNum + extra
+  }, [principalNum, value.overdue, overdueNum])
+
+  const estimatedEmi = useMemo(() => {
+    if (value.overrideEmi) return null
+    return computeReducingBalanceMonthlyEmi(principalNum, rateNum, tenureNum)
+  }, [value.overrideEmi, principalNum, rateNum, tenureNum])
+
+  useEffect(() => {
+    if (!value.overrideEmi) return
+    if (principalNum <= 0 || tenureNum < 1 || overrideEmiNum <= 0) return
+    const solved = solveAnnualRatePercentForMonthlyEmi(principalNum, tenureNum, overrideEmiNum)
+    if (solved == null || !Number.isFinite(solved)) return
+    const next = formatInterestRateForForm(solved)
+    const curNum = Number(String(value.interestRate).replace(/[^\d.]/g, "")) || 0
+    if (Math.abs(curNum - solved) < 0.0001) return
+    onChange({ interestRate: next })
+  }, [value.overrideEmi, value.interestRate, principalNum, tenureNum, overrideEmiNum, onChange])
 
   return (
     <div className="space-y-4 animate-in fade-in slide-in-from-top-1 duration-200">
@@ -71,7 +121,7 @@ export function LoanEmiFormFields({
       {/* Principal Amount */}
       <section>
         <Label htmlFor="emi-principal" className={APP_FORM_LABEL_CLASS}>
-          Principal Amount (₹)
+          Principal amount (₹)
         </Label>
         <Input
           id="emi-principal"
@@ -81,6 +131,10 @@ export function LoanEmiFormFields({
           onChange={(e) => onChange({ principal: e.target.value.replace(/[^\d]/g, "") })}
           className={APP_FORM_FIELD_CLASS}
         />
+        <p className="mt-1 text-[11px] leading-snug text-muted-foreground">
+          Sent as <span className="font-mono text-[10px]">principalAmount</span> on the loan
+          account. EMI is calculated from this amount, not from overdue.
+        </p>
       </section>
 
       {/* Interest Rate & Tenure */}
@@ -112,6 +166,23 @@ export function LoanEmiFormFields({
           />
         </section>
       </div>
+
+      {!value.overrideEmi && estimatedEmi != null && estimatedEmi > 0 ? (
+        <section
+          className="rounded-xl border border-border bg-muted/20 px-3 py-2.5"
+          aria-live="polite"
+        >
+          <p className="text-xs font-medium text-muted-foreground">Estimated monthly EMI</p>
+          <p className="mt-0.5 text-lg font-bold tabular-nums text-foreground">
+            {formatCurrency(estimatedEmi)}
+            <span className="ml-1 text-xs font-normal text-muted-foreground">/ month</span>
+          </p>
+          <p className="mt-1 text-[11px] leading-snug text-muted-foreground">
+            Reducing balance from principal, rate, and tenure. Turn on override to use a different
+            EMI.
+          </p>
+        </section>
+      ) : null}
 
       {/* Start Date & EMI Due Day */}
       <div className={APP_FORM_TWO_COL_GRID_CLASS}>
@@ -200,7 +271,21 @@ export function LoanEmiFormFields({
           <Switch
             id="emi-override-switch"
             checked={value.overrideEmi}
-            onCheckedChange={(c) => onChange({ overrideEmi: c })}
+            onCheckedChange={(c) => {
+              if (c) {
+                const est =
+                  principalNum > 0 && tenureNum >= 1
+                    ? computeReducingBalanceMonthlyEmi(principalNum, rateNum, tenureNum)
+                    : null
+                onChange({
+                  overrideEmi: true,
+                  overrideEmiAmount:
+                    est != null && est > 0 ? String(Math.round(est)) : value.overrideEmiAmount,
+                })
+              } else {
+                onChange({ overrideEmi: false })
+              }
+            }}
             aria-label="Override EMI amount"
             className="mt-0.5 shrink-0"
           />
@@ -247,11 +332,14 @@ export function LoanEmiFormFields({
               aria-live="polite"
             >
               <p className="text-xs text-muted-foreground">
-                Include missed EMIs, penalties, and other overdue charges if applicable.
+                Include missed EMIs, penalties, and other overdue charges if applicable. This is
+                added only to <span className="font-mono text-[10px]">openingBalance</span> (and{" "}
+                <span className="font-mono text-[10px]">balance</span> when sent), not to{" "}
+                <span className="font-mono text-[10px]">principalAmount</span>.
               </p>
               <div>
                 <Label htmlFor={overdueAmountId} className={APP_FORM_LABEL_CLASS}>
-                  Overdue Amount (₹)
+                  Overdue amount (₹)
                 </Label>
                 <Input
                   id={overdueAmountId}
@@ -268,6 +356,26 @@ export function LoanEmiFormFields({
           )}
         </div>
       )}
+
+      {openingBalanceSentInr > 0 ? (
+        <section
+          className="rounded-xl border border-border bg-muted/15 px-3 py-2.5"
+          aria-live="polite"
+        >
+          <p className="text-xs font-medium text-muted-foreground">Opening balance (sent to API)</p>
+          <p className="mt-0.5 text-lg font-bold tabular-nums text-foreground">
+            {formatCurrency(openingBalanceSentInr)}
+          </p>
+          <p className="mt-1 text-[11px] leading-snug text-muted-foreground">
+            Equals principal
+            {value.overdue && overdueNum > 0
+              ? ` (${formatCurrency(principalNum)} + overdue ${formatCurrency(overdueNum)})`
+              : ""}
+            . Maps to <span className="font-mono text-[10px]">openingBalance</span> /{" "}
+            <span className="font-mono text-[10px]">balance</span> on create.
+          </p>
+        </section>
+      ) : null}
     </div>
   )
 }

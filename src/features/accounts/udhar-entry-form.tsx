@@ -9,12 +9,12 @@ import { accountSelectLabel, filterNormalAccounts } from "@/lib/api/account-sche
 import type { Person } from "@/lib/api/people-schemas"
 import { isCreditCardAccount } from "@/lib/api/credit-card-map"
 import {
-  isUdharInflowEntryType,
   isUdharOutflowEntryType,
   udharAccountSelectLabelForEntryType,
 } from "@/lib/udhar/udhar-entry-flow"
 import {
   UDHAR_ENTRY_TYPE_OPTIONS,
+  todayIsoDate,
   udharEntryTypesForScope,
   type UdharEntryTypeScope,
   type UdharFormState,
@@ -96,9 +96,9 @@ export function UdharEntryForm({
   }, [accounts, form.fundingSource])
 
   const outflow = isUdharOutflowEntryType(form.entryType)
-  const inflow = isUdharInflowEntryType(form.entryType)
   const accountFieldLabel = udharAccountSelectLabelForEntryType(form.entryType)
   const showAskRepayBy = outflow && form.entryType === "money_given"
+  const showPayBackBy = form.entryType === "money_taken"
   const showTypeSection = entryTypeTiles.length > 1
 
   return (
@@ -117,6 +117,8 @@ export function UdharEntryForm({
                     entryType: id,
                     accountId: "",
                     feeAmount: "",
+                    askRepayBy: id === "money_given" ? todayIsoDate() : f.askRepayBy,
+                    payBackBy: id === "money_taken" ? todayIsoDate() : f.payBackBy,
                   }))
                 }
               >
@@ -332,40 +334,68 @@ export function UdharEntryForm({
         </section>
       ) : null}
 
-      <section>
-        <Label htmlFor="udhar-date" className={APP_FORM_LABEL_CLASS}>
-          Date
-        </Label>
-        <Input
-          id="udhar-date"
-          type="date"
-          value={form.date}
-          onChange={(e) => setForm((f) => ({ ...f, date: e.target.value }))}
-          className={cn(APP_FORM_FIELD_CLASS, "scheme-light dark:scheme-dark")}
-        />
-      </section>
-
-      {showAskRepayBy ? (
+      {showAskRepayBy || showPayBackBy ? (
         <section>
-          <Label htmlFor="udhar-ask-repay" className={APP_FORM_LABEL_CLASS}>
-            Ask money back by
-          </Label>
-          <Input
-            id="udhar-ask-repay"
-            type="date"
-            value={form.askRepayBy}
-            onChange={(e) => setForm((f) => ({ ...f, askRepayBy: e.target.value }))}
-            className={cn(APP_FORM_FIELD_CLASS, "scheme-light dark:scheme-dark")}
-          />
+          <div className={APP_FORM_TWO_COL_GRID_CLASS}>
+            <div>
+              <Label htmlFor="udhar-date" className={APP_FORM_LABEL_CLASS}>
+                Date
+              </Label>
+              <Input
+                id="udhar-date"
+                type="date"
+                value={form.date}
+                onChange={(e) => setForm((f) => ({ ...f, date: e.target.value }))}
+                className={cn(APP_FORM_FIELD_CLASS, "scheme-light dark:scheme-dark")}
+              />
+            </div>
+            <div>
+              <Label
+                htmlFor={showAskRepayBy ? "udhar-ask-repay" : "udhar-pay-back-by"}
+                className={APP_FORM_LABEL_CLASS}
+              >
+                Money Back / Pay Date
+              </Label>
+              <Input
+                id={showAskRepayBy ? "udhar-ask-repay" : "udhar-pay-back-by"}
+                type="date"
+                value={showAskRepayBy ? form.askRepayBy : form.payBackBy}
+                onChange={(e) =>
+                  setForm((f) => ({
+                    ...f,
+                    ...(showAskRepayBy
+                      ? { askRepayBy: e.target.value }
+                      : { payBackBy: e.target.value }),
+                  }))
+                }
+                className={cn(APP_FORM_FIELD_CLASS, "scheme-light dark:scheme-dark")}
+              />
+            </div>
+          </div>
           <p className="mt-1 text-xs text-muted-foreground">
-            When should this person return the money?
+            {showAskRepayBy
+              ? "When should this person return the money?"
+              : "When will you pay this amount back?"}
           </p>
         </section>
-      ) : null}
+      ) : (
+        <section>
+          <Label htmlFor="udhar-date" className={APP_FORM_LABEL_CLASS}>
+            Date
+          </Label>
+          <Input
+            id="udhar-date"
+            type="date"
+            value={form.date}
+            onChange={(e) => setForm((f) => ({ ...f, date: e.target.value }))}
+            className={cn(APP_FORM_FIELD_CLASS, "scheme-light dark:scheme-dark")}
+          />
+        </section>
+      )}
 
-      {inflow || (outflow && form.entryType === "payment_made") ? (
+      {form.entryType === "payment_received" || form.entryType === "payment_made" ? (
         <p className="text-[11px] leading-relaxed text-muted-foreground sm:text-xs">
-          {inflow
+          {form.entryType === "payment_received"
             ? "Due date for this entry matches the transaction date above."
             : "Repayment due date matches the transaction date above."}
         </p>

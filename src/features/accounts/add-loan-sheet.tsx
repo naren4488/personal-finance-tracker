@@ -71,9 +71,9 @@ function AddLoanSheetMounted({ open, onOpenChange }: MountedProps) {
     onOpenChange(false)
   }, [onOpenChange])
 
-  function patchEmi(p: Partial<LoanEmiFormModel>) {
+  const patchEmi = useCallback((p: Partial<LoanEmiFormModel>) => {
     setEmi((s) => ({ ...s, ...p }))
-  }
+  }, [])
 
   function resetForm() {
     setLoanType(LOAN_TYPES[0])
@@ -118,6 +118,16 @@ function AddLoanSheetMounted({ open, onOpenChange }: MountedProps) {
       return
     }
 
+    const overrideEmiDigits = emi.overrideEmi
+      ? Number(emi.overrideEmiAmount.replace(/\D/g, "")) || 0
+      : 0
+    if (emi.overrideEmi) {
+      if (!overrideEmiDigits || overrideEmiDigits <= 0) {
+        toast.error("Enter a valid custom EMI amount")
+        return
+      }
+    }
+
     const principalDigits = Number(p)
     const overdueExtra = emi.overdue ? Number(emi.overdueAmount.replace(/\D/g, "")) || 0 : 0
     const balanceInr = principalDigits + overdueExtra
@@ -138,6 +148,7 @@ function AddLoanSheetMounted({ open, onOpenChange }: MountedProps) {
       emiDueDay: emiDay,
       dueDateCycle: emi.dueCycle,
       overrideEmiAmountOn: emi.overrideEmi,
+      ...(emi.overrideEmi ? { overrideEmiAmountInr: overrideEmiDigits } : {}),
     }
 
     try {

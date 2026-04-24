@@ -50,6 +50,7 @@ import { assertSourceAccountCoversAmount } from "@/lib/validation/source-account
 import { cn } from "@/lib/utils"
 import {
   useAddTransactionMutation,
+  useCreatePersonMutation,
   useGetAccountsQuery,
   useGetCreditCardAccountsForPaymentQuery,
   useGetLoanAccountsForEmiQuery,
@@ -545,6 +546,10 @@ function AddTransactionModalMounted({
   )
   const [paidOnBehalf, setPaidOnBehalf] = useState(Boolean(presetPersonId))
   const [behalfPersonId, setBehalfPersonId] = useState(presetPersonId)
+  const [onBehalfPersonUiMode, setOnBehalfPersonUiMode] = useState<"pick" | "add">("pick")
+  const [inlineNewPersonName, setInlineNewPersonName] = useState("")
+  const [inlineNewPersonPhone, setInlineNewPersonPhone] = useState("")
+  const [createPerson, { isLoading: isCreatingInlinePerson }] = useCreatePersonMutation()
   const [expectedReturnDate, setExpectedReturnDate] = useState("")
   const [note, setNote] = useState("")
   const [tags, setTags] = useState<string[]>([])
@@ -884,11 +889,7 @@ function AddTransactionModalMounted({
 
     let titleBase: string
     if (expenseFlow) {
-      titleBase = note.trim() || description.trim()
-      if (!titleBase) {
-        toast.error("Add a note or description")
-        return
-      }
+      titleBase = note.trim() || description.trim() || category.trim() || "Expense"
     } else if (effectiveType === "transfer") {
       titleBase = [description.trim(), note.trim()].filter(Boolean).join(" · ") || "Transfer"
     } else {
@@ -1332,9 +1333,7 @@ function AddTransactionModalMounted({
                   </section>
                   <div className="grid grid-cols-1 gap-4 sm:grid-cols-2  items-center ">
                     <div className="flex h-10 mt-6 items-center justify-between gap-2  rounded-xl border border-input bg-muted/20 px-3">
-                      <span className="text-sm font-semibold text-primary ">
-                        Pay Minimum Amount
-                      </span>
+                      <span className="text-sm font-semibold text-primary ">Pay Custom Amount</span>
                       <div className="flex items-center gap-2">
                         <span className="text-xs font-medium text-muted-foreground">
                           {creditCardPayment.isMinimumPaymentEnabled ? "Yes" : "No"}
@@ -1345,14 +1344,14 @@ function AddTransactionModalMounted({
                             dispatch(setIsMinimumPaymentEnabled(on))
                             if (!on) setMinimumAmountText("")
                           }}
-                          aria-label="Pay minimum amount"
+                          aria-label="Pay custom amount"
                         />
                       </div>
                     </div>
                     {creditCardPayment.isMinimumPaymentEnabled ? (
                       <section>
                         <Label htmlFor="at-minimum-due-transfer" className={TX_FORM_LABEL_CLASS}>
-                          Minimum amount
+                          Custom amount
                         </Label>
                         <Input
                           id="at-minimum-due-transfer"
@@ -1736,6 +1735,9 @@ function AddTransactionModalMounted({
                     if (!checked) {
                       setBehalfPersonId("")
                       setExpectedReturnDate("")
+                      setOnBehalfPersonUiMode("pick")
+                      setInlineNewPersonName("")
+                      setInlineNewPersonPhone("")
                     }
                   }}
                   className="mt-0.5 size-4 shrink-0 rounded border-input"
@@ -1749,35 +1751,144 @@ function AddTransactionModalMounted({
 
           {showPaidOnBehalf && effectiveOnBehalfEnabled ? (
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-              <section>
-                <Label htmlFor="at-person-on-behalf" className={TX_FORM_LABEL_CLASS}>
-                  Person
-                </Label>
-                <div className="relative">
-                  <select
-                    id="at-person-on-behalf"
-                    value={behalfPersonId}
-                    onChange={(e) => setBehalfPersonId(e.target.value)}
-                    disabled={isOnBehalfLocked}
-                    className={cn(TX_FORM_SELECT_CLASS, !behalfPersonId && "text-muted-foreground")}
-                    aria-required
-                  >
-                    {isOnBehalfLocked && presetPersonId ? (
-                      <option value={presetPersonId}>
-                        {presetPersonName || "Selected person"}
-                      </option>
-                    ) : null}
-                    <option value="">
-                      {peopleListLoading ? "Loading people..." : "Select person"}
-                    </option>
-                    {people.map((p) => (
-                      <option key={p.id} value={p.id}>
-                        {p.name}
-                      </option>
-                    ))}
-                  </select>
-                  <SelectChevron />
+              <section className="min-w-0">
+                <div className="mb-1.5 flex flex-wrap items-center justify-between gap-2">
+                  <Label htmlFor="at-person-on-behalf" className={TX_FORM_LABEL_CLASS}>
+                    Person
+                  </Label>
+                  {!isOnBehalfLocked && onBehalfPersonUiMode === "pick" ? (
+                    <button
+                      type="button"
+                      className="text-xs font-semibold text-primary hover:underline"
+                      onClick={() => setOnBehalfPersonUiMode("add")}
+                    >
+                      Add person
+                    </button>
+                  ) : !isOnBehalfLocked && onBehalfPersonUiMode === "add" ? (
+                    <button
+                      type="button"
+                      className="text-xs font-semibold text-primary hover:underline"
+                      onClick={() => {
+                        setOnBehalfPersonUiMode("pick")
+                        setInlineNewPersonName("")
+                        setInlineNewPersonPhone("")
+                      }}
+                    >
+                      Choose existing
+                    </button>
+                  ) : null}
                 </div>
+                {isOnBehalfLocked ? (
+                  <div className="relative">
+                    <select
+                      id="at-person-on-behalf"
+                      value={behalfPersonId}
+                      onChange={(e) => setBehalfPersonId(e.target.value)}
+                      disabled
+                      className={cn(
+                        TX_FORM_SELECT_CLASS,
+                        !behalfPersonId && "text-muted-foreground"
+                      )}
+                      aria-required
+                    >
+                      {presetPersonId ? (
+                        <option value={presetPersonId}>
+                          {presetPersonName || "Selected person"}
+                        </option>
+                      ) : null}
+                    </select>
+                    <SelectChevron />
+                  </div>
+                ) : onBehalfPersonUiMode === "add" ? (
+                  <div className="space-y-3 rounded-xl border border-border bg-muted/20 p-3">
+                    <Input
+                      id="at-inline-person-name"
+                      value={inlineNewPersonName}
+                      onChange={(e) => setInlineNewPersonName(e.target.value)}
+                      placeholder="Person's name"
+                      className={TX_FORM_FIELD_CLASS}
+                      autoComplete="name"
+                      aria-label="New person name"
+                    />
+                    <Input
+                      id="at-inline-person-phone"
+                      type="tel"
+                      value={inlineNewPersonPhone}
+                      onChange={(e) => setInlineNewPersonPhone(e.target.value)}
+                      placeholder="Phone (optional)"
+                      className={TX_FORM_FIELD_CLASS}
+                      autoComplete="tel"
+                      aria-label="New person phone"
+                    />
+                    <div className="flex flex-wrap gap-2">
+                      <Button
+                        type="button"
+                        size="sm"
+                        className="rounded-xl font-semibold"
+                        disabled={isCreatingInlinePerson}
+                        onClick={async () => {
+                          const name = inlineNewPersonName.trim()
+                          if (!name) {
+                            toast.error("Enter the person's name")
+                            return
+                          }
+                          try {
+                            const created = await createPerson({
+                              name,
+                              phoneNumber: inlineNewPersonPhone.trim() || undefined,
+                            }).unwrap()
+                            setBehalfPersonId(String(created.id))
+                            setOnBehalfPersonUiMode("pick")
+                            setInlineNewPersonName("")
+                            setInlineNewPersonPhone("")
+                            toast.success("Person added")
+                          } catch (err) {
+                            toast.error(getErrorMessage(err))
+                          }
+                        }}
+                      >
+                        {isCreatingInlinePerson ? "Saving…" : "Save person"}
+                      </Button>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        className="rounded-xl font-semibold"
+                        disabled={isCreatingInlinePerson}
+                        onClick={() => {
+                          setOnBehalfPersonUiMode("pick")
+                          setInlineNewPersonName("")
+                          setInlineNewPersonPhone("")
+                        }}
+                      >
+                        Cancel
+                      </Button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="relative">
+                    <select
+                      id="at-person-on-behalf"
+                      value={behalfPersonId}
+                      onChange={(e) => setBehalfPersonId(e.target.value)}
+                      className={cn(
+                        TX_FORM_SELECT_CLASS,
+                        !behalfPersonId && "text-muted-foreground"
+                      )}
+                      aria-required
+                    >
+                      <option value="">
+                        {peopleListLoading ? "Loading people..." : "Select person"}
+                      </option>
+                      {people.map((p) => (
+                        <option key={p.id} value={p.id}>
+                          {p.name}
+                        </option>
+                      ))}
+                    </select>
+                    <SelectChevron />
+                  </div>
+                )}
               </section>
               <section>
                 <Label htmlFor="at-expected-return-date" className={TX_FORM_LABEL_CLASS}>

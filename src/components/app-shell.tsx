@@ -50,7 +50,7 @@ export function AppShell() {
   }
 
   return (
-    <div className="relative mx-auto flex h-dvh min-h-0 max-w-lg flex-col overflow-hidden bg-background">
+    <div className="relative mx-auto flex h-dvh min-h-0 w-full max-w-lg flex-col overflow-hidden bg-background">
       {hideGlobalHeader ? null : (
         <header className="shrink-0 z-40 rounded-b-2xl bg-primary px-4 py-3 text-primary-foreground">
           <div className="flex items-center justify-between gap-3">
@@ -77,45 +77,51 @@ export function AppShell() {
       </ErrorBoundary>
 
       {showFab && (
-        <Button
-          type="button"
-          size="icon"
-          className="fixed bottom-20 right-4 z-50 size-14 rounded-full shadow-lg transition-transform hover:scale-105 active:scale-95"
-          aria-label="Add entry"
-          onClick={handleFabClick}
-        >
-          <Plus className="size-6" strokeWidth={2} />
-        </Button>
+        <div className="pointer-events-none fixed bottom-0 left-1/2 z-50 w-full max-w-lg -translate-x-1/2">
+          <div className="relative h-0">
+            <Button
+              type="button"
+              size="icon"
+              className="pointer-events-auto absolute -top-20 right-4 size-14 rounded-full shadow-lg transition-transform hover:scale-105 active:scale-95"
+              aria-label="Add entry"
+              onClick={handleFabClick}
+            >
+              <Plus className="size-6" strokeWidth={2} />
+            </Button>
+          </div>
+        </div>
       )}
 
-      <nav className="fixed bottom-0 left-0 right-0 z-50 border-t border-border/50 bg-card/95 backdrop-blur-xl">
-        <div className="mx-auto flex h-16 max-w-lg items-stretch justify-around px-2">
-          {tabs.map(({ to, label, icon: Icon, end }) => (
-            <NavLink
-              key={to}
-              to={to}
-              end={end}
-              className={({ isActive }) =>
-                cn(
-                  "flex flex-1 flex-col items-center justify-center gap-0.5 py-2 transition-all",
-                  "text-muted-foreground hover:text-foreground",
-                  isActive && "text-primary"
-                )
-              }
-            >
-              {({ isActive }) => (
-                <>
-                  <Icon
-                    className={cn("size-5", isActive && "scale-105")}
-                    strokeWidth={isActive ? 2.5 : 1.5}
-                  />
-                  <span className="text-[10px] font-medium">{label}</span>
-                </>
-              )}
-            </NavLink>
-          ))}
-        </div>
-      </nav>
+      <div className="fixed bottom-0 left-1/2 z-50 w-full max-w-lg -translate-x-1/2">
+        <nav className="border-t border-border/50 bg-card/95 backdrop-blur-xl">
+          <div className="mx-auto flex h-16 items-stretch justify-around px-2">
+            {tabs.map(({ to, label, icon: Icon, end }) => (
+              <NavLink
+                key={to}
+                to={to}
+                end={end}
+                className={({ isActive }) =>
+                  cn(
+                    "flex flex-1 flex-col items-center justify-center gap-0.5 py-2 transition-all",
+                    "text-muted-foreground hover:text-foreground",
+                    isActive && "text-primary"
+                  )
+                }
+              >
+                {({ isActive }) => (
+                  <>
+                    <Icon
+                      className={cn("size-5", isActive && "scale-105")}
+                      strokeWidth={isActive ? 2.5 : 1.5}
+                    />
+                    <span className="text-[10px] font-medium">{label}</span>
+                  </>
+                )}
+              </NavLink>
+            ))}
+          </div>
+        </nav>
+      </div>
     </div>
   )
 }

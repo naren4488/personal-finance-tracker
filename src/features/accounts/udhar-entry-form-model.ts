@@ -61,6 +61,8 @@ export type UdharFormState = {
   date: string
   /** Shown for `money_given` only; sent as API `dueDate`. */
   askRepayBy: string
+  /** Shown for `money_taken` only; sent as API `dueDate`. */
+  payBackBy: string
   note: string
 }
 
@@ -86,6 +88,7 @@ export function initialUdharFormState(): UdharFormState {
     feeAmount: "",
     date: d,
     askRepayBy: d,
+    payBackBy: d,
     note: "",
   }
 }

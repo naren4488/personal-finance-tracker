@@ -183,6 +183,8 @@ export type CreateAccountRequest = {
   emiDueDay?: number
   dueDateCycle?: "fixed" | "rolling"
   overrideEmiAmountOn?: boolean
+  /** Required when `overrideEmiAmountOn` is true — sent as `overrideEmiAmount` (MoneyValue). */
+  overrideEmiAmountInr?: number
 }
 
 /** Map UI loan type label to POST `loanType` slug. */
@@ -289,6 +291,17 @@ export function buildCreateAccountPostBody(body: CreateAccountRequest): Record<s
     base.emiDueDay = String(emiDay)
     base.dueDateCycle = dueDateCycleForApi(cycle)
     base.overrideEmiAmountOn = Boolean(body.overrideEmiAmountOn)
+    if (body.overrideEmiAmountOn) {
+      const ov = body.overrideEmiAmountInr
+      if (ov == null || !Number.isFinite(ov) || ov <= 0) {
+        throw new Error("overrideEmiAmount must be a positive value when override EMI is on")
+      }
+      base.overrideEmiAmount = formatOpeningBalanceForApi(ov)
+    }
+
+    /** Some APIs expect both `openingBalance` (set in base) and `balance` for loan accounts. */
+    const loanOpening = formatOpeningBalanceForApi(body.balanceInr)
+    base.balance = loanOpening
   }
 
   return base

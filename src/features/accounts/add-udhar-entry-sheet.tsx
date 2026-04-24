@@ -79,6 +79,9 @@ function resolveDueDateForSubmit(form: UdharFormState): string {
   if (form.entryType === "money_given") {
     return form.askRepayBy.trim() || form.date.trim()
   }
+  if (form.entryType === "money_taken") {
+    return form.payBackBy.trim() || form.date.trim()
+  }
   return form.date.trim()
 }
 
