@@ -116,6 +116,7 @@ export function UdharEntryForm({
                     ...f,
                     entryType: id,
                     accountId: "",
+                    feeAmount: "",
                   }))
                 }
               >
@@ -245,6 +246,7 @@ export function UdharEntryForm({
                 ...f,
                 fundingSource: "account",
                 accountId: "",
+                feeAmount: "",
               }))
             }
           >
@@ -258,6 +260,7 @@ export function UdharEntryForm({
                 ...f,
                 fundingSource: "credit_card",
                 accountId: "",
+                feeAmount: "",
               }))
             }
           >
@@ -303,6 +306,31 @@ export function UdharEntryForm({
           <SelectChevron />
         </div>
       </section>
+
+      {form.fundingSource === "credit_card" ? (
+        <section>
+          <Label htmlFor="udhar-card-fee" className={APP_FORM_LABEL_CLASS}>
+            Card / transaction fee (₹){" "}
+            <span className="font-normal text-muted-foreground">(optional)</span>
+          </Label>
+          <Input
+            id="udhar-card-fee"
+            inputMode="decimal"
+            placeholder="0"
+            value={form.feeAmount}
+            onChange={(e) => {
+              const v = e.target.value.replace(/[^\d.]/g, "")
+              const parts = v.split(".")
+              const next = parts.length > 2 ? `${parts[0]}.${parts.slice(1).join("")}` : v
+              setForm((f) => ({ ...f, feeAmount: next }))
+            }}
+            className={APP_FORM_FIELD_CLASS}
+          />
+          <p className="mt-1 text-xs text-muted-foreground">
+            Optional: bank or card charges (cash advance, etc.).
+          </p>
+        </section>
+      ) : null}
 
       <section>
         <Label htmlFor="udhar-date" className={APP_FORM_LABEL_CLASS}>

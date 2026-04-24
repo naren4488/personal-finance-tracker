@@ -18,19 +18,38 @@ import {
   type RecentTransaction,
 } from "@/lib/api/transaction-schemas"
 import { ACTION_GROUP_ROW } from "@/lib/ui/action-group-classes"
-import { formatCurrency, formatDate, formatSignedCurrencyInr } from "@/lib/format"
+import { formatCurrency, formatDate } from "@/lib/format"
 import { cn } from "@/lib/utils"
 
 const quadrantTile = "rounded-2xl border border-border bg-card p-3 shadow-sm"
 
-function netSubtitle(net: number): string {
-  if (net > 0) return "They owe you"
-  if (net < 0) return "You owe them"
-  return "All settled"
+/** Matches People list: positive → you receive; negative → you pay. */
+function netListCaption(signed: number): string {
+  if (signed > 0) return "You will get"
+  if (signed < 0) return "You will give"
+  return "Settled"
 }
 
-export function PersonUdharNetAndQuadrants({ entries }: { entries: RecentTransaction[] }) {
+function netHeadlineTextClassName(signed: number): string {
+  if (signed > 0) return "text-emerald-600 dark:text-emerald-400"
+  if (signed < 0) return "text-red-600 dark:text-red-400"
+  return "text-muted-foreground"
+}
+
+export function PersonUdharNetAndQuadrants({
+  entries,
+  listTotalBalance,
+}: {
+  entries: RecentTransaction[]
+  /**
+   * Signed net from `GET /people` (`person.totalBalance`) when set so the headline matches the People list.
+   * Omitted/undefined: derived only from the ledger (same as before).
+   */
+  listTotalBalance?: number
+}) {
   const totals = useMemo(() => aggregateUdharLedgerQuadrantTotals(entries), [entries])
+  const signed = listTotalBalance !== undefined ? listTotalBalance : totals.net
+  const netDisplay = formatCurrency(Math.abs(signed))
 
   return (
     <>
@@ -39,14 +58,14 @@ export function PersonUdharNetAndQuadrants({ entries }: { entries: RecentTransac
         <p
           className={cn(
             "mt-1 text-3xl font-bold tabular-nums tracking-tight",
-            totals.net > 0 && "text-income",
-            totals.net < 0 && "text-destructive",
-            totals.net === 0 && "text-muted-foreground"
+            netHeadlineTextClassName(signed)
           )}
         >
-          {formatSignedCurrencyInr(totals.net)}
+          {netDisplay}
         </p>
-        <p className="mt-1 text-xs text-muted-foreground">{netSubtitle(totals.net)}</p>
+        <p className={cn("mt-1 text-xs", netHeadlineTextClassName(signed))}>
+          {netListCaption(signed)}
+        </p>
       </div>
 
       <div className="grid grid-cols-2 gap-2 sm:gap-2.5">

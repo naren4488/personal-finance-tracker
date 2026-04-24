@@ -82,6 +82,16 @@ function resolveDueDateForSubmit(form: UdharFormState): string {
   return form.date.trim()
 }
 
+/** Optional `feeAmount` for card-funded udhar; omit when empty or zero. */
+function parseUdharFeeAmount(feeRaw: string): { ok: true; value?: string } | { ok: false } {
+  const t = feeRaw.trim()
+  if (!t) return { ok: true, value: undefined }
+  const n = Number(t.replace(/,/g, ""))
+  if (!Number.isFinite(n) || n < 0) return { ok: false }
+  if (n === 0) return { ok: true, value: undefined }
+  return { ok: true, value: Number.isInteger(n) ? String(n) : n.toFixed(2) }
+}
+
 function AddUdharEntrySheetMounted({
   open,
   onOpenChange,
@@ -252,13 +262,28 @@ function AddUdharEntrySheetMounted({
       }
     }
 
+    let feeStr: string | undefined
+    if (form.fundingSource === "credit_card") {
+      const feeParsed = parseUdharFeeAmount(form.feeAmount)
+      if (!feeParsed.ok) {
+        toast.error("Enter a valid fee amount or leave it empty")
+        return
+      }
+      feeStr = feeParsed.value
+    }
+
     const payload: CreateUdharEntryRequest = {
       entryType: form.entryType,
       personId: effectivePersonId,
       amount: String(Math.round(amountInr)),
-      accountId: form.accountId,
       date: form.date,
       dueDate,
+      ...(form.fundingSource === "credit_card"
+        ? {
+            creditCardAccountId: form.accountId,
+            ...(feeStr ? { feeAmount: feeStr } : {}),
+          }
+        : { accountId: form.accountId }),
       ...(form.note.trim() ? { note: form.note.trim() } : {}),
     }
 

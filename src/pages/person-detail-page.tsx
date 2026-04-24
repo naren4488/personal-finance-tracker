@@ -15,6 +15,7 @@ import {
 import { useDeleteTransactionFlow } from "@/features/entries/use-delete-transaction-flow"
 import type { AccountsSegmentId } from "@/features/accounts/accounts-mock-data"
 import type { UdharEntryType } from "@/lib/api/udhar-schemas"
+import { parsePersonTotalBalance } from "@/lib/api/people-schemas"
 import {
   useGetAccountsQuery,
   useGetPeopleQuery,
@@ -31,10 +32,15 @@ export default function PersonDetailPage() {
   const pid = personId.trim()
 
   const { data: people = [] } = useGetPeopleQuery({}, { skip: !user })
-  const personName = useMemo(() => {
-    const p = people.find((x) => String(x.id) === pid)
-    return p?.name?.trim() || "Person"
-  }, [people, pid])
+  const person = useMemo(() => people.find((x) => String(x.id) === pid), [people, pid])
+  const personName = person?.name?.trim() || "Person"
+
+  const listTotalBalanceForNet = useMemo(() => {
+    if (!person) return undefined
+    const raw = person.totalBalance
+    if (raw === undefined || raw === null || raw === "") return undefined
+    return parsePersonTotalBalance(raw)
+  }, [person])
 
   const {
     data: entries = [],
@@ -146,7 +152,10 @@ export default function PersonDetailPage() {
                   </div>
                 </div>
               ) : (
-                <PersonUdharNetAndQuadrants entries={entries} />
+                <PersonUdharNetAndQuadrants
+                  entries={entries}
+                  listTotalBalance={listTotalBalanceForNet}
+                />
               )}
 
               <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">

@@ -9,16 +9,50 @@ export const udharEntryTypeSchema = z.enum([
 
 export type UdharEntryType = z.infer<typeof udharEntryTypeSchema>
 
-/** POST /transactions/udhar — wire body. `note` omitted when empty (optional field). */
-export const createUdharEntryRequestSchema = z.object({
-  entryType: udharEntryTypeSchema,
-  personId: z.string().min(1, "personId is required"),
-  amount: z.string().min(1, "amount is required"),
-  accountId: z.string().min(1, "accountId is required"),
-  date: z.string().min(1, "date is required"),
-  dueDate: z.string().min(1, "dueDate is required"),
-  note: z.string().optional(),
-})
+/**
+ * POST /transactions/udhar — wire body.
+ * Use `accountId` for bank / cash / UPI, or `creditCardAccountId` for card (not both).
+ * `feeAmount` is optional; intended for card-funded entries (e.g. cash advance / convenience fee).
+ * `note` / `reason` omitted when empty.
+ */
+export const createUdharEntryRequestSchema = z
+  .object({
+    entryType: udharEntryTypeSchema,
+    personId: z.string().min(1, "personId is required"),
+    amount: z.string().min(1, "amount is required"),
+    date: z.string().min(1, "date is required"),
+    dueDate: z.string().min(1, "dueDate is required"),
+    accountId: z.string().optional(),
+    creditCardAccountId: z.string().optional(),
+    feeAmount: z.string().optional(),
+    reason: z.string().optional(),
+    note: z.string().optional(),
+  })
+  .superRefine((val, ctx) => {
+    const hasAcc = Boolean(val.accountId?.trim())
+    const hasCc = Boolean(val.creditCardAccountId?.trim())
+    if (!hasAcc && !hasCc) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Select a bank account or a credit card",
+        path: ["accountId"],
+      })
+    } else if (hasAcc && hasCc) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Use either accountId or creditCardAccountId, not both",
+        path: ["accountId"],
+      })
+    }
+    const fee = val.feeAmount?.trim()
+    if (fee && !hasCc) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "feeAmount is only used with creditCardAccountId",
+        path: ["feeAmount"],
+      })
+    }
+  })
 
 export type CreateUdharEntryRequest = z.infer<typeof createUdharEntryRequestSchema>
 
@@ -98,16 +132,23 @@ export type CreateUdharEntryResult = {
   entry?: UdharSuccessEntry
 }
 
-/** Build JSON body; only includes `note` when non-empty. */
+/** Build JSON body; only includes optional string fields when non-empty. */
 export function buildUdharEntryPostBody(input: CreateUdharEntryRequest): Record<string, string> {
   const body: Record<string, string> = {
     entryType: input.entryType,
     personId: input.personId,
     amount: input.amount,
-    accountId: input.accountId,
     date: input.date,
     dueDate: input.dueDate,
   }
+  const acc = input.accountId?.trim()
+  if (acc) body.accountId = acc
+  const cc = input.creditCardAccountId?.trim()
+  if (cc) body.creditCardAccountId = cc
+  const fee = input.feeAmount?.trim()
+  if (fee) body.feeAmount = fee
+  const reason = input.reason?.trim()
+  if (reason) body.reason = reason
   const note = input.note?.trim()
   if (note) body.note = note
   return body

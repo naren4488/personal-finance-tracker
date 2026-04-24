@@ -14,6 +14,7 @@ export function UdharDetailsModal({
   onOpenChange,
   personName,
   entries,
+  listTotalBalance,
   accounts,
   onDeleteEntry,
   onOpenUdharEntry,
@@ -23,6 +24,8 @@ export function UdharDetailsModal({
   onOpenChange: (open: boolean) => void
   personName: string
   entries: RecentTransaction[]
+  /** Signed net from People list (`totalBalance`); matches person detail when set. */
+  listTotalBalance?: number
   accounts?: Account[]
   onDeleteEntry?: (tx: RecentTransaction) => void
   /** Opens the shared Add Udhar sheet with this entry type (Give / Take / Record payment). */
@@ -70,7 +73,7 @@ export function UdharDetailsModal({
             </Button>
           </div>
 
-          <PersonUdharNetAndQuadrants entries={entries} />
+          <PersonUdharNetAndQuadrants entries={entries} listTotalBalance={listTotalBalance} />
 
           <div className="space-y-2">
             <div className="grid grid-cols-2 gap-2">

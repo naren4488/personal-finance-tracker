@@ -56,6 +56,8 @@ export type UdharFormState = {
   amount: string
   accountId: string
   fundingSource: UdharFundingSource
+  /** Digits only; optional. Sent as API `feeAmount` when paying from a credit card. */
+  feeAmount: string
   date: string
   /** Shown for `money_given` only; sent as API `dueDate`. */
   askRepayBy: string
@@ -81,6 +83,7 @@ export function initialUdharFormState(): UdharFormState {
     amount: "",
     accountId: "",
     fundingSource: "account",
+    feeAmount: "",
     date: d,
     askRepayBy: d,
     note: "",

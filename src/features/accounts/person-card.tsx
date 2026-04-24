@@ -1,6 +1,6 @@
 import { useMemo } from "react"
 import type { Person } from "@/lib/api/people-schemas"
-import { getPersonDisplayPhone } from "@/lib/api/people-schemas"
+import { getPersonDisplayPhone, parsePersonTotalBalance } from "@/lib/api/people-schemas"
 import { formatCurrency } from "@/lib/format"
 import { transactionEntryDeleteChipClass } from "@/features/entries/transaction-entry-delete-button"
 import { ACTION_GROUP_ROW } from "@/lib/ui/action-group-classes"
@@ -15,19 +15,13 @@ export type PersonCardProps = {
   onDelete?: (person: Person) => void
 }
 
-function parseTotalBalance(value: unknown): number {
-  if (typeof value === "number" && Number.isFinite(value)) return value
-  if (typeof value === "string") {
-    const parsed = Number(value.replace(/,/g, "").replace(/\s/g, ""))
-    if (Number.isFinite(parsed)) return parsed
-  }
-  return 0
-}
-
 export function PersonCard({ person, onClick, onDelete }: PersonCardProps) {
   const phone = getPersonDisplayPhone(person)
 
-  const totalBalance = useMemo(() => parseTotalBalance(person.totalBalance), [person.totalBalance])
+  const totalBalance = useMemo(
+    () => parsePersonTotalBalance(person.totalBalance),
+    [person.totalBalance]
+  )
   const absFormatted = useMemo(() => formatCurrency(Math.abs(totalBalance)), [totalBalance])
 
   const body = (

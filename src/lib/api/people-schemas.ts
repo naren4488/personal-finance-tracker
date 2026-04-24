@@ -22,6 +22,16 @@ export const personSchema = z
 
 export type Person = z.infer<typeof personSchema>
 
+/** Signed INR from `person.totalBalance` (People list, detail). */
+export function parsePersonTotalBalance(value: unknown): number {
+  if (typeof value === "number" && Number.isFinite(value)) return value
+  if (typeof value === "string") {
+    const parsed = Number(value.replace(/,/g, "").replace(/\s/g, ""))
+    if (Number.isFinite(parsed)) return parsed
+  }
+  return 0
+}
+
 /** Optional fields some list endpoints return for Udhar summary. */
 export type PersonUdharBalanceType = "lent" | "borrowed"
 
