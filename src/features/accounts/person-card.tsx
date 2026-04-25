@@ -2,12 +2,13 @@ import { useMemo } from "react"
 import type { Person } from "@/lib/api/people-schemas"
 import { getPersonDisplayPhone, parsePersonTotalBalance } from "@/lib/api/people-schemas"
 import { formatCurrency } from "@/lib/format"
-import { transactionEntryDeleteChipClass } from "@/features/entries/transaction-entry-delete-button"
-import { ACTION_GROUP_ROW } from "@/lib/ui/action-group-classes"
+import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
+import { ACTION_GROUP_CARD_RAIL } from "@/lib/ui/action-group-classes"
 import { cn } from "@/lib/utils"
 
-const chipActive =
-  "rounded-full px-3 py-1 text-[10px] font-bold uppercase tracking-wide bg-[#E6F4EA] text-[#1E7E34] dark:bg-emerald-950/40 dark:text-emerald-300"
+const personFooterBtn =
+  "rounded-full px-3 text-xs font-semibold shadow-none sm:h-8 sm:px-3.5 sm:text-xs"
 
 export type PersonCardProps = {
   person: Person
@@ -69,14 +70,19 @@ export function PersonCard({ person, onClick, onDelete }: PersonCardProps) {
       </button>
 
       <div
-        className={cn(ACTION_GROUP_ROW, "shrink-0")}
+        className={ACTION_GROUP_CARD_RAIL}
         onClick={(e) => e.stopPropagation()}
         role="presentation"
       >
         {onDelete ? (
-          <button
+          <Button
             type="button"
-            className={transactionEntryDeleteChipClass}
+            variant="outline"
+            size="sm"
+            className={cn(
+              personFooterBtn,
+              "border-destructive/45 text-destructive hover:bg-destructive/10 hover:text-destructive dark:hover:bg-destructive/15"
+            )}
             onClick={(e) => {
               e.preventDefault()
               e.stopPropagation()
@@ -84,13 +90,19 @@ export function PersonCard({ person, onClick, onDelete }: PersonCardProps) {
             }}
           >
             Delete
-          </button>
+          </Button>
         ) : null}
-        {person.isActive !== false ? (
-          <span className={chipActive} aria-label="Active">
-            Active
-          </span>
-        ) : null}
+        <Badge
+          variant="outline"
+          className={cn(
+            "h-7 shrink-0 rounded-full px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide",
+            person.isActive !== false
+              ? "border-emerald-500/35 bg-emerald-500/10 text-emerald-800 dark:text-emerald-300"
+              : "text-muted-foreground"
+          )}
+        >
+          {person.isActive !== false ? "Active" : "Inactive"}
+        </Badge>
       </div>
     </div>
   )

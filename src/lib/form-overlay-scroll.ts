@@ -3,7 +3,7 @@
  * when content overflows. Pair with `shrink-0` header + FORM_OVERLAY_FOOTER.
  */
 export const FORM_OVERLAY_SCROLL_BODY =
-  "min-h-0 flex-1 overflow-y-auto overflow-x-hidden overscroll-y-contain scroll-smooth [scrollbar-width:thin] pb-4"
+  "relative z-0 flex min-h-0 w-full min-w-0 flex-1 flex-col overflow-y-auto overflow-x-hidden overscroll-y-contain scroll-smooth pb-4 [-webkit-overflow-scrolling:touch] [scrollbar-width:thin] touch-pan-y"
 
 /**
  * Fills remaining modal height without a scroll container — use for short/empty/centered

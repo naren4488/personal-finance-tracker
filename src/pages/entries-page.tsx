@@ -422,7 +422,7 @@ export default function EntriesPage() {
   return (
     <main
       className={cn(
-        "flex min-h-0 flex-1 flex-col overflow-hidden bg-background px-4 py-4 pb-28 transition-opacity",
+        "flex min-h-0 flex-1 flex-col overflow-y-auto overscroll-contain bg-background px-4 py-4 pb-28 transition-opacity [-ms-overflow-style:none] [scrollbar-width:thin]",
         updating && "opacity-[0.98]"
       )}
     >
@@ -670,7 +670,7 @@ export default function EntriesPage() {
         )}
       </div>
 
-      <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col">
         {isError && (
           <div className="mb-4 shrink-0 space-y-3 rounded-2xl border border-destructive/30 bg-destructive/5 px-4 py-4">
             <p className="text-sm text-destructive">{getErrorMessage(error)}</p>
@@ -780,10 +780,10 @@ export default function EntriesPage() {
         )}
 
         {!isLoading && !isError && entriesHasList && (
-          <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+          <div className="flex min-h-0 min-w-0 flex-1 flex-col">
             {(segment === "txns" || segment === "expenses") && (
               <ul
-                className="flex min-h-0 min-w-0 flex-1 list-none flex-col gap-3 overflow-y-auto overscroll-contain pb-4 [-ms-overflow-style:none] [scrollbar-width:thin]"
+                className="flex min-h-0 min-w-0 flex-1 list-none flex-col gap-3 pb-4"
                 aria-label="Entries list"
               >
                 {displayList.map((tx) => (
@@ -799,7 +799,7 @@ export default function EntriesPage() {
             )}
 
             {segment === "udhar" && (
-              <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-y-auto overscroll-contain pb-4 [-ms-overflow-style:none] [scrollbar-width:thin]">
+              <div className="flex min-h-0 min-w-0 flex-1 flex-col pb-4">
                 <PeopleList
                   people={people}
                   loading={peopleLoading || peopleFetching}
@@ -815,7 +815,7 @@ export default function EntriesPage() {
 
             {segment === "transfer" && (
               <ul
-                className="flex min-h-0 min-w-0 flex-1 list-none flex-col gap-3 overflow-y-auto overscroll-contain pb-4 [-ms-overflow-style:none] [scrollbar-width:thin]"
+                className="flex min-h-0 min-w-0 flex-1 list-none flex-col gap-3 pb-4"
                 aria-label="Transfers list"
               >
                 {displayList.map((tx) => (

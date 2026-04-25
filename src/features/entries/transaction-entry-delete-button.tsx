@@ -1,8 +1,5 @@
+import { transactionEntryDeleteChipClass } from "@/features/entries/transaction-entry-delete-classes"
 import { cn } from "@/lib/utils"
-
-/** Matches People (Udhar) list delete chip — pill, light red. */
-export const transactionEntryDeleteChipClass =
-  "rounded-full px-3 py-1 text-xs font-semibold bg-[#FCE8E6] text-[#C5221F] transition-opacity hover:opacity-90 dark:bg-rose-950/50 dark:text-rose-200 disabled:pointer-events-none disabled:opacity-50"
 
 type TransactionEntryDeleteButtonProps = {
   onClick: (e: React.MouseEvent<HTMLButtonElement>) => void

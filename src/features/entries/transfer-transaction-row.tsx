@@ -9,7 +9,7 @@ import {
 import { parseSignedAmountString, type RecentTransaction } from "@/lib/api/transaction-schemas"
 import type { Account } from "@/lib/api/account-schemas"
 import { formatCurrency } from "@/lib/format"
-import { ACTION_GROUP_ROW } from "@/lib/ui/action-group-classes"
+import { ACTION_GROUP_ROW_TX } from "@/lib/ui/action-group-classes"
 import { cn } from "@/lib/utils"
 
 export const TransferTransactionRow = memo(function TransferTransactionRow({
@@ -39,7 +39,7 @@ export const TransferTransactionRow = memo(function TransferTransactionRow({
         className
       )}
     >
-      <div className="flex w-full items-start justify-between gap-3 px-4 py-3.5">
+      <div className="flex w-full items-center justify-between gap-3 px-4 py-3.5">
         <div className="min-w-0 flex-1">
           <p className="truncate text-[15px] font-bold leading-tight text-[#111827] dark:text-foreground">
             {primaryTitle}
@@ -55,7 +55,7 @@ export const TransferTransactionRow = memo(function TransferTransactionRow({
             </p>
           ) : null}
         </div>
-        <div className={cn(ACTION_GROUP_ROW, "shrink-0 self-start")}>
+        <div className={cn(ACTION_GROUP_ROW_TX, "shrink-0")}>
           {showDelete ? <TransactionEntryDeleteButton onClick={() => onDelete?.(tx)} /> : null}
           <p
             className={cn(

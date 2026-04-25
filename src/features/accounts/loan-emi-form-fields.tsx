@@ -3,7 +3,7 @@ import { ChevronDown } from "lucide-react"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
-import type { LoanEmiFormModel } from "@/features/accounts/loan-emi-model"
+import { calendarDayFromIsoDate, type LoanEmiFormModel } from "@/features/accounts/loan-emi-model"
 import { formatCurrency } from "@/lib/format"
 import {
   computeReducingBalanceMonthlyEmi,
@@ -31,7 +31,7 @@ function SelectChevron() {
 export function LoanEmiFormFields({
   value,
   onChange,
-  showOverdue = true,
+  showOverdue = false,
 }: {
   value: LoanEmiFormModel
   onChange: (patch: Partial<LoanEmiFormModel>) => void
@@ -88,7 +88,7 @@ export function LoanEmiFormFields({
   }, [value.overrideEmi, value.interestRate, principalNum, tenureNum, overrideEmiNum, onChange])
 
   return (
-    <div className="space-y-4 animate-in fade-in slide-in-from-top-1 duration-200">
+    <div className="max-w-full min-w-0 space-y-4 animate-in fade-in slide-in-from-top-1 duration-200">
       {/* Bank / Lender & Loan Account No. */}
       <div className={APP_FORM_TWO_COL_GRID_CLASS}>
         <section>
@@ -184,8 +184,14 @@ export function LoanEmiFormFields({
         </section>
       ) : null}
 
-      {/* Start Date & EMI Due Day */}
-      <div className={APP_FORM_TWO_COL_GRID_CLASS}>
+      {/* Start Date; EMI Due Day only for fixed monthly (rolling uses start date + 30 days). */}
+      <div
+        className={cn(
+          value.dueCycle === "rolling"
+            ? "grid min-w-0 grid-cols-1 gap-4"
+            : APP_FORM_TWO_COL_GRID_CLASS
+        )}
+      >
         <section>
           <Label htmlFor="emi-start" className={APP_FORM_LABEL_CLASS}>
             Start Date
@@ -194,33 +200,46 @@ export function LoanEmiFormFields({
             id="emi-start"
             type="date"
             value={value.startDate}
-            onChange={(e) => onChange({ startDate: e.target.value })}
+            onChange={(e) => {
+              const startDate = e.target.value
+              if (value.dueCycle === "rolling") {
+                const day = calendarDayFromIsoDate(startDate)
+                onChange({
+                  startDate,
+                  ...(day != null ? { emiDueDay: String(day) } : {}),
+                })
+                return
+              }
+              onChange({ startDate })
+            }}
             className={cn(APP_FORM_FIELD_CLASS, "scheme-light dark:scheme-dark")}
           />
         </section>
-        <section>
-          <Label htmlFor="emi-due-day" className={APP_FORM_LABEL_CLASS}>
-            EMI Due Day
-          </Label>
-          <div className="relative">
-            <select
-              id="emi-due-day"
-              value={value.emiDueDay}
-              onChange={(e) => onChange({ emiDueDay: e.target.value })}
-              className={cn(APP_FORM_SELECT_CLASS, "focus:border-primary")}
-            >
-              <option value="" disabled>
-                Select day
-              </option>
-              {BILLING_DAY_OPTIONS.map(({ value: v, label }) => (
-                <option key={v} value={v}>
-                  {label}
+        {value.dueCycle !== "rolling" ? (
+          <section>
+            <Label htmlFor="emi-due-day" className={APP_FORM_LABEL_CLASS}>
+              EMI Due Day
+            </Label>
+            <div className="relative">
+              <select
+                id="emi-due-day"
+                value={value.emiDueDay}
+                onChange={(e) => onChange({ emiDueDay: e.target.value })}
+                className={cn(APP_FORM_SELECT_CLASS, "focus:border-primary")}
+              >
+                <option value="" disabled>
+                  Select day
                 </option>
-              ))}
-            </select>
-            <SelectChevron />
-          </div>
-        </section>
+                {BILLING_DAY_OPTIONS.map(({ value: v, label }) => (
+                  <option key={v} value={v}>
+                    {label}
+                  </option>
+                ))}
+              </select>
+              <SelectChevron />
+            </div>
+          </section>
+        ) : null}
       </div>
 
       {/* Due Date Cycle Toggle */}
@@ -241,7 +260,13 @@ export function LoanEmiFormFields({
           </button>
           <button
             type="button"
-            onClick={() => onChange({ dueCycle: "rolling" })}
+            onClick={() => {
+              const day = calendarDayFromIsoDate(value.startDate)
+              onChange({
+                dueCycle: "rolling",
+                ...(day != null ? { emiDueDay: String(day) } : {}),
+              })
+            }}
             className={cn(
               "flex-1 py-2.5 text-[13px] font-medium transition-colors",
               value.dueCycle === "rolling"

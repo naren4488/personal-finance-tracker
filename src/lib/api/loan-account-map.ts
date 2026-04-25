@@ -86,10 +86,67 @@ export function loanEmiDueDayNumber(a: Account): number | null {
   return day
 }
 
-function loanEmiDueDateLabel(a: Account): string | null {
+function startOfLocalDay(d: Date): Date {
+  return new Date(d.getFullYear(), d.getMonth(), d.getDate())
+}
+
+function parseYyyyMmDdLocal(iso: string): Date | null {
+  const s = iso.trim()
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) return null
+  const y = Number(s.slice(0, 4))
+  const m = Number(s.slice(5, 7))
+  const day = Number(s.slice(8, 10))
+  const dt = new Date(y, m - 1, day)
+  if (dt.getFullYear() !== y || dt.getMonth() !== m - 1 || dt.getDate() !== day) return null
+  return startOfLocalDay(dt)
+}
+
+function addCalendarDays(d: Date, n: number): Date {
+  const x = new Date(d.getTime())
+  x.setDate(x.getDate() + n)
+  return startOfLocalDay(x)
+}
+
+/**
+ * True when the loan uses a rolling 30-day schedule from `startDate` (not same calendar day each month).
+ */
+export function loanDueDateCycleIsRolling(a: Account): boolean {
+  const r = asRec(a)
+  const raw =
+    typeof r.dueDateCycle === "string"
+      ? r.dueDateCycle.trim().toLowerCase().replace(/-/g, "_").replace(/\s+/g, "_")
+      : ""
+  if (!raw) return false
+  if (raw.includes("fixed") && (raw.includes("month") || raw.includes("monthly"))) return false
+  return raw === "rolling" || raw.startsWith("rolling_")
+}
+
+/**
+ * Next EMI due date in local time: fixed monthly uses the same calendar day each month; rolling uses every 30 days from `startDate`.
+ */
+export function nextLoanEmiDueDate(a: Account, now = new Date()): Date | null {
+  if (loanDueDateCycleIsRolling(a)) {
+    const r = asRec(a)
+    const sd = r.startDate
+    const iso = typeof sd === "string" ? sd : ""
+    const start = parseYyyyMmDdLocal(iso)
+    if (start == null) return null
+    const today = startOfLocalDay(now)
+    let cursor = start
+    while (cursor.getTime() < today.getTime()) {
+      cursor = addCalendarDays(cursor, 30)
+    }
+    return cursor
+  }
   const day = loanEmiDueDayNumber(a)
   if (day === null) return null
-  return formatDate(nextDueDateFromDay(day))
+  return nextDueDateFromDay(day, now)
+}
+
+function loanEmiDueDateLabel(a: Account): string | null {
+  const next = nextLoanEmiDueDate(a)
+  if (next == null) return null
+  return formatDate(next)
 }
 
 /** Fallback when only `paymentDueDay` exists on hybrid payloads. */

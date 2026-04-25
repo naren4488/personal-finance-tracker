@@ -12,6 +12,7 @@ import { endUserSession } from "@/lib/auth/end-session"
 import { LoanEmiFormFields } from "@/features/accounts/loan-emi-form-fields"
 import {
   createInitialLoanEmiModel,
+  resolveEmiDueDayForLoanSubmit,
   type LoanEmiFormModel,
 } from "@/features/accounts/loan-emi-model"
 import {
@@ -112,9 +113,9 @@ function AddLoanSheetMounted({ open, onOpenChange }: MountedProps) {
       return
     }
 
-    const emiDay = Number(String(emi.emiDueDay).replace(/\D/g, "")) || 0
-    if (emiDay < 1 || emiDay > 31) {
-      toast.error("Select EMI due day")
+    const emiDay = resolveEmiDueDayForLoanSubmit(emi)
+    if (emiDay == null) {
+      toast.error(emi.dueCycle === "rolling" ? "Enter a valid start date" : "Select EMI due day")
       return
     }
 
@@ -129,8 +130,7 @@ function AddLoanSheetMounted({ open, onOpenChange }: MountedProps) {
     }
 
     const principalDigits = Number(p)
-    const overdueExtra = emi.overdue ? Number(emi.overdueAmount.replace(/\D/g, "")) || 0 : 0
-    const balanceInr = principalDigits + overdueExtra
+    const balanceInr = principalDigits
 
     const payload: CreateAccountRequest = {
       name,
@@ -233,7 +233,7 @@ function AddLoanSheetMounted({ open, onOpenChange }: MountedProps) {
           />
         </section>
 
-        <LoanEmiFormFields value={emi} onChange={patchEmi} showOverdue />
+        <LoanEmiFormFields value={emi} onChange={patchEmi} showOverdue={false} />
       </div>
     </FormDialog>
   )

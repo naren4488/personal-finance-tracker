@@ -202,8 +202,32 @@ export function loanTypeLabelToApiSlug(label: string): string {
   return map[label] ?? fallback
 }
 
+/** Wire values for loan `dueDateCycle` (server accepts only these, e.g. `fixed_monthly_date` | `rolling_30_day_cycle`). */
+export const LOAN_DUE_DATE_CYCLE_WIRE = {
+  fixed: "fixed_monthly_date",
+  rolling: "rolling_30_day_cycle",
+} as const
+
+/**
+ * Map a stored or UI `dueDateCycle` string to the value the API accepts on POST/PUT.
+ * Accepts short `rolling` / `fixed_monthly_date` / `rolling_30_day_cycle` and similar.
+ */
+export function normalizeLoanDueDateCycleForApi(
+  raw: string
+): (typeof LOAN_DUE_DATE_CYCLE_WIRE)[keyof typeof LOAN_DUE_DATE_CYCLE_WIRE] {
+  const s = raw.trim().toLowerCase().replace(/-/g, "_").replace(/\s+/g, "_")
+  if (!s) return LOAN_DUE_DATE_CYCLE_WIRE.fixed
+  if (s.includes("fixed") && (s.includes("month") || s.includes("monthly"))) {
+    return LOAN_DUE_DATE_CYCLE_WIRE.fixed
+  }
+  if (s === "rolling" || s.startsWith("rolling_")) {
+    return LOAN_DUE_DATE_CYCLE_WIRE.rolling
+  }
+  return LOAN_DUE_DATE_CYCLE_WIRE.fixed
+}
+
 function dueDateCycleForApi(cycle: "fixed" | "rolling"): string {
-  return cycle === "fixed" ? "fixed_monthly_date" : "rolling"
+  return cycle === "fixed" ? LOAN_DUE_DATE_CYCLE_WIRE.fixed : LOAN_DUE_DATE_CYCLE_WIRE.rolling
 }
 
 export type CreateAccountResult = {
