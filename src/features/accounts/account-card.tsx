@@ -1,10 +1,12 @@
 import { toast } from "sonner"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
+import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 import type { Account } from "@/lib/api/account-schemas"
 import { accountAvailableBalanceInrFromApi } from "@/lib/api/account-schemas"
 import { formatCurrency } from "@/lib/format"
-import { ACTION_GROUP_ROW } from "@/lib/ui/action-group-classes"
+import { ACTION_GROUP_CARD_FOOTER } from "@/lib/ui/action-group-classes"
 import { cn } from "@/lib/utils"
 
 function avatarLetter(name: string): string {
@@ -27,8 +29,7 @@ function comingSoon(label: string) {
   toast.message("Coming soon", { description: `${label} will be available soon.` })
 }
 
-const pillBase =
-  "inline-flex items-center justify-center rounded-full px-3 py-1 text-xs font-semibold transition-opacity hover:opacity-90 active:opacity-100"
+const footerBtn = "rounded-full px-3 text-xs font-semibold shadow-none sm:h-8 sm:px-3.5 sm:text-xs"
 
 export type AccountCardProps = {
   account: Account
@@ -79,38 +80,44 @@ export function AccountCard({ account, onOpen, onEdit, onAdjust, onDelete }: Acc
       </button>
 
       <div
-        className={cn(ACTION_GROUP_ROW, "px-4 pb-4 pt-1 sm:px-5 sm:pb-5")}
+        className={cn(
+          ACTION_GROUP_CARD_FOOTER,
+          "border-t border-border/50 bg-muted/15 px-4 pb-4 pt-3 sm:px-5 sm:pb-5"
+        )}
         onClick={(e) => e.stopPropagation()}
         role="presentation"
       >
-        <button
+        <Button
           type="button"
-          className={cn(
-            pillBase,
-            "bg-violet-100 text-violet-900 dark:bg-violet-950/50 dark:text-violet-200"
-          )}
+          variant="default"
+          size="sm"
+          className={footerBtn}
           onClick={(e) => {
             e.stopPropagation()
             onEdit()
           }}
         >
           Edit
-        </button>
-        <button
+        </Button>
+        <Button
           type="button"
-          className={cn(pillBase, "bg-muted text-foreground")}
+          variant="secondary"
+          size="sm"
+          className={footerBtn}
           onClick={(e) => {
             e.stopPropagation()
             onAdjust()
           }}
         >
           Adjust
-        </button>
-        <button
+        </Button>
+        <Button
           type="button"
+          variant="outline"
+          size="sm"
           className={cn(
-            pillBase,
-            "bg-rose-100 text-rose-800 dark:bg-rose-950/40 dark:text-rose-200"
+            footerBtn,
+            "border-destructive/45 text-destructive hover:bg-destructive/10 hover:text-destructive dark:hover:bg-destructive/15"
           )}
           onClick={(e) => {
             e.stopPropagation()
@@ -119,17 +126,18 @@ export function AccountCard({ account, onOpen, onEdit, onAdjust, onDelete }: Acc
           }}
         >
           Delete
-        </button>
-        <span
+        </Button>
+        <Badge
+          variant="outline"
           className={cn(
-            pillBase,
+            "h-7 shrink-0 rounded-full px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide",
             isActive
-              ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-200"
-              : "bg-muted text-muted-foreground"
+              ? "border-emerald-500/35 bg-emerald-500/10 text-emerald-800 dark:text-emerald-300"
+              : "text-muted-foreground"
           )}
         >
           {isActive ? "Active" : "Inactive"}
-        </span>
+        </Badge>
       </div>
     </article>
   )
@@ -151,7 +159,7 @@ export function AccountCardSkeleton({ className }: { className?: string }) {
         </div>
       </div>
       <Skeleton className="mt-5 h-8 w-36 rounded-md" />
-      <div className={cn("mt-4", ACTION_GROUP_ROW)}>
+      <div className={cn("mt-4", ACTION_GROUP_CARD_FOOTER)}>
         <Skeleton className="h-7 w-14 rounded-full" />
         <Skeleton className="h-7 w-16 rounded-full" />
         <Skeleton className="h-7 w-16 rounded-full" />

@@ -1,16 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react"
 import { useNavigate } from "react-router-dom"
 import { toast } from "sonner"
-import {
-  TrendingUp,
-  TrendingDown,
-  Search,
-  Home,
-  LayoutGrid,
-  Wallet,
-  BarChart2,
-  CreditCard,
-} from "lucide-react"
+import { TrendingUp, TrendingDown, Search, Wallet, CreditCard } from "lucide-react"
 import {
   PieChart,
   Pie,
@@ -182,38 +173,6 @@ export default function AnalyticsFullPage() {
           />
         ) : null}
       </main>
-
-      <nav className="fixed bottom-0 z-50 flex w-full items-center justify-around border-t border-border bg-background py-3 pb-safe">
-        <button
-          type="button"
-          className="flex flex-col items-center gap-1 text-muted-foreground hover:text-foreground"
-          onClick={() => navigate("/home")}
-        >
-          <Home className="w-5 h-5" />
-          <span className="text-[10px] font-medium">Home</span>
-        </button>
-        <button
-          type="button"
-          className="flex flex-col items-center gap-1 text-muted-foreground hover:text-foreground"
-          onClick={() => navigate("/entries")}
-        >
-          <LayoutGrid className="w-5 h-5" />
-          <span className="text-[10px] font-medium">Entries</span>
-        </button>
-        <button
-          type="button"
-          className="flex flex-col items-center gap-1 text-muted-foreground hover:text-foreground"
-          onClick={() => navigate("/accounts")}
-        >
-          <Wallet className="w-5 h-5" />
-          <span className="text-[10px] font-medium">Accounts</span>
-        </button>
-        <button type="button" className="flex flex-col items-center gap-1 text-primary">
-          <BarChart2 className="w-5 h-5" />
-          <span className="text-[10px] font-bold">Analytics</span>
-          <div className="mt-0.5 h-1 w-1 rounded-full bg-primary" />
-        </button>
-      </nav>
     </div>
   )
 }

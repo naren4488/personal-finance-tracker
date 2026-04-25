@@ -13,7 +13,7 @@ export const APP_FORM_DESCRIPTION_CLASS =
   "mt-2 text-center text-xs leading-relaxed text-muted-foreground sm:text-sm"
 
 /** Vertical rhythm + horizontal padding inside modal scroll body. */
-export const APP_FORM_STACK_CLASS = "space-y-4 px-5 py-5"
+export const APP_FORM_STACK_CLASS = "max-w-full min-w-0 space-y-4 px-5 py-5"
 
 /** @deprecated Prefer APP_FORM_STACK_CLASS */
 export const APP_FORM_FIELDS_STACK_CLASS = APP_FORM_STACK_CLASS
@@ -55,7 +55,8 @@ export const APP_FORM_AMOUNT_PRIMARY_CLASS = cn(
 
 export const APP_FORM_TEXTAREA_CLASS = cn(APP_FORM_FIELD_CLASS, "min-h-14 resize-y py-2")
 
-export const APP_FORM_TWO_COL_GRID_CLASS = "grid grid-cols-1 gap-4 sm:grid-cols-2"
+export const APP_FORM_TWO_COL_GRID_CLASS =
+  "grid min-w-0 grid-cols-1 gap-4 sm:[grid-template-columns:repeat(2,minmax(0,1fr))]"
 
 export const APP_FORM_THREE_COL_GRID_CLASS = "grid grid-cols-3 gap-3"
 
@@ -78,6 +79,6 @@ export const APP_FORM_PANEL_CLASS = cn(
 )
 
 export const APP_FORM_SWITCH_ROW_CLASS = cn(
-  "flex items-center justify-between gap-4 rounded-2xl border border-border/70 bg-muted/25 px-4 py-3.5 sm:px-5 sm:py-4",
+  "flex max-w-full min-w-0 items-center justify-between gap-3 rounded-2xl border border-border/70 bg-muted/25 px-4 py-3.5 sm:gap-4 sm:px-5 sm:py-4",
   "shadow-sm"
 )

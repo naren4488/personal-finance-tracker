@@ -1,7 +1,7 @@
 import { TransactionEntryDeleteButton } from "@/features/entries/transaction-entry-delete-button"
 import { type UdharBalanceEffect, udharEffectTextClassName } from "@/lib/udhar/udhar-effect"
 import { formatCurrency, formatDate } from "@/lib/format"
-import { ACTION_GROUP_ROW } from "@/lib/ui/action-group-classes"
+import { ACTION_GROUP_ROW_TX } from "@/lib/ui/action-group-classes"
 import { cn } from "@/lib/utils"
 
 export function UdharEntryRow({
@@ -67,7 +67,7 @@ export function UdharEntryRow({
           </p>
         ) : null}
       </button>
-      <div className={cn(ACTION_GROUP_ROW, "shrink-0")}>
+      <div className={cn(ACTION_GROUP_ROW_TX, "shrink-0")}>
         {showDelete ? <TransactionEntryDeleteButton onClick={() => onDelete?.()} /> : null}
         <div className="text-right">
           <p className={cn("text-base font-bold tabular-nums tracking-tight", amountColor)}>

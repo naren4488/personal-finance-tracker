@@ -23,7 +23,13 @@ export default defineConfig([
   },
   eslintConfigPrettier,
   {
-    files: ["src/components/ui/**/*.{ts,tsx}", "src/app/router.tsx"],
+    files: [
+      "src/components/ui/**/*.{ts,tsx}",
+      "src/app/router.tsx",
+      /** Shared Tailwind/class strings beside the delete button component (see transaction-entry-delete-classes.ts). */
+      "src/features/entries/transaction-entry-delete-classes.ts",
+      "src/features/entries/transaction-entry-delete-button.tsx",
+    ],
     rules: {
       "react-refresh/only-export-components": "off",
     },

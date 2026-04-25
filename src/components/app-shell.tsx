@@ -82,7 +82,7 @@ export function AppShell() {
             <Button
               type="button"
               size="icon"
-              className="pointer-events-auto absolute -top-20 right-4 size-14 rounded-full shadow-lg transition-transform hover:scale-105 active:scale-95"
+              className="pointer-events-auto absolute bottom-20 right-4 z-[60] size-14 rounded-full shadow-lg transition-transform hover:scale-105 active:scale-95"
               aria-label="Add entry"
               onClick={handleFabClick}
             >

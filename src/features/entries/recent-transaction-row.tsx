@@ -10,7 +10,7 @@ import {
 import type { Account } from "@/lib/api/account-schemas"
 import { formatCurrency, formatDate } from "@/lib/format"
 import { parseSignedAmountString, type RecentTransaction } from "@/lib/api/transaction-schemas"
-import { ACTION_GROUP_ROW } from "@/lib/ui/action-group-classes"
+import { ACTION_GROUP_ROW_TX } from "@/lib/ui/action-group-classes"
 import { cn } from "@/lib/utils"
 
 function formatSignedInrDisplay(signedAmount: string): string {
@@ -65,7 +65,7 @@ export const RecentTransactionRow = memo(function RecentTransactionRow({
         className
       )}
     >
-      <div className="flex items-start justify-between gap-3 px-4 py-3.5">
+      <div className="flex items-center justify-between gap-3 px-4 py-3.5">
         <div className="min-w-0 flex-1">
           <p className="truncate text-[15px] font-bold leading-tight text-[#111827] dark:text-foreground">
             {primaryTitle}
@@ -81,7 +81,7 @@ export const RecentTransactionRow = memo(function RecentTransactionRow({
             </p>
           ) : null}
         </div>
-        <div className={cn(ACTION_GROUP_ROW, "shrink-0 self-start")}>
+        <div className={cn(ACTION_GROUP_ROW_TX, "shrink-0")}>
           {showDelete ? <TransactionEntryDeleteButton onClick={() => onDelete?.(tx)} /> : null}
           <span
             className={cn(

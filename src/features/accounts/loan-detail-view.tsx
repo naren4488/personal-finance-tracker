@@ -387,7 +387,7 @@ export function LoanDetailView({
 
         <div
           className={cn(
-            "min-h-0 flex-1 overflow-y-auto overflow-x-hidden overscroll-y-contain px-4 pb-24 pt-1 [-ms-overflow-style:none] [scrollbar-width:thin] sm:px-5 sm:pb-10"
+            "min-h-0 flex-1 touch-pan-y overflow-y-auto overflow-x-hidden overscroll-y-contain px-4 pb-24 pt-1 [-ms-overflow-style:none] [-webkit-overflow-scrolling:touch] [scrollbar-width:thin] sm:px-5 sm:pb-10"
           )}
         >
           <div className="flex items-start justify-between gap-3">
@@ -619,146 +619,61 @@ export function LoanDetailView({
           ) : null}
 
           <div className="mt-5 grid grid-cols-2 gap-2.5 sm:gap-3">
-            {isEditing && draft ? (
-              <>
-                <div className={statTileClass}>
-                  <p className={labelSm}>Principal (₹)</p>
-                  <Input
-                    inputMode="numeric"
-                    value={String(asRec(draft).principalAmount ?? "").replace(/\D/g, "")}
-                    onChange={(e) =>
-                      patchDraft({
-                        principalAmount: e.target.value.replace(/\D/g, ""),
-                      })
-                    }
-                    className={fieldIn}
-                  />
-                </div>
-                <div className={statTileClass}>
-                  <p className={labelSm}>EMI (₹)</p>
-                  <Input
-                    inputMode="decimal"
-                    value={String(asRec(draft).emiAmount ?? "")}
-                    onChange={(e) => {
-                      let v = e.target.value.replace(/[^\d.]/g, "")
-                      const d = v.indexOf(".")
-                      if (d !== -1) {
-                        const intPart = v.slice(0, d).replace(/\./g, "")
-                        const frac = v
-                          .slice(d + 1)
-                          .replace(/\./g, "")
-                          .slice(0, 2)
-                        v = frac.length > 0 ? `${intPart}.${frac}` : `${intPart}.`
-                      }
-                      patchDraft({ emiAmount: v })
-                    }}
-                    className={fieldIn}
-                    placeholder="EMI"
-                  />
-                </div>
-                {totalPaid != null ? (
-                  <div className={statTileClass}>
-                    <p className={labelSm}>
-                      Total Paid{model.tenure > 0 ? ` (${model.paid} EMIs)` : ""}
-                    </p>
-                    <p className="mt-1 text-sm font-bold tabular-nums text-income sm:text-base">
-                      {formatCurrency(totalPaid)}
-                    </p>
-                  </div>
-                ) : null}
-                <div className={statTileClass}>
-                  <p className={labelSm}>Remaining</p>
-                  <p className="mt-1 text-sm font-bold tabular-nums text-destructive sm:text-base">
-                    {formatCurrency(outstanding)}
-                  </p>
-                </div>
-                <div className={statTileClass}>
-                  <p className={labelSm}>Interest rate (% p.a.)</p>
-                  <Input
-                    inputMode="decimal"
-                    value={String(asRec(draft).interestRate ?? "")}
-                    onChange={(e) => {
-                      let v = e.target.value.replace(/[^\d.]/g, "")
-                      const d = v.indexOf(".")
-                      if (d !== -1) {
-                        const intPart = v.slice(0, d).replace(/\./g, "")
-                        const frac = v
-                          .slice(d + 1)
-                          .replace(/\./g, "")
-                          .slice(0, 2)
-                        v = frac.length > 0 ? `${intPart}.${frac}` : `${intPart}.`
-                      }
-                      patchDraft({ interestRate: v })
-                    }}
-                    className={fieldIn}
-                  />
-                </div>
-                <div className={statTileClass}>
-                  <p className={labelSm}>Tenure (months)</p>
-                  <Input
-                    inputMode="numeric"
-                    value={String(asRec(draft).tenureMonths ?? "")}
-                    onChange={(e) =>
-                      patchDraft({
-                        tenureMonths: e.target.value.replace(/\D/g, ""),
-                      })
-                    }
-                    className={fieldIn}
-                  />
-                </div>
-              </>
-            ) : (
-              <>
-                {principal > 0 ? (
-                  <div className={statTileClass}>
-                    <p className={labelSm}>Principal</p>
-                    <p className="mt-1 text-sm font-bold tabular-nums text-foreground sm:text-base">
-                      {formatCurrency(principal)}
-                    </p>
-                  </div>
-                ) : null}
-                {emi != null ? (
-                  <div className={statTileClass}>
-                    <p className={labelSm}>EMI</p>
-                    <p className="mt-1 text-sm font-bold tabular-nums text-foreground sm:text-base">
-                      {formatCurrency(emi)}
-                    </p>
-                  </div>
-                ) : null}
-                {totalPaid != null ? (
-                  <div className={statTileClass}>
-                    <p className={labelSm}>
-                      Total Paid{model.tenure > 0 ? ` (${model.paid} EMIs)` : ""}
-                    </p>
-                    <p className="mt-1 text-sm font-bold tabular-nums text-income sm:text-base">
-                      {formatCurrency(totalPaid)}
-                    </p>
-                  </div>
-                ) : null}
-                <div className={statTileClass}>
-                  <p className={labelSm}>Remaining</p>
-                  <p className="mt-1 text-sm font-bold tabular-nums text-destructive sm:text-base">
-                    {formatCurrency(outstanding)}
-                  </p>
-                </div>
-                {rate != null ? (
-                  <div className={statTileClass}>
-                    <p className={labelSm}>Interest Rate</p>
-                    <p className="mt-1 text-sm font-bold tabular-nums text-foreground sm:text-base">
-                      {rate % 1 === 0 ? String(Math.round(rate)) : rate.toFixed(1)}% p.a.
-                    </p>
-                  </div>
-                ) : null}
-                {model.tenure > 0 ? (
-                  <div className={statTileClass}>
-                    <p className={labelSm}>Tenure</p>
-                    <p className="mt-1 text-sm font-bold tabular-nums text-foreground sm:text-base">
-                      {model.tenure} months
-                    </p>
-                  </div>
-                ) : null}
-              </>
-            )}
+            {isEditing ? (
+              <div className="col-span-2 -mt-1 mb-1">
+                <p className="text-[11px] font-medium text-muted-foreground">
+                  Summary updates as you edit above; these values are not editable here.
+                </p>
+              </div>
+            ) : null}
+            {principal > 0 ? (
+              <div className={statTileClass}>
+                <p className={labelSm}>Principal</p>
+                <p className="mt-1 text-sm font-bold tabular-nums text-foreground sm:text-base">
+                  {formatCurrency(principal)}
+                </p>
+              </div>
+            ) : null}
+            {emi != null ? (
+              <div className={statTileClass}>
+                <p className={labelSm}>EMI</p>
+                <p className="mt-1 text-sm font-bold tabular-nums text-foreground sm:text-base">
+                  {formatCurrency(emi)}
+                </p>
+              </div>
+            ) : null}
+            {totalPaid != null ? (
+              <div className={statTileClass}>
+                <p className={labelSm}>
+                  Total Paid{model.tenure > 0 ? ` (${model.paid} EMIs)` : ""}
+                </p>
+                <p className="mt-1 text-sm font-bold tabular-nums text-income sm:text-base">
+                  {formatCurrency(totalPaid)}
+                </p>
+              </div>
+            ) : null}
+            <div className={statTileClass}>
+              <p className={labelSm}>Remaining</p>
+              <p className="mt-1 text-sm font-bold tabular-nums text-destructive sm:text-base">
+                {formatCurrency(outstanding)}
+              </p>
+            </div>
+            {rate != null ? (
+              <div className={statTileClass}>
+                <p className={labelSm}>Interest Rate</p>
+                <p className="mt-1 text-sm font-bold tabular-nums text-foreground sm:text-base">
+                  {rate % 1 === 0 ? String(Math.round(rate)) : rate.toFixed(1)}% p.a.
+                </p>
+              </div>
+            ) : null}
+            {model.tenure > 0 ? (
+              <div className={statTileClass}>
+                <p className={labelSm}>Tenure</p>
+                <p className="mt-1 text-sm font-bold tabular-nums text-foreground sm:text-base">
+                  {model.tenure} months
+                </p>
+              </div>
+            ) : null}
           </div>
 
           {!isEditing ? (

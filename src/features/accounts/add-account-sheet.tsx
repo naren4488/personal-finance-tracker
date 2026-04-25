@@ -194,14 +194,14 @@ function AddAccountSheetMounted({ open, onOpenChange }: MountedProps) {
   }
 
   const typeTileClass =
-    "flex min-h-0 items-start gap-2 rounded-2xl border-2 bg-card p-2.5 text-left transition-[border-color,box-shadow,background-color] sm:gap-2.5 sm:p-3 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-card"
+    "flex min-h-0 min-w-0 max-w-full items-start gap-2 overflow-hidden rounded-2xl border-2 bg-card p-2.5 text-left transition-[border-color,box-shadow,background-color] sm:gap-2.5 sm:p-3 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-card"
 
   return (
     <FormDialog
       open={open}
       onOpenChange={onOpenChange}
       accessibilityTitle="Add Account"
-      contentClassName="sm:rounded-3xl lg:max-w-xl"
+      contentClassName="sm:rounded-3xl"
       formProps={{ onSubmit: handleSubmit }}
       footer={
         <Button
@@ -272,7 +272,7 @@ function AddAccountSheetMounted({ open, onOpenChange }: MountedProps) {
             Account type
           </p>
           <div className="space-y-2.5 sm:space-y-3">
-            <div className="grid grid-cols-2 gap-2.5 sm:gap-3">
+            <div className="grid min-w-0 grid-cols-2 gap-2.5 sm:[grid-template-columns:repeat(2,minmax(0,1fr))] sm:gap-3">
               {firstFour.map(({ id, label, description, Icon }) => {
                 const selected = accountType === id
                 return (

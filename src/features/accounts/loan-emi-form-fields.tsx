@@ -31,7 +31,7 @@ function SelectChevron() {
 export function LoanEmiFormFields({
   value,
   onChange,
-  showOverdue = true,
+  showOverdue = false,
 }: {
   value: LoanEmiFormModel
   onChange: (patch: Partial<LoanEmiFormModel>) => void
@@ -88,7 +88,7 @@ export function LoanEmiFormFields({
   }, [value.overrideEmi, value.interestRate, principalNum, tenureNum, overrideEmiNum, onChange])
 
   return (
-    <div className="space-y-4 animate-in fade-in slide-in-from-top-1 duration-200">
+    <div className="max-w-full min-w-0 space-y-4 animate-in fade-in slide-in-from-top-1 duration-200">
       {/* Bank / Lender & Loan Account No. */}
       <div className={APP_FORM_TWO_COL_GRID_CLASS}>
         <section>

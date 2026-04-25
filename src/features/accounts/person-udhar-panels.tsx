@@ -17,7 +17,7 @@ import {
   sanitizeUserFacingApiText,
   type RecentTransaction,
 } from "@/lib/api/transaction-schemas"
-import { ACTION_GROUP_ROW } from "@/lib/ui/action-group-classes"
+import { ACTION_GROUP_ROW_TX } from "@/lib/ui/action-group-classes"
 import { formatCurrency, formatDate } from "@/lib/format"
 import { cn } from "@/lib/utils"
 
@@ -154,7 +154,7 @@ export function PersonUdharLedgerList({
           >
             <div className="p-3.5">
               <p className="text-xs text-muted-foreground">{formatDate(tx.date)}</p>
-              <div className="mt-1.5 flex items-start justify-between gap-2">
+              <div className="mt-1.5 flex items-center justify-between gap-2">
                 <div className="min-w-0">
                   <p className="text-sm font-semibold text-foreground">
                     <span className="text-muted-foreground">{heading.arrow} </span>
@@ -175,7 +175,7 @@ export function PersonUdharLedgerList({
                     <p className="mt-1 text-xs text-muted-foreground">{ledgerFallback}</p>
                   ) : null}
                 </div>
-                <div className={cn(ACTION_GROUP_ROW, "shrink-0 self-start")}>
+                <div className={cn(ACTION_GROUP_ROW_TX, "shrink-0")}>
                   {canDelete ? (
                     <TransactionEntryDeleteButton onClick={() => onDeleteEntry?.(tx)} />
                   ) : null}

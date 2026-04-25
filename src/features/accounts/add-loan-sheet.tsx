@@ -129,8 +129,7 @@ function AddLoanSheetMounted({ open, onOpenChange }: MountedProps) {
     }
 
     const principalDigits = Number(p)
-    const overdueExtra = emi.overdue ? Number(emi.overdueAmount.replace(/\D/g, "")) || 0 : 0
-    const balanceInr = principalDigits + overdueExtra
+    const balanceInr = principalDigits
 
     const payload: CreateAccountRequest = {
       name,
@@ -233,7 +232,7 @@ function AddLoanSheetMounted({ open, onOpenChange }: MountedProps) {
           />
         </section>
 
-        <LoanEmiFormFields value={emi} onChange={patchEmi} showOverdue />
+        <LoanEmiFormFields value={emi} onChange={patchEmi} showOverdue={false} />
       </div>
     </FormDialog>
   )
