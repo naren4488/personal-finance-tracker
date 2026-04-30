@@ -8,11 +8,7 @@ import {
   nextDueDateFromDay,
   paymentDueDayNumber,
 } from "@/lib/api/credit-card-map"
-import {
-  isLoanAccount,
-  loanEmiDueDayNumber,
-  resolveLoanEmiAmount,
-} from "@/lib/api/loan-account-map"
+import { isLoanAccount, nextLoanEmiDueDate, resolveLoanEmiAmount } from "@/lib/api/loan-account-map"
 import { parseSignedAmountString } from "@/lib/api/transaction-schemas"
 import type { RecentTransaction } from "@/lib/api/transaction-schemas"
 
@@ -300,9 +296,9 @@ export function supplementLoanEmiItems(
 
   for (const a of accounts) {
     if (!isLoanAccount(a)) continue
-    const dayNum = loanEmiDueDayNumber(a)
-    if (dayNum == null) continue
-    const next = startOfLocalDay(nextDueDateFromDay(dayNum))
+    const nextRaw = nextLoanEmiDueDate(a)
+    if (nextRaw == null) continue
+    const next = startOfLocalDay(nextRaw)
     if (next.getTime() < now.getTime() || next.getTime() > end.getTime()) continue
 
     const dueKey = formatYyyyMmDd(next)

@@ -16,7 +16,7 @@ import { ConfirmDeleteDialog } from "@/components/confirm-delete-dialog"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import type { Account } from "@/lib/api/account-schemas"
+import { normalizeLoanDueDateCycleForApi, type Account } from "@/lib/api/account-schemas"
 import { dayOfMonthOrdinal, interestRatePercentFromAccount } from "@/lib/api/credit-card-map"
 import {
   loanAccountDisplayTail,
@@ -218,10 +218,7 @@ export function LoanDetailView({
       toast.error("Loan start date is missing or invalid")
       return
     }
-    const dueDateCycleRaw = String(rec.dueDateCycle ?? "")
-      .trim()
-      .toLowerCase()
-    const dueDateCycle = dueDateCycleRaw === "rolling" ? "rolling" : "fixed_monthly_date"
+    const dueDateCycle = normalizeLoanDueDateCycleForApi(String(rec.dueDateCycle ?? ""))
     const loanType =
       String(rec.loanType ?? "personal")
         .trim()
