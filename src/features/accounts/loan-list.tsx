@@ -1,7 +1,6 @@
 import { useMemo } from "react"
 import { CalendarDays, ChevronRight, Landmark } from "lucide-react"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
-import { Button } from "@/components/ui/button"
 import type { Account } from "@/lib/api/account-schemas"
 import {
   loanPaidEmiListLabel,
@@ -55,18 +54,16 @@ function LoanTileEntries({
   account,
   model,
   onSelect,
-  onPayEmi,
 }: {
   account: Account
   model: LoanViewModel
   onSelect?: (account: Account) => void
-  onPayEmi?: (account: Account) => void
 }) {
   return (
     <div className="overflow-hidden rounded-2xl border border-border/80 bg-card shadow-sm">
       <button
         type="button"
-        className="w-full border-b border-border/80 bg-card px-3 py-3 text-left transition-colors hover:bg-muted/30 sm:px-4 sm:py-3.5"
+        className="w-full bg-card px-3 py-3 text-left transition-colors hover:bg-muted/30 sm:px-4 sm:py-3.5"
         onClick={() => onSelect?.(account)}
       >
         <div className="flex items-center justify-between gap-2">
@@ -129,20 +126,6 @@ function LoanTileEntries({
           </div>
         ) : null}
       </button>
-
-      <div className="space-y-3 px-3 py-3 sm:px-4 sm:py-4">
-        <Button
-          type="button"
-          variant="secondary"
-          className="h-10 w-full rounded-xl font-semibold"
-          onClick={(e) => {
-            e.stopPropagation()
-            onPayEmi?.(account)
-          }}
-        >
-          Pay EMI
-        </Button>
-      </div>
     </div>
   )
 }
@@ -151,11 +134,9 @@ export type LoanListProps = {
   accounts: Account[]
   variant: "entries" | "accounts"
   onSelectLoan?: (account: Account) => void
-  /** Entries tile: Pay EMI → same flow as loan detail Pay EMI */
-  onPayEmi?: (account: Account) => void
 }
 
-export function LoanList({ accounts, variant, onSelectLoan, onPayEmi }: LoanListProps) {
+export function LoanList({ accounts, variant, onSelectLoan }: LoanListProps) {
   const rows = useMemo(
     () => accounts.map((account) => ({ account, model: mapAccountToLoanView(account) })),
     [accounts]
@@ -168,12 +149,7 @@ export function LoanList({ accounts, variant, onSelectLoan, onPayEmi }: LoanList
           {variant === "accounts" ? (
             <LoanRowAccounts account={account} model={model} onSelect={onSelectLoan} />
           ) : (
-            <LoanTileEntries
-              account={account}
-              model={model}
-              onSelect={onSelectLoan}
-              onPayEmi={onPayEmi}
-            />
+            <LoanTileEntries account={account} model={model} onSelect={onSelectLoan} />
           )}
         </li>
       ))}

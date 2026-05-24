@@ -153,7 +153,7 @@ function AddAccountSheetMounted({ open, onOpenChange }: MountedProps) {
     } else {
       const digits = balance.replace(/\D/g, "")
       balanceInr = digits === "" ? 0 : Number(digits)
-      if (!bankNameOut) {
+      if (!bankNameOut && !["cash", "wallet", "upi"].includes(accountType)) {
         toast.error("Add bank / institution name (bankName)")
         return
       }
@@ -358,24 +358,26 @@ function AddAccountSheetMounted({ open, onOpenChange }: MountedProps) {
           />
         </section>
 
-        <section className="space-y-2 sm:space-y-2.5">
-          <Label htmlFor={bankNameId} className={APP_FORM_LABEL_CLASS}>
-            Bank / institution
-          </Label>
-          <p className="text-[11px] leading-relaxed text-muted-foreground sm:text-xs">
-            Sent as <code className="rounded bg-muted px-1 py-0.5 text-[10px]">bankName</code>
-            {isLoanType && emiDue
-              ? " — optional if Bank / lender is set in EMI details below."
-              : "."}
-          </p>
-          <Input
-            id={bankNameId}
-            value={bankName}
-            onChange={(e) => setBankName(e.target.value)}
-            placeholder="e.g. SBI, HDFC, Paytm"
-            className={APP_FORM_FIELD_CLASS}
-          />
-        </section>
+        {!["cash", "wallet", "upi"].includes(accountType) ? (
+          <section className="space-y-2 sm:space-y-2.5">
+            <Label htmlFor={bankNameId} className={APP_FORM_LABEL_CLASS}>
+              Bank / institution
+            </Label>
+            <p className="text-[11px] leading-relaxed text-muted-foreground sm:text-xs">
+              Sent as <code className="rounded bg-muted px-1 py-0.5 text-[10px]">bankName</code>
+              {isLoanType && emiDue
+                ? " — optional if Bank / lender is set in EMI details below."
+                : "."}
+            </p>
+            <Input
+              id={bankNameId}
+              value={bankName}
+              onChange={(e) => setBankName(e.target.value)}
+              placeholder="e.g. SBI, HDFC, Paytm"
+              className={APP_FORM_FIELD_CLASS}
+            />
+          </section>
+        ) : null}
 
         <section className={APP_FORM_SWITCH_ROW_CLASS}>
           <div className="min-w-0 space-y-0.5">

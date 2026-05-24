@@ -34,12 +34,7 @@ import {
   mapAccountToLoanView,
   resolveLoanEmiAmount,
 } from "@/lib/api/loan-account-map"
-import {
-  RecordLoanPaymentSheet,
-  type LoanPaymentMode,
-} from "@/features/accounts/record-loan-payment-sheet"
 import { RecentTransactionRow } from "@/features/entries/recent-transaction-row"
-import { useDeleteTransactionFlow } from "@/features/entries/use-delete-transaction-flow"
 import { getAccountDeleteWarning } from "@/lib/accounts/account-delete"
 import { getErrorMessage } from "@/lib/api/errors"
 import { formatCurrency } from "@/lib/format"
@@ -87,24 +82,18 @@ export function LoanDetailView({
   onBack,
   account,
   onLoanUpdated,
-  onPayEmi,
   onLoanDeleted,
 }: {
   onBack: () => void
   account: Account | null
   /** Optimistic local save until PATCH /accounts exists */
   onLoanUpdated?: (account: Account) => void
-  /** Pay EMI — opens shared Add Transaction (transfer → loan EMI). */
-  onPayEmi?: () => void
   onLoanDeleted?: () => void
 }) {
   const navigate = useNavigate()
   const [updateAccount, { isLoading: isSavingLoan }] = useUpdateAccountMutation()
   const [deleteAccount, { isLoading: isDeletingAccount }] = useDeleteAccountMutation()
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false)
-  const txDelete = useDeleteTransactionFlow()
-  const [paymentOpen, setPaymentOpen] = useState(false)
-  const [paymentMode, setPaymentMode] = useState<LoanPaymentMode>("pay_emi")
   const [isEditing, setIsEditing] = useState(false)
   const [draft, setDraft] = useState<Account | null>(null)
   const { data: allAccounts = [] } = useGetAccountsQuery(undefined, { skip: !account })
@@ -128,11 +117,6 @@ export function LoanDetailView({
   const cancelEdit = useCallback(() => {
     setIsEditing(false)
     setDraft(null)
-  }, [])
-
-  const openPaymentSheet = useCallback((mode: LoanPaymentMode) => {
-    setPaymentMode(mode)
-    setPaymentOpen(true)
   }, [])
 
   const startEdit = useCallback(() => {
@@ -297,7 +281,6 @@ export function LoanDetailView({
       const res = await deleteAccount(id).unwrap()
       toast.success(res.message ?? "Loan deleted")
       setDeleteConfirmOpen(false)
-      setPaymentOpen(false)
       setIsEditing(false)
       setDraft(null)
       onBack()
@@ -308,7 +291,7 @@ export function LoanDetailView({
   }, [account, deleteAccount, onLoanDeleted, onBack])
 
   useEffect(() => {
-    if (!account || paymentOpen) return
+    if (!account) return
     function onKey(e: KeyboardEvent) {
       if (e.key !== "Escape") return
       if (isEditing) {
@@ -319,7 +302,7 @@ export function LoanDetailView({
     }
     window.addEventListener("keydown", onKey)
     return () => window.removeEventListener("keydown", onKey)
-  }, [account, paymentOpen, isEditing, cancelEdit, dismiss])
+  }, [account, isEditing, cancelEdit, dismiss])
 
   const labelSm = "text-[10px] font-medium text-muted-foreground sm:text-xs"
   const loanLedgerForUi = useMemo(
@@ -370,20 +353,6 @@ export function LoanDetailView({
         warning={deleteWarning}
         isDeleting={isDeletingAccount}
         onConfirm={confirmDeleteLoan}
-      />
-      <ConfirmDeleteDialog
-        open={txDelete.confirmOpen}
-        onOpenChange={(v) => !v && txDelete.dismiss()}
-        title="Delete entry"
-        message="Are you sure you want to delete this transaction? This cannot be undone."
-        isDeleting={txDelete.isDeleting}
-        onConfirm={txDelete.confirmDelete}
-      />
-      <RecordLoanPaymentSheet
-        open={paymentOpen}
-        onOpenChange={setPaymentOpen}
-        account={account}
-        mode={paymentMode}
       />
       <main
         className="flex min-h-0 w-full max-w-lg flex-1 flex-col overflow-hidden bg-background"
@@ -786,26 +755,6 @@ export function LoanDetailView({
 
           {!isEditing ? (
             <div className="mt-5 space-y-2.5">
-              <div className="grid grid-cols-2 gap-2.5">
-                <Button
-                  type="button"
-                  className="h-11 rounded-xl bg-primary font-semibold text-primary-foreground hover:bg-primary/90"
-                  onClick={() => {
-                    if (onPayEmi) onPayEmi()
-                    else openPaymentSheet("pay_emi")
-                  }}
-                >
-                  Pay EMI
-                </Button>
-                <Button
-                  type="button"
-                  variant="outline"
-                  className="h-11 rounded-xl border-border font-semibold"
-                  onClick={() => openPaymentSheet("repay_emi")}
-                >
-                  Repay EMI
-                </Button>
-              </div>
               <Button
                 type="button"
                 variant="outline"
@@ -857,11 +806,7 @@ export function LoanDetailView({
               <ul className="mt-4 flex list-none flex-col gap-2.5" aria-label="Loan EMI history">
                 {loanLedgerForUi.map((tx) => (
                   <li key={tx.id}>
-                    <RecentTransactionRow
-                      tx={tx}
-                      accounts={allAccounts}
-                      onDelete={txDelete.requestDelete}
-                    />
+                    <RecentTransactionRow tx={tx} accounts={allAccounts} />
                   </li>
                 ))}
               </ul>

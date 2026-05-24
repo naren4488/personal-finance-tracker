@@ -1,14 +1,9 @@
-import { useCallback, useMemo, useRef, useState } from "react"
+import { useCallback, useMemo, useState } from "react"
 import { useNavigate, useParams } from "react-router-dom"
 import { DetailLayout } from "@/components/detail-layout"
 import { LoanDetailView } from "@/features/accounts/loan-detail-view"
 import type { AccountsSegmentId } from "@/features/accounts/accounts-mock-data"
-import { buildAccountsDetailPath } from "@/features/accounts/accounts-route"
 import type { Account } from "@/lib/api/account-schemas"
-import {
-  AddTransactionModal,
-  type TransferPaymentPreset,
-} from "@/features/entries/add-transaction-modal"
 import { useGetLoansQuery } from "@/store/api/base-api"
 import { useAppSelector } from "@/store/hooks"
 
@@ -26,19 +21,9 @@ export default function LoanDetailPage() {
   const patched = patchedForId?.id === id ? patchedForId.account : null
   const account = patched ?? fromList
 
-  const [transferModalOpen, setTransferModalOpen] = useState(false)
-  const [transferPreset, setTransferPreset] = useState<TransferPaymentPreset | null>(null)
-  const transferSuccessSkipExitRef = useRef(false)
-
   const onBack = useCallback(() => {
     navigate("/accounts", { state: { accountsSegment: "loans" as AccountsSegmentId } })
   }, [navigate])
-
-  const onPayEmi = useCallback(() => {
-    if (!account) return
-    setTransferPreset({ kind: "loan_emi", loanAccountId: String(account.id) })
-    setTransferModalOpen(true)
-  }, [account])
 
   if (!user) return null
   if (!id) {
@@ -85,35 +70,7 @@ export default function LoanDetailPage() {
           setPatchedForId({ id, account: a })
           void refetch()
         }}
-        onPayEmi={onPayEmi}
         onLoanDeleted={onBack}
-      />
-      <AddTransactionModal
-        open={transferModalOpen}
-        onOpenChange={(v) => {
-          setTransferModalOpen(v)
-          if (!v) {
-            const kind = transferPreset?.kind
-            const skip = transferSuccessSkipExitRef.current
-            transferSuccessSkipExitRef.current = false
-            setTransferPreset(null)
-            if (skip) return
-            if (kind === "loan_emi") {
-              // stay on this page; list is optional
-            }
-          }
-        }}
-        initialType="transfer"
-        transferPaymentPreset={transferPreset}
-        accountsReturnPath="/accounts"
-        successNavigateTo={
-          transferPreset?.kind === "loan_emi"
-            ? buildAccountsDetailPath({ kind: "loan", id: transferPreset.loanAccountId })
-            : null
-        }
-        onTransactionSuccess={() => {
-          transferSuccessSkipExitRef.current = true
-        }}
       />
     </DetailLayout>
   )

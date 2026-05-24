@@ -107,11 +107,6 @@ export default function AccountsPage() {
     setTransferModalOpen(true)
   }, [])
 
-  const openPayEmiForLoan = useCallback((a: Account) => {
-    setTransferPreset({ kind: "loan_emi", loanAccountId: String(a.id) })
-    setTransferModalOpen(true)
-  }, [])
-
   const openAddSpendForCard = useCallback((a: Account) => {
     setCardForSpend(a)
     setCardInlineSpendOpen(true)
@@ -754,7 +749,6 @@ export default function AccountsPage() {
                   onSelectLoan={(a) => {
                     navigate(`/loans/${encodeURIComponent(String(a.id))}`)
                   }}
-                  onPayEmi={openPayEmiForLoan}
                 />
               ) : (
                 <ul
