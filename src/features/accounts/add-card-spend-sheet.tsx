@@ -18,6 +18,7 @@ import {
 } from "@/lib/api/credit-card-map"
 import { getErrorMessage } from "@/lib/api/errors"
 import type { CreateTransactionPayload } from "@/lib/api/schemas"
+import { EXPENSE_CATEGORY_API_VALUES } from "@/lib/api/transaction-schemas"
 import { endUserSession } from "@/lib/auth/end-session"
 import { formatCurrency } from "@/lib/format"
 import {
@@ -147,6 +148,7 @@ function AddCardSpendSheetInner({
   )
 
   const tags = useWatch({ control: form.control, name: "tags" }) ?? []
+  const categoryValue = useWatch({ control: form.control, name: "category" }) ?? ""
 
   const addTag = useCallback(() => {
     const next = tagDraft.trim()
@@ -343,14 +345,23 @@ function AddCardSpendSheetInner({
           <Label htmlFor={categoryId} className={APP_FORM_LABEL_CLASS}>
             Category
           </Label>
-          <Input
-            id={categoryId}
-            placeholder="e.g. food"
-            autoComplete="off"
-            aria-invalid={!!form.formState.errors.category}
-            {...form.register("category")}
-            className={APP_FORM_FIELD_CLASS}
-          />
+          <div className="relative">
+            <select
+              id={categoryId}
+              autoComplete="off"
+              aria-invalid={!!form.formState.errors.category}
+              {...form.register("category")}
+              className={cn(APP_FORM_SELECT_CLASS, !categoryValue && "text-muted-foreground")}
+            >
+              <option value="">Select category</option>
+              {EXPENSE_CATEGORY_API_VALUES.map((category) => (
+                <option key={category} value={category}>
+                  {category}
+                </option>
+              ))}
+            </select>
+            <SelectChevron compact />
+          </div>
           {form.formState.errors.category && (
             <p className="mt-1 text-xs text-destructive">
               {form.formState.errors.category.message}
