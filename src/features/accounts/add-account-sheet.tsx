@@ -1,21 +1,31 @@
-import { useCallback, useId, useMemo, useState } from "react"
+import { zodResolver } from "@hookform/resolvers/zod"
+import { useCallback, useId, useMemo } from "react"
+import { useForm, useWatch } from "react-hook-form"
 import { Banknote, Building2, Landmark, type LucideIcon, Smartphone, Wallet, X } from "lucide-react"
 import { toast } from "sonner"
+import { AppFormInputField } from "@/components/app-form-fields"
 import { FormDialog } from "@/components/form-dialog"
 import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
+import {
+  Form,
+  FormControl,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage,
+} from "@/components/ui/form"
 import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
-import { LoanEmiFormFields } from "@/features/accounts/loan-emi-form-fields"
+import { type CreateAccountRequest } from "@/lib/api/account-schemas"
 import {
-  createInitialLoanEmiModel,
-  type LoanEmiFormModel,
-} from "@/features/accounts/loan-emi-model"
-import { formatOpeningBalanceForApi, type CreateAccountRequest } from "@/lib/api/account-schemas"
-import { getErrorMessage } from "@/lib/api/errors"
+  accountCreateFormSchema,
+  balanceDigitsFromForm,
+  type AccountCreateFormValues,
+} from "@/lib/forms/account-create-schema"
+import { handleFormApiError } from "@/lib/forms/form-api-errors"
 import { isAccountCreateApiDisabled } from "@/lib/feature-flags"
+import { useAppDispatch } from "@/store/hooks"
 import {
-  APP_FORM_FIELD_CLASS,
   APP_FORM_FIELD_EMPHASIS_CLASS,
   APP_FORM_HEADER_CLASS,
   APP_FORM_LABEL_CLASS,
@@ -94,22 +104,25 @@ type MountedProps = {
 }
 
 function AddAccountSheetMounted({ open, onOpenChange }: MountedProps) {
+  const dispatch = useAppDispatch()
   const titleId = useId()
-  const nameId = useId()
-  const balanceId = useId()
-  const bankNameId = useId()
-
-  const [accountType, setAccountType] = useState<string>("bank")
-  const [name, setName] = useState("")
-  const [bankName, setBankName] = useState("")
-  const [balance, setBalance] = useState("")
-  const [isActive, setIsActive] = useState(true)
-  const [emiDue, setEmiDue] = useState(false)
-  const [emi, setEmi] = useState<LoanEmiFormModel>(() => createInitialLoanEmiModel())
 
   const [createAccount, { isLoading: isSubmitting }] = useCreateAccountMutation()
   const accountCreateDisabled = isAccountCreateApiDisabled()
-  const isLoanType = accountType === "loan"
+
+  const form = useForm<AccountCreateFormValues>({
+    resolver: zodResolver(accountCreateFormSchema),
+    defaultValues: {
+      accountType: "bank",
+      name: "",
+      bankName: "",
+      balance: "",
+      isActive: true,
+    },
+  })
+
+  const accountType = useWatch({ control: form.control, name: "accountType" })
+  const isActive = useWatch({ control: form.control, name: "isActive" })
 
   const dismiss = useCallback(() => {
     onOpenChange(false)
@@ -119,79 +132,30 @@ function AddAccountSheetMounted({ open, onOpenChange }: MountedProps) {
   const fifth = ACCOUNT_TYPE_OPTIONS[4]
   const FifthIcon = fifth?.Icon
 
-  function patchEmi(p: Partial<LoanEmiFormModel>) {
-    setEmi((s) => ({ ...s, ...p }))
-  }
-
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault()
+  const onSubmit = form.handleSubmit(async (values) => {
     if (accountCreateDisabled) {
       toast.message("Coming soon", {
         description: "Account creation will work once the server API is enabled.",
       })
       return
     }
-    const n = name.trim()
-    if (!n) {
-      toast.error("Give your account a name")
-      return
-    }
-
-    let balanceInr = 0
-    let bankNameOut = bankName.trim()
-
-    const shouldUseEmiFlow = isLoanType && emiDue
-
-    if (shouldUseEmiFlow) {
-      const p = emi.principal.replace(/\D/g, "")
-      if (!p || Number(p) <= 0) {
-        toast.error("Enter a valid principal amount")
-        return
-      }
-      balanceInr = Number(p)
-      bankNameOut = bankNameOut || emi.bankLender.trim() || n.split(/\s+/)[0] || "Loan"
-    } else {
-      const digits = balance.replace(/\D/g, "")
-      balanceInr = digits === "" ? 0 : Number(digits)
-      if (!bankNameOut && !["cash", "wallet", "upi"].includes(accountType)) {
-        toast.error("Add bank / institution name (bankName)")
-        return
-      }
-    }
 
     const payload: CreateAccountRequest = {
-      name: n,
-      kind: accountType,
-      balanceInr,
-      bankName: bankNameOut,
-      isActive,
+      name: values.name.trim(),
+      kind: values.accountType,
+      balanceInr: balanceDigitsFromForm(values.balance),
+      bankName: values.bankName.trim(),
+      isActive: values.isActive,
     }
-
-    console.log("[add-account] submit — CreateAccountRequest (client):", payload)
-    console.log(
-      "[add-account] submit — wire JSON preview:",
-      JSON.stringify(
-        {
-          name: payload.name,
-          kind: payload.kind,
-          openingBalance: formatOpeningBalanceForApi(payload.balanceInr),
-          bankName: payload.bankName,
-          isActive: payload.isActive,
-        },
-        null,
-        2
-      )
-    )
 
     try {
       const result = await createAccount(payload).unwrap()
-      console.log("[add-account] success — API result:", result)
       toast.success(result.message ?? "Account created successfully")
       dismiss()
     } catch (err) {
-      toast.error(getErrorMessage(err))
+      handleFormApiError(err, dispatch, { onDismiss: dismiss })
     }
-  }
+  })
 
   const typeTileClass =
     "flex min-h-0 min-w-0 max-w-full items-start gap-2 overflow-hidden rounded-2xl border-2 bg-card p-2.5 text-left transition-[border-color,box-shadow,background-color] sm:gap-2.5 sm:p-3 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-card"
@@ -202,7 +166,7 @@ function AddAccountSheetMounted({ open, onOpenChange }: MountedProps) {
       onOpenChange={onOpenChange}
       accessibilityTitle="Add Account"
       contentClassName="sm:rounded-3xl"
-      formProps={{ onSubmit: handleSubmit }}
+      formProps={{ onSubmit: (e) => void onSubmit(e) }}
       footer={
         <Button
           type="submit"
@@ -244,210 +208,182 @@ function AddAccountSheetMounted({ open, onOpenChange }: MountedProps) {
         </header>
       }
     >
-      <div className={APP_FORM_STACK_CLASS}>
-        {accountCreateDisabled ? (
-          <div
-            role="status"
-            className="rounded-2xl border border-amber-500/40 bg-amber-500/12 px-4 py-3.5 text-sm text-foreground sm:px-4 sm:py-4"
-          >
-            <p className="font-semibold text-amber-950 dark:text-amber-100">
-              Account creation is turned off
-            </p>
-            <p className="mt-2 text-xs leading-relaxed text-muted-foreground sm:text-sm">
-              Nothing is sent to the server while this mode is on. Delete{" "}
-              <code className="rounded-md bg-background/80 px-1.5 py-0.5 font-mono text-[11px]">
-                VITE_DISABLE_ACCOUNT_CREATE
-              </code>{" "}
-              from{" "}
-              <code className="rounded-md bg-background/80 px-1.5 py-0.5 font-mono text-[11px]">
-                .env.local
-              </code>{" "}
-              (or set it to false) after the add-account API is deployed.
-            </p>
-          </div>
-        ) : null}
+      <Form {...form}>
+        <div className={APP_FORM_STACK_CLASS}>
+          {accountCreateDisabled ? (
+            <div
+              role="status"
+              className="rounded-2xl border border-amber-500/40 bg-amber-500/12 px-4 py-3.5 text-sm text-foreground sm:px-4 sm:py-4"
+            >
+              <p className="font-semibold text-amber-950 dark:text-amber-100">
+                Account creation is turned off
+              </p>
+              <p className="mt-2 text-xs leading-relaxed text-muted-foreground sm:text-sm">
+                Nothing is sent to the server while this mode is on. Delete{" "}
+                <code className="rounded-md bg-background/80 px-1.5 py-0.5 font-mono text-[11px]">
+                  VITE_DISABLE_ACCOUNT_CREATE
+                </code>{" "}
+                from{" "}
+                <code className="rounded-md bg-background/80 px-1.5 py-0.5 font-mono text-[11px]">
+                  .env.local
+                </code>{" "}
+                (or set it to false) after the add-account API is deployed.
+              </p>
+            </div>
+          ) : null}
 
-        <section className="space-y-3 sm:space-y-3.5" aria-labelledby="account-type-heading">
-          <p id="account-type-heading" className={APP_FORM_SECTION_HEADING_CLASS}>
-            Account type
-          </p>
-          <div className="space-y-2.5 sm:space-y-3">
-            <div className="grid min-w-0 grid-cols-2 gap-2.5 sm:[grid-template-columns:repeat(2,minmax(0,1fr))] sm:gap-3">
-              {firstFour.map(({ id, label, description, Icon }) => {
-                const selected = accountType === id
-                return (
-                  <button
-                    key={id}
-                    type="button"
-                    role="radio"
-                    aria-checked={selected}
-                    onClick={() => setAccountType(id)}
-                    className={cn(
-                      typeTileClass,
-                      selected
-                        ? "border-primary bg-primary/8 shadow-sm dark:bg-primary/15"
-                        : "border-border/80 hover:border-muted-foreground/40 hover:bg-muted/30"
-                    )}
-                  >
-                    <span className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-muted/80 sm:size-10">
-                      <Icon
+          <section className="space-y-3 sm:space-y-3.5" aria-labelledby="account-type-heading">
+            <p id="account-type-heading" className={APP_FORM_SECTION_HEADING_CLASS}>
+              Account type
+            </p>
+            <div className="space-y-2.5 sm:space-y-3">
+              <div className="grid min-w-0 grid-cols-2 gap-2.5 sm:[grid-template-columns:repeat(2,minmax(0,1fr))] sm:gap-3">
+                {firstFour.map(({ id, label, description, Icon }) => {
+                  const selected = accountType === id
+                  return (
+                    <button
+                      key={id}
+                      type="button"
+                      role="radio"
+                      aria-checked={selected}
+                      onClick={() => {
+                        form.setValue("accountType", id)
+                        form.clearErrors("bankName")
+                      }}
+                      className={cn(
+                        typeTileClass,
+                        selected
+                          ? "border-primary bg-primary/8 shadow-sm dark:bg-primary/15"
+                          : "border-border/80 hover:border-muted-foreground/40 hover:bg-muted/30"
+                      )}
+                    >
+                      <span className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-muted/80 sm:size-10">
+                        <Icon
+                          className="size-[18px] text-primary sm:size-5"
+                          strokeWidth={2}
+                          aria-hidden
+                        />
+                      </span>
+                      <span className="min-w-0 flex-1">
+                        <span className="block text-xs font-bold leading-snug text-foreground sm:text-[13px]">
+                          {label}
+                        </span>
+                        <span className="mt-1 line-clamp-2 text-[10px] leading-snug text-muted-foreground sm:text-[11px]">
+                          {description}
+                        </span>
+                      </span>
+                    </button>
+                  )
+                })}
+              </div>
+              {fifth ? (
+                <button
+                  key={fifth.id}
+                  type="button"
+                  role="radio"
+                  aria-checked={accountType === fifth.id}
+                  onClick={() => {
+                    form.setValue("accountType", fifth.id)
+                    form.clearErrors("bankName")
+                  }}
+                  className={cn(
+                    typeTileClass,
+                    "w-full",
+                    accountType === fifth.id
+                      ? "border-primary bg-primary/8 shadow-sm dark:bg-primary/15"
+                      : "border-border/80 hover:border-muted-foreground/40 hover:bg-muted/30"
+                  )}
+                >
+                  <span className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-muted/80 sm:size-10">
+                    {FifthIcon ? (
+                      <FifthIcon
                         className="size-[18px] text-primary sm:size-5"
                         strokeWidth={2}
                         aria-hidden
                       />
+                    ) : null}
+                  </span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block text-xs font-bold leading-snug text-foreground sm:text-[13px]">
+                      {fifth.label}
                     </span>
-                    <span className="min-w-0 flex-1">
-                      <span className="block text-xs font-bold leading-snug text-foreground sm:text-[13px]">
-                        {label}
-                      </span>
-                      <span className="mt-1 line-clamp-2 text-[10px] leading-snug text-muted-foreground sm:text-[11px]">
-                        {description}
-                      </span>
+                    <span className="mt-1 text-[10px] leading-snug text-muted-foreground sm:text-[11px]">
+                      {fifth.description}
                     </span>
-                  </button>
-                )
-              })}
+                  </span>
+                </button>
+              ) : null}
             </div>
-            {fifth ? (
-              <button
-                key={fifth.id}
-                type="button"
-                role="radio"
-                aria-checked={accountType === fifth.id}
-                onClick={() => setAccountType(fifth.id)}
-                className={cn(
-                  typeTileClass,
-                  "w-full",
-                  accountType === fifth.id
-                    ? "border-primary bg-primary/8 shadow-sm dark:bg-primary/15"
-                    : "border-border/80 hover:border-muted-foreground/40 hover:bg-muted/30"
-                )}
-              >
-                <span className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-muted/80 sm:size-10">
-                  {FifthIcon ? (
-                    <FifthIcon
-                      className="size-[18px] text-primary sm:size-5"
-                      strokeWidth={2}
-                      aria-hidden
-                    />
-                  ) : null}
-                </span>
-                <span className="min-w-0 flex-1">
-                  <span className="block text-xs font-bold leading-snug text-foreground sm:text-[13px]">
-                    {fifth.label}
-                  </span>
-                  <span className="mt-1 text-[10px] leading-snug text-muted-foreground sm:text-[11px]">
-                    {fifth.description}
-                  </span>
-                </span>
-              </button>
-            ) : null}
-          </div>
-        </section>
-
-        <section className="space-y-2 sm:space-y-2.5">
-          <Label htmlFor={nameId} className={APP_FORM_LABEL_CLASS}>
-            Name
-          </Label>
-          <Input
-            id={nameId}
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            placeholder="e.g. SBI Savings, HDFC Current"
-            className={APP_FORM_FIELD_CLASS}
-          />
-        </section>
-
-        {!["cash", "wallet", "upi"].includes(accountType) ? (
-          <section className="space-y-2 sm:space-y-2.5">
-            <Label htmlFor={bankNameId} className={APP_FORM_LABEL_CLASS}>
-              Bank / institution
-            </Label>
-            <p className="text-[11px] leading-relaxed text-muted-foreground sm:text-xs">
-              Sent as <code className="rounded bg-muted px-1 py-0.5 text-[10px]">bankName</code>
-              {isLoanType && emiDue
-                ? " — optional if Bank / lender is set in EMI details below."
-                : "."}
-            </p>
-            <Input
-              id={bankNameId}
-              value={bankName}
-              onChange={(e) => setBankName(e.target.value)}
-              placeholder="e.g. SBI, HDFC, Paytm"
-              className={APP_FORM_FIELD_CLASS}
-            />
           </section>
-        ) : null}
 
-        <section className={APP_FORM_SWITCH_ROW_CLASS}>
-          <div className="min-w-0 space-y-0.5">
-            <Label
-              htmlFor="account-active"
-              className="text-xs font-bold text-foreground sm:text-sm"
-            >
-              Active account
-            </Label>
-            <p className="text-[11px] leading-relaxed text-muted-foreground sm:text-xs">
-              Inactive accounts stay hidden from most flows
-            </p>
-          </div>
-          <Switch
-            id="account-active"
-            checked={isActive}
-            onCheckedChange={setIsActive}
-            aria-label="Account active"
-            className="shrink-0"
+          <AppFormInputField
+            control={form.control}
+            name="name"
+            label="Name"
+            placeholder="e.g. SBI Savings, HDFC Current"
           />
-        </section>
 
-        {isLoanType ? (
+          {!["cash", "wallet", "upi"].includes(accountType) ? (
+            <div className="space-y-2 sm:space-y-2.5">
+              <AppFormInputField
+                control={form.control}
+                name="bankName"
+                label="Bank / institution"
+                placeholder="e.g. SBI, HDFC, Paytm"
+              />
+              <p className="text-[11px] leading-relaxed text-muted-foreground sm:text-xs">
+                Sent as <code className="rounded bg-muted px-1 py-0.5 text-[10px]">bankName</code>.
+              </p>
+            </div>
+          ) : null}
+
           <section className={APP_FORM_SWITCH_ROW_CLASS}>
             <div className="min-w-0 space-y-0.5">
               <Label
-                htmlFor="account-emi-due"
+                htmlFor="account-active"
                 className="text-xs font-bold text-foreground sm:text-sm"
               >
-                EMI due
+                Active account
               </Label>
               <p className="text-[11px] leading-relaxed text-muted-foreground sm:text-xs">
-                Track EMIs on this account
+                Inactive accounts stay hidden from most flows
               </p>
             </div>
             <Switch
-              id="account-emi-due"
-              checked={emiDue}
-              onCheckedChange={setEmiDue}
-              aria-label="EMI due tracking"
+              id="account-active"
+              checked={isActive}
+              onCheckedChange={(v) => form.setValue("isActive", v)}
+              aria-label="Account active"
               className="shrink-0"
             />
           </section>
-        ) : null}
 
-        {!isLoanType || !emiDue ? (
-          <section className="space-y-2 sm:space-y-2.5">
-            <div className="space-y-2">
-              <Label htmlFor={balanceId} className={APP_FORM_LABEL_CLASS}>
-                Current balance (₹)
-              </Label>
-              <p className="text-[11px] leading-relaxed text-muted-foreground sm:text-xs">
-                Check your bank app for the latest amount
-              </p>
-              <Input
-                id={balanceId}
-                inputMode="numeric"
-                placeholder="0"
-                value={balance}
-                onChange={(e) => setBalance(e.target.value.replace(/[^\d]/g, ""))}
-                className={APP_FORM_FIELD_EMPHASIS_CLASS}
-              />
-            </div>
-          </section>
-        ) : (
-          <section className="space-y-2">
-            <LoanEmiFormFields value={emi} onChange={patchEmi} compact showOverdue={false} />
-          </section>
-        )}
-      </div>
+          <FormField
+            control={form.control}
+            name="balance"
+            render={({ field }) => (
+              <FormItem className="space-y-2 sm:space-y-2.5">
+                <FormLabel className={APP_FORM_LABEL_CLASS}>Current balance (₹)</FormLabel>
+                <p className="text-[11px] leading-relaxed text-muted-foreground sm:text-xs">
+                  Check your bank app for the latest amount
+                </p>
+                <FormControl>
+                  <input
+                    inputMode="numeric"
+                    placeholder="0"
+                    className={APP_FORM_FIELD_EMPHASIS_CLASS}
+                    value={field.value}
+                    onChange={(e) => field.onChange(e.target.value.replace(/[^\d]/g, ""))}
+                    onBlur={field.onBlur}
+                    ref={field.ref}
+                  />
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+        </div>
+      </Form>
     </FormDialog>
   )
 }

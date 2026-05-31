@@ -1,6 +1,5 @@
 import { zodResolver } from "@hookform/resolvers/zod"
 import { useCallback, useEffect, useId, useMemo, useState } from "react"
-import { useNavigate } from "react-router-dom"
 import { ChevronDown, Plus, X } from "lucide-react"
 import { useForm, useWatch } from "react-hook-form"
 import { toast } from "sonner"
@@ -16,10 +15,9 @@ import {
   creditCardLimitInr,
   creditCardOutstandingInr,
 } from "@/lib/api/credit-card-map"
-import { getErrorMessage } from "@/lib/api/errors"
+import { handleFormApiError } from "@/lib/forms/form-api-errors"
 import type { CreateTransactionPayload } from "@/lib/api/schemas"
 import { EXPENSE_CATEGORY_API_VALUES } from "@/lib/api/transaction-schemas"
-import { endUserSession } from "@/lib/auth/end-session"
 import { formatCurrency } from "@/lib/format"
 import {
   APP_FORM_AMOUNT_PRIMARY_CLASS,
@@ -91,7 +89,6 @@ function AddCardSpendSheetInner({
   defaultAccount: Account | null
   onOpenChange: (open: boolean) => void
 }) {
-  const navigate = useNavigate()
   const dispatch = useAppDispatch()
   const titleId = useId()
   const amountId = useId()
@@ -175,15 +172,9 @@ function AddCardSpendSheetInner({
 
   async function onValid(values: CardExpenseFormValues) {
     const amt = parsePositiveAmount(values.amount)
-    if (amt == null) {
-      toast.error("Enter a valid amount")
-      return
-    }
+    if (amt == null) return
     const feeParsed = parseNonNegativeFee(values.feeAmount)
-    if (feeParsed === null) {
-      toast.error("Fee must be empty or a non-negative number")
-      return
-    }
+    if (feeParsed === null) return
 
     const card = creditCards.find((c) => c.id === values.creditCardAccountId)
     const cardLabel = card ? cardSpendSelectLabel(card) : "Card"
@@ -211,15 +202,7 @@ function AddCardSpendSheetInner({
       toast.success("Expense added")
       dismiss()
     } catch (err) {
-      const msg = getErrorMessage(err)
-      if (/authorization token is required/i.test(msg)) {
-        toast.error("Session expired, please login again")
-        endUserSession(dispatch)
-        dismiss()
-        navigate("/login", { replace: true })
-        return
-      }
-      toast.error(msg)
+      handleFormApiError(err, dispatch, { onDismiss: dismiss })
     }
   }
 

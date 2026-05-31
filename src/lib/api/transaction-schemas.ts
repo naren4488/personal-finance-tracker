@@ -1307,24 +1307,14 @@ export function parseGetRecentTransactionsSuccess(
   }
 
   const out: RecentTransaction[] = []
-  let excluded = 0
   for (const item of arr) {
     if (!item || typeof item !== "object" || Array.isArray(item)) continue
     const rec = item as Record<string, unknown>
     if (shouldExcludeAsNonTransactionRow(rec)) {
-      excluded += 1
       continue
     }
     const row = normalizeRawToRecentTransaction(rec)
     if (row) out.push(withUdharPersonSubtitle(withCanonicalTransferFields(row)))
-  }
-
-  if (import.meta.env.DEV && excluded > 0) {
-    console.warn(
-      "[transactions] GET recent — excluded",
-      excluded,
-      "row(s) that look like accounts, not transactions"
-    )
   }
 
   return { ok: true, transactions: out }

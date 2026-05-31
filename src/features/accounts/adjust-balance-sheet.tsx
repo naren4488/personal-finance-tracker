@@ -1,31 +1,34 @@
-import { useCallback, useEffect, useId, useState } from "react"
-import { useNavigate } from "react-router-dom"
+import { zodResolver } from "@hookform/resolvers/zod"
+import { useCallback, useEffect, useId } from "react"
+import { useForm } from "react-hook-form"
 import { Scale, X } from "lucide-react"
 import { toast } from "sonner"
+import { AppFormInputField, AppFormTextareaField } from "@/components/app-form-fields"
 import { FormDialog } from "@/components/form-dialog"
 import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
+import { Form } from "@/components/ui/form"
 import type { Account } from "@/lib/api/account-schemas"
 import {
   accountAvailableBalanceInrFromApi,
   formatOpeningBalanceForApi,
 } from "@/lib/api/account-schemas"
-import { getErrorMessage } from "@/lib/api/errors"
-import { endUserSession } from "@/lib/auth/end-session"
-import { getToken } from "@/lib/auth/token"
+import {
+  adjustBalanceFormSchema,
+  type AdjustBalanceFormValues,
+} from "@/lib/forms/adjust-balance-schema"
+import { handleFormApiError } from "@/lib/forms/form-api-errors"
+import { signOutAndRedirectToLogin } from "@/lib/auth/sign-out-and-redirect"
 import { formatCurrency } from "@/lib/format"
 import {
   APP_FORM_FIELD_CLASS,
   APP_FORM_HEADER_CLASS,
-  APP_FORM_LABEL_CLASS,
   APP_FORM_STACK_CLASS,
   APP_FORM_SUBMIT_CLASS,
-  APP_FORM_TEXTAREA_CLASS,
 } from "@/lib/ui/app-form-styles"
 import { cn } from "@/lib/utils"
 import { useCreateAccountBalanceAdjustmentMutation } from "@/store/api/base-api"
-import { useAppDispatch } from "@/store/hooks"
+import { selectIsAuthenticated } from "@/store/auth-selectors"
+import { useAppDispatch, useAppSelector } from "@/store/hooks"
 
 function todayIsoDate(): string {
   const d = new Date()
@@ -35,10 +38,6 @@ function todayIsoDate(): string {
   return `${y}-${m}-${day}`
 }
 
-function isAuthTokenRequiredMessage(message: string): boolean {
-  return message.toLowerCase().includes("authorization token is required")
-}
-
 function parseAmountToNumber(s: string): number | null {
   const t = s.replace(/,/g, "").trim()
   if (!t) return null
@@ -46,14 +45,7 @@ function parseAmountToNumber(s: string): number | null {
   return Number.isFinite(n) ? n : null
 }
 
-type FormState = {
-  targetBalance: string
-  date: string
-  reason: string
-  note: string
-}
-
-function initialFormForAccount(account: Account): FormState {
+function initialValuesForAccount(account: Account): AdjustBalanceFormValues {
   const current = accountAvailableBalanceInrFromApi(account)
   return {
     targetBalance: formatOpeningBalanceForApi(current),
@@ -71,43 +63,35 @@ type MountedProps = {
 
 function AdjustBalanceSheetMounted({ open, account, onOpenChange }: MountedProps) {
   const titleId = useId()
-  const navigate = useNavigate()
   const dispatch = useAppDispatch()
-  const [form, setForm] = useState<FormState>(() => initialFormForAccount(account))
+  const isAuthenticated = useAppSelector(selectIsAuthenticated)
   const [adjust, { isLoading }] = useCreateAccountBalanceAdjustmentMutation()
+
+  const form = useForm<AdjustBalanceFormValues>({
+    resolver: zodResolver(adjustBalanceFormSchema),
+    defaultValues: initialValuesForAccount(account),
+  })
 
   const accountName = account.name?.trim() || "Account"
   const currentBalanceInr = accountAvailableBalanceInrFromApi(account)
 
   useEffect(() => {
-    setForm(initialFormForAccount(account))
-  }, [account])
+    form.reset(initialValuesForAccount(account))
+  }, [account, form])
 
   const dismiss = useCallback(() => {
     onOpenChange(false)
   }, [onOpenChange])
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
-    if (!getToken()) {
-      toast.error("Please sign in again")
-      endUserSession(dispatch)
-      navigate("/login", { replace: true })
+  const onSubmit = form.handleSubmit(async (values) => {
+    if (!isAuthenticated) {
+      signOutAndRedirectToLogin(dispatch, "authorization token is required")
       dismiss()
       return
     }
 
-    const n = parseAmountToNumber(form.targetBalance)
-    if (n === null) {
-      toast.error("Enter a valid target balance")
-      return
-    }
-
-    const reason = form.reason.trim()
-    if (!reason) {
-      toast.error("Reason is required")
-      return
-    }
+    const n = parseAmountToNumber(values.targetBalance)
+    if (n === null) return
 
     const accountId = String(account.id ?? "").trim()
     if (!accountId) {
@@ -120,9 +104,9 @@ function AdjustBalanceSheetMounted({ open, account, onOpenChange }: MountedProps
         accountId,
         body: {
           targetCurrentBalance: formatOpeningBalanceForApi(n),
-          date: form.date.trim(),
-          reason,
-          ...(form.note.trim() ? { note: form.note.trim() } : {}),
+          date: values.date.trim(),
+          reason: values.reason.trim(),
+          ...(values.note.trim() ? { note: values.note.trim() } : {}),
         },
       }).unwrap()
 
@@ -133,17 +117,9 @@ function AdjustBalanceSheetMounted({ open, account, onOpenChange }: MountedProps
       toast.success(msg)
       dismiss()
     } catch (err) {
-      const msg = getErrorMessage(err)
-      if (isAuthTokenRequiredMessage(msg)) {
-        toast.error("Please sign in again")
-        endUserSession(dispatch)
-        navigate("/login", { replace: true })
-        dismiss()
-        return
-      }
-      toast.error(msg)
+      handleFormApiError(err, dispatch, { onDismiss: dismiss })
     }
-  }
+  })
 
   return (
     <FormDialog
@@ -170,84 +146,67 @@ function AdjustBalanceSheetMounted({ open, account, onOpenChange }: MountedProps
           </Button>
         </header>
       }
-      formProps={{ onSubmit: (e) => void handleSubmit(e) }}
+      formProps={{ onSubmit: (e) => void onSubmit(e) }}
       footer={
         <Button type="submit" disabled={isLoading} className={APP_FORM_SUBMIT_CLASS}>
           {isLoading ? "Saving…" : "Save adjustment"}
         </Button>
       }
     >
-      <div className={APP_FORM_STACK_CLASS}>
-        <div className="flex items-start gap-3 rounded-xl border border-border/80 bg-muted/30 px-3 py-2.5">
-          <Scale className="mt-0.5 size-5 shrink-0 text-muted-foreground" aria-hidden />
-          <div className="min-w-0 text-sm">
-            <p className="font-medium text-foreground">Current balance (reference)</p>
-            <p className="mt-0.5 text-lg font-bold tabular-nums text-foreground">
-              {formatCurrency(currentBalanceInr)}
-            </p>
-            <p className="mt-1 text-xs text-muted-foreground">
-              Enter the balance that should match your bank statement. The server applies the
-              difference — you do not enter the adjustment amount here.
-            </p>
+      <Form {...form}>
+        <div className={APP_FORM_STACK_CLASS}>
+          <div className="flex items-start gap-3 rounded-xl border border-border/80 bg-muted/30 px-3 py-2.5">
+            <Scale className="mt-0.5 size-5 shrink-0 text-muted-foreground" aria-hidden />
+            <div className="min-w-0 text-sm">
+              <p className="font-medium text-foreground">Current balance (reference)</p>
+              <p className="mt-0.5 text-lg font-bold tabular-nums text-foreground">
+                {formatCurrency(currentBalanceInr)}
+              </p>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Enter the balance that should match your bank statement. The server applies the
+                difference — you do not enter the adjustment amount here.
+              </p>
+            </div>
           </div>
-        </div>
 
-        <section>
-          <Label htmlFor="adj-target" className={APP_FORM_LABEL_CLASS}>
-            Target balance
-          </Label>
-          <Input
-            id="adj-target"
+          <AppFormInputField
+            control={form.control}
+            name="targetBalance"
+            label="Target balance"
             inputMode="decimal"
             autoComplete="off"
-            value={form.targetBalance}
-            onChange={(e) => setForm((f) => ({ ...f, targetBalance: e.target.value }))}
-            className={APP_FORM_FIELD_CLASS}
             placeholder="0.00"
           />
-        </section>
 
-        <section>
-          <Label htmlFor="adj-date" className={APP_FORM_LABEL_CLASS}>
-            Date
-          </Label>
-          <Input
-            id="adj-date"
+          <AppFormInputField
+            control={form.control}
+            name="date"
+            label="Date"
             type="date"
-            value={form.date}
-            onChange={(e) => setForm((f) => ({ ...f, date: e.target.value }))}
-            className={cn(APP_FORM_FIELD_CLASS, "scheme-light dark:scheme-dark")}
+            className="scheme-light dark:scheme-dark"
+            inputClassName={cn(APP_FORM_FIELD_CLASS, "scheme-light dark:scheme-dark")}
           />
-        </section>
 
-        <section>
-          <Label htmlFor="adj-reason" className={APP_FORM_LABEL_CLASS}>
-            Reason
-          </Label>
-          <Input
-            id="adj-reason"
-            value={form.reason}
-            onChange={(e) => setForm((f) => ({ ...f, reason: e.target.value }))}
-            className={APP_FORM_FIELD_CLASS}
+          <AppFormInputField
+            control={form.control}
+            name="reason"
+            label="Reason"
             placeholder="e.g. reconciled with bank statement"
             autoComplete="off"
           />
-        </section>
 
-        <section>
-          <Label htmlFor="adj-note" className={APP_FORM_LABEL_CLASS}>
-            Note <span className="font-normal text-muted-foreground">(optional)</span>
-          </Label>
-          <textarea
-            id="adj-note"
-            rows={2}
-            value={form.note}
-            onChange={(e) => setForm((f) => ({ ...f, note: e.target.value }))}
-            className={cn(APP_FORM_TEXTAREA_CLASS, "min-h-20 resize-none")}
+          <AppFormTextareaField
+            control={form.control}
+            name="note"
+            label={
+              <>
+                Note <span className="font-normal text-muted-foreground">(optional)</span>
+              </>
+            }
             placeholder="Optional details"
           />
-        </section>
-      </div>
+        </div>
+      </Form>
     </FormDialog>
   )
 }

@@ -1,15 +1,17 @@
 import { useCallback, useId, useMemo, useState } from "react"
-import { useNavigate } from "react-router-dom"
 import { X } from "lucide-react"
 import { toast } from "sonner"
+import { AppFieldError } from "@/components/app-field-error"
 import { FormDialog } from "@/components/form-dialog"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { useOrderedPeopleForUdhar } from "@/hooks/use-ordered-people-for-udhar"
 import { filterActiveAccounts } from "@/lib/api/account-schemas"
-import { getErrorMessage } from "@/lib/api/errors"
 import type { CreateUdharEntryRequest, UdharEntryType } from "@/lib/api/udhar-schemas"
-import { endUserSession } from "@/lib/auth/end-session"
+import { handleFormApiError } from "@/lib/forms/form-api-errors"
+import { udharEntrySubmitSchema, udharPersonOnlySchema } from "@/lib/forms/udhar-form-schema"
+import { zodErrorToFieldMap } from "@/lib/forms/zod-helpers"
 import {
   APP_FORM_FIELD_CLASS,
   APP_FORM_HEADER_CLASS,
@@ -59,10 +61,6 @@ export type AddUdharEntrySheetProps = {
   entryTypeScope?: UdharEntryTypeScope
 }
 
-function isAuthTokenRequiredMessage(message: string): boolean {
-  return message.toLowerCase().includes("authorization token is required")
-}
-
 type MountedProps = {
   open: boolean
   onOpenChange: (open: boolean) => void
@@ -77,10 +75,10 @@ type MountedProps = {
 
 function resolveDueDateForSubmit(form: UdharFormState): string {
   if (form.entryType === "money_given") {
-    return form.askRepayBy.trim() || form.date.trim()
+    return form.askRepayBy.trim()
   }
   if (form.entryType === "money_taken") {
-    return form.payBackBy.trim() || form.date.trim()
+    return form.payBackBy.trim()
   }
   return form.date.trim()
 }
@@ -108,7 +106,6 @@ function AddUdharEntrySheetMounted({
 }: MountedProps) {
   const titleId = useId()
   const selectPersonId = useId()
-  const navigate = useNavigate()
   const dispatch = useAppDispatch()
   const user = useAppSelector((s) => s.auth.user)
   const {
@@ -124,10 +121,14 @@ function AddUdharEntrySheetMounted({
     isFetching: accountsFetching,
   } = useGetAccountsQuery(undefined, { skip: !user })
   const accounts = useMemo(() => filterActiveAccounts(accountsRaw), [accountsRaw])
+  const isPersonOnly = mode === "person_only"
   const peopleListLoading = peopleQueryLoading || peopleQueryFetching
+  const orderedPeople = useOrderedPeopleForUdhar(people, {
+    enabled: open && !isPersonOnly,
+  })
   const accountsListLoading = accountsLoading || accountsFetching
 
-  const isPersonOnly = mode === "person_only"
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({})
   const [form, setForm] = useState(() => {
     if (isPersonOnly) return { ...initialUdharFormState(), personMode: "new" as const }
     return buildUdharFormInitialState(
@@ -162,29 +163,25 @@ function AddUdharEntrySheetMounted({
     e.preventDefault()
 
     if (isPersonOnly) {
-      const name = form.personName.trim()
-      if (!name) {
-        toast.error("Enter the person's name")
+      const parsed = udharPersonOnlySchema.safeParse({
+        personName: form.personName,
+        personPhone: form.personPhone,
+      })
+      if (!parsed.success) {
+        setFieldErrors(zodErrorToFieldMap(parsed.error))
         return
       }
+      setFieldErrors({})
       try {
         await createPerson({
-          name,
-          phoneNumber: form.personPhone.trim() || undefined,
+          name: parsed.data.personName.trim(),
+          phoneNumber: parsed.data.personPhone.trim() || undefined,
         }).unwrap()
         toast.success("Person added")
         setForm({ ...initialUdharFormState(), personMode: "new" })
         dismiss()
       } catch (err) {
-        const msg = getErrorMessage(err)
-        if (isAuthTokenRequiredMessage(msg)) {
-          toast.error("Please sign in again")
-          endUserSession(dispatch)
-          dismiss()
-          navigate("/login", { replace: true })
-          return
-        }
-        toast.error(msg)
+        handleFormApiError(err, dispatch, { onDismiss: dismiss })
       }
       return
     }
@@ -192,15 +189,18 @@ function AddUdharEntrySheetMounted({
     let effectivePersonId = form.selectedPersonId
 
     if (form.personMode === "new") {
-      const name = form.personName.trim()
-      if (!name) {
-        toast.error("Enter the person's name")
+      const personParsed = udharPersonOnlySchema.safeParse({
+        personName: form.personName,
+        personPhone: form.personPhone,
+      })
+      if (!personParsed.success) {
+        setFieldErrors(zodErrorToFieldMap(personParsed.error))
         return
       }
       try {
         const response = await createPerson({
-          name,
-          phoneNumber: form.personPhone.trim() || undefined,
+          name: personParsed.data.personName.trim(),
+          phoneNumber: personParsed.data.personPhone.trim() || undefined,
         }).unwrap()
         toast.success("Person added")
         setForm((f) => ({
@@ -212,47 +212,35 @@ function AddUdharEntrySheetMounted({
         }))
         effectivePersonId = response.id
       } catch (err) {
-        const msg = getErrorMessage(err)
-        if (isAuthTokenRequiredMessage(msg)) {
-          toast.error("Please sign in again")
-          endUserSession(dispatch)
-          dismiss()
-          navigate("/login", { replace: true })
-          return
-        }
-        toast.error(msg)
+        handleFormApiError(err, dispatch, { onDismiss: dismiss })
         return
       }
     } else {
-      if (!form.selectedPersonId) {
-        toast.error("Select a person")
-        return
-      }
       effectivePersonId = form.selectedPersonId
     }
 
-    const n = form.amount.replace(/\D/g, "")
-    if (!n || Number(n) <= 0) {
-      toast.error("Enter a valid amount")
+    const entryParsed = udharEntrySubmitSchema(form.entryType).safeParse({
+      personMode: form.personMode,
+      personName: form.personName,
+      selectedPersonId: effectivePersonId,
+      amount: form.amount,
+      accountId: form.accountId,
+      date: form.date,
+      askRepayBy: form.askRepayBy,
+      payBackBy: form.payBackBy,
+      entryType: form.entryType,
+      fundingSource: form.fundingSource,
+      feeAmount: form.feeAmount,
+    })
+    if (!entryParsed.success) {
+      setFieldErrors(zodErrorToFieldMap(entryParsed.error))
       return
     }
-    const amountInr = Number(n)
-    if (!Number.isFinite(amountInr) || amountInr <= 0) {
-      toast.error("Enter a valid amount")
-      return
-    }
-    if (!form.accountId) {
-      toast.error("Select an account")
-      return
-    }
+    setFieldErrors({})
 
+    const n = form.amount.replace(/\D/g, "")
+    const amountInr = Number(n)
     const dueDate = resolveDueDateForSubmit(form)
-    if (!dueDate) {
-      toast.error(
-        form.entryType === "money_given" ? "Select ask money back by date" : "Select date"
-      )
-      return
-    }
 
     const balanceRows = udharBalancesCached
 
@@ -260,7 +248,7 @@ function AddUdharEntrySheetMounted({
       const row = balanceRows.find((b) => b.personId === effectivePersonId)
       const check = validateUdharPaymentAgainstBalances(form.entryType, amountInr, row)
       if (!check.ok) {
-        toast.error(check.message)
+        setFieldErrors({ amount: check.message })
         return
       }
     }
@@ -268,10 +256,7 @@ function AddUdharEntrySheetMounted({
     let feeStr: string | undefined
     if (form.fundingSource === "credit_card") {
       const feeParsed = parseUdharFeeAmount(form.feeAmount)
-      if (!feeParsed.ok) {
-        toast.error("Enter a valid fee amount or leave it empty")
-        return
-      }
+      if (!feeParsed.ok) return
       feeStr = feeParsed.value
     }
 
@@ -297,15 +282,7 @@ function AddUdharEntrySheetMounted({
       setForm(initialUdharFormState())
       dismiss()
     } catch (err) {
-      const msg = getErrorMessage(err)
-      if (isAuthTokenRequiredMessage(msg)) {
-        toast.error("Please sign in again")
-        endUserSession(dispatch)
-        dismiss()
-        navigate("/login", { replace: true })
-        return
-      }
-      toast.error(msg)
+      handleFormApiError(err, dispatch, { onDismiss: dismiss })
     }
   }
 
@@ -361,7 +338,9 @@ function AddUdharEntrySheetMounted({
                 onChange={(e) => setForm((f) => ({ ...f, personName: e.target.value }))}
                 className={APP_FORM_FIELD_CLASS}
                 autoComplete="name"
+                aria-invalid={!!fieldErrors.personName}
               />
+              <AppFieldError message={fieldErrors.personName} />
               <Input
                 type="tel"
                 placeholder="Phone (optional)"
@@ -379,12 +358,13 @@ function AddUdharEntrySheetMounted({
           setForm={setForm}
           personUiMode={personUiMode}
           lockedPersonName={lockedPersonName}
-          people={people}
+          people={orderedPeople}
           peopleListLoading={peopleListLoading}
           accounts={accounts}
           accountsListLoading={accountsListLoading}
           selectPersonId={selectPersonId}
           entryTypeScope={entryTypeScope}
+          fieldErrors={fieldErrors}
         />
       )}
     </FormDialog>

@@ -1,12 +1,16 @@
-import { useEffect, useState, type ReactNode } from "react"
-import { PageLoader } from "@/components/page-loader"
+import { useEffect, type ReactNode } from "react"
+import { toast } from "sonner"
+import { AuthSessionSplash } from "@/components/auth-session-splash"
 import type { AuthUser } from "@/lib/api/auth-schemas"
+import { getBackendToastMessage } from "@/lib/api/errors"
 import { endUserSession } from "@/lib/auth/end-session"
+import { isAccessTokenExpired } from "@/lib/auth/jwt"
 import { getRefreshToken, getToken } from "@/lib/auth/token"
 import { baseApi, useRefreshTokenMutation } from "@/store/api/base-api"
-import { setUser } from "@/store/auth-slice"
+import { setSessionReady, setSessionRestoring, setUser } from "@/store/auth-slice"
+import { selectShowAuthSessionSplash } from "@/store/auth-selectors"
 import { store } from "@/store"
-import { useAppDispatch } from "@/store/hooks"
+import { useAppDispatch, useAppSelector } from "@/store/hooks"
 
 /** Dedupes session refresh across React Strict Mode’s double mount (avoids rotated-refresh races). */
 let sessionBootstrap: Promise<void> | null = null
@@ -18,19 +22,21 @@ function hasStoredCredentials(): boolean {
 
 export function SessionRestore({ children }: { children: ReactNode }) {
   const dispatch = useAppDispatch()
+  const showSplash = useAppSelector(selectShowAuthSessionSplash)
   const [refreshToken] = useRefreshTokenMutation()
-  const [ready, setReady] = useState(() => !hasStoredCredentials())
 
   useEffect(() => {
     if (typeof window === "undefined") {
-      setReady(true)
+      dispatch(setSessionReady())
       return
     }
 
     if (!hasStoredCredentials()) {
-      setReady(true)
+      dispatch(setSessionReady())
       return
     }
+
+    dispatch(setSessionRestoring())
 
     const run =
       sessionBootstrap ??
@@ -40,29 +46,41 @@ export function SessionRestore({ children }: { children: ReactNode }) {
             await refreshToken().unwrap()
             return
           }
-          if (getToken()) {
-            const user = await store
-              .dispatch(
-                baseApi.endpoints.getMe.initiate("", {
-                  subscribe: false,
-                  forceRefetch: true,
-                })
-              )
-              .unwrap()
-            dispatch(setUser(user as AuthUser))
+
+          const access = getToken()
+          if (!access) return
+
+          if (isAccessTokenExpired(access)) {
+            throw new Error("token expired")
           }
-        } catch {
+
+          const user = await store
+            .dispatch(
+              baseApi.endpoints.getMe.initiate("", {
+                subscribe: false,
+                forceRefetch: true,
+              })
+            )
+            .unwrap()
+          dispatch(setUser(user as AuthUser))
+        } catch (err) {
+          const msg = getBackendToastMessage(err)
           endUserSession(dispatch)
+          if (msg) {
+            toast.error(msg)
+          }
         } finally {
           sessionBootstrap = null
         }
       })())
 
-    void run.finally(() => setReady(true))
+    void run.finally(() => {
+      dispatch(setSessionReady())
+    })
   }, [dispatch, refreshToken])
 
-  if (!ready) {
-    return <PageLoader />
+  if (showSplash) {
+    return <AuthSessionSplash />
   }
 
   return <>{children}</>

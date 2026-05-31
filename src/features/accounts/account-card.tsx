@@ -6,6 +6,7 @@ import { Skeleton } from "@/components/ui/skeleton"
 import type { Account } from "@/lib/api/account-schemas"
 import { accountAvailableBalanceInrFromApi } from "@/lib/api/account-schemas"
 import { formatCurrency } from "@/lib/format"
+import type { EntityDeleteEligibility } from "@/lib/delete/entity-delete-eligibility"
 import { ACTION_GROUP_CARD_FOOTER } from "@/lib/ui/action-group-classes"
 import { cn } from "@/lib/utils"
 
@@ -40,20 +41,29 @@ export type AccountCardProps = {
   onAdjust: () => void
   /** When set, Delete opens confirmation in parent (do not delete inline). */
   onDelete?: () => void
+  /** When set, disables delete if entity has transaction history. */
+  deleteGuard?: EntityDeleteEligibility
 }
 
-export function AccountCard({ account, onOpen, onEdit, onAdjust, onDelete }: AccountCardProps) {
+export function AccountCard({
+  account,
+  onOpen,
+  onEdit,
+  onAdjust,
+  onDelete,
+  deleteGuard,
+}: AccountCardProps) {
   const name = account.name?.trim() || "Account"
   const typeLabel = accountTypeDisplayLabel(account)
   const balance = accountAvailableBalanceInrFromApi(account)
   const isActive = account.isActive !== false
+  const deleteBlocked = Boolean(deleteGuard?.blocked)
+  const deleteHint =
+    deleteGuard?.message ?? (deleteGuard?.isChecking ? "Checking transaction history…" : null)
 
   return (
     <article
-      className={cn(
-        "rounded-2xl border border-[#E5E7EB] bg-card shadow-sm dark:border-border",
-        "overflow-hidden"
-      )}
+      className={cn("rounded-2xl border border-border bg-card shadow-sm", "overflow-hidden")}
     >
       <button
         type="button"
@@ -63,18 +73,16 @@ export function AccountCard({ account, onOpen, onEdit, onAdjust, onDelete }: Acc
       >
         <div className="flex items-start gap-3">
           <Avatar className="size-12 shrink-0 border-0 bg-sky-100 dark:bg-sky-950/50">
-            <AvatarFallback className="bg-transparent text-base font-bold text-[#1e3a5f] dark:text-primary">
+            <AvatarFallback className="bg-transparent text-base font-bold text-primary">
               {avatarLetter(name)}
             </AvatarFallback>
           </Avatar>
           <div className="min-w-0 flex-1 pt-0.5">
-            <h2 className="truncate text-base font-bold tracking-tight text-[#111827] dark:text-foreground">
-              {name}
-            </h2>
-            <p className="mt-0.5 text-sm text-[#6B7280] dark:text-muted-foreground">{typeLabel}</p>
+            <h2 className="truncate text-base font-bold tracking-tight text-foreground">{name}</h2>
+            <p className="mt-0.5 text-sm text-muted-foreground">{typeLabel}</p>
           </div>
         </div>
-        <p className="mt-4 text-2xl font-bold tabular-nums tracking-tight text-[#111827] dark:text-foreground sm:text-[1.75rem]">
+        <p className="mt-4 text-2xl font-bold tabular-nums tracking-tight text-foreground sm:text-[1.75rem]">
           {formatCurrency(balance)}
         </p>
       </button>
@@ -119,8 +127,11 @@ export function AccountCard({ account, onOpen, onEdit, onAdjust, onDelete }: Acc
             footerBtn,
             "border-destructive/45 text-destructive hover:bg-destructive/10 hover:text-destructive dark:hover:bg-destructive/15"
           )}
+          disabled={deleteBlocked}
+          title={deleteHint ?? undefined}
           onClick={(e) => {
             e.stopPropagation()
+            if (deleteBlocked) return
             if (onDelete) onDelete()
             else comingSoon("Delete account")
           }}
@@ -139,18 +150,18 @@ export function AccountCard({ account, onOpen, onEdit, onAdjust, onDelete }: Acc
           {isActive ? "Active" : "Inactive"}
         </Badge>
       </div>
+      {deleteHint ? (
+        <p className="px-4 pb-3 text-xs leading-snug text-muted-foreground sm:px-5" role="status">
+          {deleteHint}
+        </p>
+      ) : null}
     </article>
   )
 }
 
 export function AccountCardSkeleton({ className }: { className?: string }) {
   return (
-    <div
-      className={cn(
-        "rounded-2xl border border-[#E5E7EB] bg-card p-4 shadow-sm dark:border-border sm:p-5",
-        className
-      )}
-    >
+    <div className={cn("rounded-2xl border border-border bg-card p-4 shadow-sm sm:p-5", className)}>
       <div className="flex items-start gap-3">
         <Skeleton className="size-12 shrink-0 rounded-full" />
         <div className="min-w-0 flex-1 space-y-2 pt-1">

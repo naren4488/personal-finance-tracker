@@ -1,27 +1,15 @@
 import { createSlice, type PayloadAction } from "@reduxjs/toolkit"
 import type { Person } from "@/lib/api/people-schemas"
-import { UDHAR_EXISTING_PERSONS } from "@/features/accounts/accounts-mock-data"
-
-const SEED_PEOPLE: Person[] = UDHAR_EXISTING_PERSONS.map((p) => ({
-  id: p.id,
-  name: p.name,
-  phoneNumber: "",
-  isActive: true,
-  createdAt: "",
-  updatedAt: "",
-}))
 
 type PeopleState = {
   items: Person[]
 }
 
-const initialState: PeopleState = {
-  items: SEED_PEOPLE,
-}
+const emptyState: PeopleState = { items: [] }
 
 export const peopleSlice = createSlice({
   name: "people",
-  initialState,
+  initialState: emptyState,
   reducers: {
     setPeople(state, action: PayloadAction<Person[]>) {
       state.items = action.payload
@@ -32,7 +20,7 @@ export const peopleSlice = createSlice({
         state.items.push(action.payload)
       }
     },
-    resetPeople: () => initialState,
+    resetPeople: () => emptyState,
   },
 })
 

@@ -1,6 +1,5 @@
-import { createElement, useEffect, useMemo, useState } from "react"
+import { createElement, useCallback, useEffect, useMemo, useState } from "react"
 import { Link, useNavigate } from "react-router-dom"
-import { toast } from "sonner"
 import {
   ArrowRight,
   Banknote,
@@ -20,40 +19,39 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { AddCommitmentModal } from "@/features/analytics/add-commitment-modal"
 import { RecentTransactionRow } from "@/features/entries/recent-transaction-row"
 import { useDeleteTransactionFlow } from "@/features/entries/use-delete-transaction-flow"
+import { handleAuthApiErrorIfNeeded } from "@/lib/auth/handle-auth-api-error"
 import { getErrorMessage } from "@/lib/api/errors"
 import { getDashboardAccountDisplay } from "@/lib/api/dashboard-account-display"
 import type { Account } from "@/lib/api/account-schemas"
+import {
+  accountAvailableBalanceInrFromApi,
+  sortAccountsNewestFirst,
+} from "@/lib/api/account-schemas"
 import type { DashboardAccountPreview } from "@/lib/api/dashboard-home-schemas"
 import {
   buildHorizonBounds,
-  commitmentToScheduled,
-  filterByHorizon,
   filterMoneyFlowByHorizon,
   formatYyyyMmDd,
-  isDateInHorizon,
   incomeTxToMoneyFlowRow,
   mergeMoneyFlowDedupe,
-  mergeScheduledItems,
-  incomingBucket,
-  outgoingBucket,
   scheduledToPayRow,
   scheduledToReceiveRow,
   sortMoneyFlowRows,
-  supplementCreditCardItems,
-  supplementLoanEmiItems,
   type MoneyFlowRow,
 } from "@/lib/home-money-overview"
 import { formatCurrency, formatDayMonthShort } from "@/lib/format"
 import {
   useGetAccountsQuery,
-  useGetCommitmentsQuery,
   useGetDashboardQuery,
   useGetRecentTransactionsQuery,
 } from "@/store/api/base-api"
-import { useAppSelector } from "@/store/hooks"
+import { buildAccountsDetailPath } from "@/features/accounts/accounts-route"
+import { GettingStartedCard } from "@/features/home/getting-started-card"
+import { useAppDispatch, useAppSelector } from "@/store/hooks"
 import { cn } from "@/lib/utils"
 
 const DEFAULT_RECENT_LIMIT = 5
+const HOME_ACCOUNTS_PREVIEW_LIMIT = 4
 
 const RECENT_LIMIT_PRESETS = [5, 10, 12, 20] as const
 
@@ -84,6 +82,7 @@ function accountKindBadgeLabel(kind: string): string {
 
 export default function HomePage() {
   const navigate = useNavigate()
+  const dispatch = useAppDispatch()
   const user = useAppSelector((s) => s.auth.user)
   const [horizonDays, setHorizonDays] = useState(7)
   const [recentLimit, setRecentLimit] = useState(DEFAULT_RECENT_LIMIT)
@@ -98,8 +97,11 @@ export default function HomePage() {
     refetch,
   } = useGetDashboardQuery({ days: horizonDays, recentLimit })
 
-  const { data: accounts = [] } = useGetAccountsQuery()
-  const { data: commitments = [] } = useGetCommitmentsQuery(undefined, { skip: !user })
+  const {
+    data: accounts = [],
+    isLoading: accountsLoading,
+    isFetching: accountsFetching,
+  } = useGetAccountsQuery(undefined, { skip: !user })
 
   const incomeDateRange = useMemo(() => {
     const { start, end } = buildHorizonBounds(horizonDays)
@@ -118,101 +120,129 @@ export default function HomePage() {
     { skip: !user }
   )
 
-  const payableCommitmentItems = useMemo(() => {
-    const { start, end } = buildHorizonBounds(horizonDays)
-    return commitments
-      .filter(
-        (c) => c.status.toLowerCase() === "pending" && c.direction.toLowerCase() === "payable"
-      )
-      .map(commitmentToScheduled)
-      .filter((c) => isDateInHorizon(c.dueDate, start, end))
-  }, [commitments, horizonDays])
-
-  const receivableCommitmentItems = useMemo(() => {
-    const { start, end } = buildHorizonBounds(horizonDays)
-    return commitments
-      .filter(
-        (c) => c.status.toLowerCase() === "pending" && c.direction.toLowerCase() === "receivable"
-      )
-      .map(commitmentToScheduled)
-      .filter((c) => isDateInHorizon(c.dueDate, start, end))
-  }, [commitments, horizonDays])
-
   const outgoingRows = useMemo(() => {
     if (!dashboard) {
       return { udhar: [] as MoneyFlowRow[], loan: [] as MoneyFlowRow[], card: [] as MoneyFlowRow[] }
     }
-    const { start, end } = buildHorizonBounds(horizonDays)
-    const merged = mergeScheduledItems(dashboard.toBePaid.items, payableCommitmentItems)
-    let inHorizon = filterByHorizon(merged, start, end)
-    const loanSup = supplementLoanEmiItems(accounts, end, inHorizon)
-    const cardSup = supplementCreditCardItems(accounts, end, [...inHorizon, ...loanSup])
-    inHorizon = mergeScheduledItems(inHorizon, [...loanSup, ...cardSup])
+    // Use dashboard items directly (backend handles horizon filtering & includes all items)
+    const items = dashboard.toBePaid.items.map(scheduledToPayRow)
 
-    const udhar: typeof inHorizon = []
-    const loan: typeof inHorizon = []
-    const card: typeof inHorizon = []
-    for (const it of inHorizon) {
-      const b = outgoingBucket(it)
-      if (b === "udhar_borrow") udhar.push(it)
-      else if (b === "loan_emi") loan.push(it)
-      else card.push(it)
+    const udhar: MoneyFlowRow[] = []
+    const loan: MoneyFlowRow[] = []
+    const card: MoneyFlowRow[] = []
+
+    for (const item of items) {
+      // Classify each row by type
+      const title = item.title.toLowerCase()
+      const isLoan = title.includes("loan") || title.includes("emi")
+      const isCard = title.includes("card") || title.includes("credit")
+
+      if (isCard) {
+        card.push(item)
+      } else if (isLoan) {
+        loan.push(item)
+      } else {
+        udhar.push(item)
+      }
     }
+
     return {
-      udhar: sortMoneyFlowRows(udhar.map(scheduledToPayRow)),
-      loan: sortMoneyFlowRows(loan.map(scheduledToPayRow)),
-      card: sortMoneyFlowRows(card.map(scheduledToPayRow)),
+      udhar: sortMoneyFlowRows(udhar),
+      loan: sortMoneyFlowRows(loan),
+      card: sortMoneyFlowRows(card),
     }
-  }, [dashboard, horizonDays, payableCommitmentItems, accounts])
+  }, [dashboard])
 
   const incomingRows = useMemo(() => {
     if (!dashboard) {
       return { udhar: [] as MoneyFlowRow[], income: [] as MoneyFlowRow[] }
     }
     const { start, end } = buildHorizonBounds(horizonDays)
-    const merged = mergeScheduledItems(dashboard.incomingMoney.items, receivableCommitmentItems)
-    const inHorizon = filterByHorizon(merged, start, end)
-    const udharItems = inHorizon.filter((it) => incomingBucket(it) === "udhar_lent")
-    const schedIncome = inHorizon.filter((it) => incomingBucket(it) === "income")
 
-    const udharDetail = sortMoneyFlowRows(udharItems.map(scheduledToReceiveRow))
+    // Dashboard scheduled items for incoming money
+    const scheduledRows = dashboard.incomingMoney.items.map(scheduledToReceiveRow)
 
-    const schedIncomeRows = schedIncome.map(scheduledToReceiveRow)
+    // Income transactions (recent, within horizon)
     const txRows = incomeTransactions
       .map(incomeTxToMoneyFlowRow)
       .filter((r): r is MoneyFlowRow => r != null)
     const txInHorizon = filterMoneyFlowByHorizon(txRows, start, end)
 
-    const incomeDetail = sortMoneyFlowRows(
-      mergeMoneyFlowDedupe([...schedIncomeRows, ...txInHorizon])
-    )
+    // Merge and deduplicate
+    const allRows = mergeMoneyFlowDedupe([...scheduledRows, ...txInHorizon])
 
-    return { udhar: udharDetail, income: incomeDetail }
-  }, [dashboard, horizonDays, receivableCommitmentItems, incomeTransactions])
+    // Classify
+    const udhar = allRows.filter((r) => r.title.toLowerCase().includes("udhar"))
+    const income = allRows.filter((r) => !r.title.toLowerCase().includes("udhar"))
+
+    return {
+      udhar: sortMoneyFlowRows(udhar),
+      income: sortMoneyFlowRows(income),
+    }
+  }, [dashboard, horizonDays, incomeTransactions])
 
   const txDelete = useDeleteTransactionFlow()
 
   useEffect(() => {
     if (!isError || !error) return
-    const msg = getErrorMessage(error)
-    if (/authorization token is required/i.test(msg)) {
-      toast.error(msg)
-      navigate("/login", { replace: true })
-    }
-  }, [isError, error, navigate])
+    handleAuthApiErrorIfNeeded(error, dispatch)
+  }, [isError, error, dispatch])
 
   const homeRecentRows = dashboard?.recentTransactions ?? []
 
   const showSkeleton = isLoading && !dashboard
   const updating = isFetching && dashboard
 
+  const showGettingStarted =
+    !showSkeleton &&
+    Boolean(dashboard) &&
+    !accountsLoading &&
+    !accountsFetching &&
+    accounts.length === 0 &&
+    homeRecentRows.length === 0
+
+  const handleGettingStartedAddAccount = useCallback(() => {
+    navigate("/accounts", { state: { openAddAccount: true } })
+  }, [navigate])
+
+  const handleGettingStartedAddExpense = useCallback(() => {
+    navigate("/entries?add=expenses")
+  }, [navigate])
+
+  const handleGettingStartedAddIncome = useCallback(() => {
+    navigate("/entries?add=income")
+  }, [navigate])
+
+  const handleCommitmentCreated = useCallback(() => {
+    navigate("/analytics", { state: { focusCommitments: true } })
+  }, [navigate])
+
+  const dashboardAccountById = useMemo(() => {
+    const map = new Map<string, DashboardAccountPreview>()
+    for (const a of dashboard?.accounts ?? []) {
+      map.set(String(a.id), a)
+    }
+    return map
+  }, [dashboard?.accounts])
+
+  const homeAccountsPreview = useMemo(
+    () => sortAccountsNewestFirst(accounts).slice(0, HOME_ACCOUNTS_PREVIEW_LIMIT),
+    [accounts]
+  )
+
+  const showViewAllAccounts = accounts.length > HOME_ACCOUNTS_PREVIEW_LIMIT
+
   return (
     <div className="flex min-h-0 w-full flex-1 flex-col overflow-y-auto overscroll-contain [-ms-overflow-style:none] [scrollbar-gutter:stable] [scrollbar-width:thin]">
-      <AddCommitmentModal open={commitmentOpen} onOpenChange={setCommitmentOpen} />
+      <AddCommitmentModal
+        open={commitmentOpen}
+        onOpenChange={setCommitmentOpen}
+        onCreatedSuccess={handleCommitmentCreated}
+      />
 
       <main
         className={cn(
-          "flex w-full flex-1 flex-col gap-4 px-4 pb-28 pt-2 transition-opacity",
+          "flex w-full flex-1 flex-col gap-6 px-4 pb-28 pt-2 transition-opacity",
           updating && "opacity-[0.97]"
         )}
       >
@@ -290,6 +320,14 @@ export default function HomePage() {
           <Skeleton className="h-72 w-full rounded-2xl bg-muted" />
         )}
 
+        {showGettingStarted ? (
+          <GettingStartedCard
+            onAddAccount={handleGettingStartedAddAccount}
+            onAddExpense={handleGettingStartedAddExpense}
+            onAddIncome={handleGettingStartedAddIncome}
+          />
+        ) : null}
+
         {isError && !dashboard ? (
           <Card className="rounded-2xl border-destructive/30 bg-destructive/5">
             <CardContent className="flex flex-col gap-3 py-6">
@@ -358,33 +396,48 @@ export default function HomePage() {
             />
 
             <div className="grid grid-cols-3 gap-2">
-              <Card className="rounded-2xl border-border/60 bg-card py-3 shadow-sm">
-                <CardContent className="space-y-1 px-3 pt-0">
+              <button
+                type="button"
+                onClick={() => navigate("/entries", { state: { segment: "udhar" } })}
+                className="rounded-2xl border border-border/60 bg-card py-3 shadow-sm hover:shadow-md hover:bg-muted/40 transition-all cursor-pointer"
+                aria-label="View to receive"
+              >
+                <div className="space-y-1 px-3 pt-0">
                   <Users className="size-5 text-emerald-600 dark:text-emerald-400" aria-hidden />
                   <p className="text-[10px] font-medium text-muted-foreground">To receive</p>
                   <p className="text-sm font-bold tabular-nums text-emerald-600 dark:text-emerald-400">
                     {formatCurrency(dashboard.stats.toReceive)}
                   </p>
-                </CardContent>
-              </Card>
-              <Card className="rounded-2xl border-border/60 bg-card py-3 shadow-sm">
-                <CardContent className="space-y-1 px-3 pt-0">
+                </div>
+              </button>
+              <button
+                type="button"
+                onClick={() => navigate("/accounts", { state: { accountsSegment: "cards" } })}
+                className="rounded-2xl border border-border/60 bg-card py-3 shadow-sm hover:shadow-md hover:bg-muted/40 transition-all cursor-pointer"
+                aria-label="View credit card outstanding"
+              >
+                <div className="space-y-1 px-3 pt-0">
                   <CreditCard className="size-5 text-destructive dark:text-red-400" aria-hidden />
                   <p className="text-[10px] font-medium text-muted-foreground">CC outstanding</p>
                   <p className="text-sm font-bold tabular-nums text-destructive dark:text-red-400">
                     {formatCurrency(dashboard.stats.cardOutstanding)}
                   </p>
-                </CardContent>
-              </Card>
-              <Card className="rounded-2xl border-border/60 bg-card py-3 shadow-sm">
-                <CardContent className="space-y-1 px-3 pt-0">
+                </div>
+              </button>
+              <button
+                type="button"
+                onClick={() => navigate("/accounts", { state: { accountsSegment: "loans" } })}
+                className="rounded-2xl border border-border/60 bg-card py-3 shadow-sm hover:shadow-md hover:bg-muted/40 transition-all cursor-pointer"
+                aria-label="View active loans"
+              >
+                <div className="space-y-1 px-3 pt-0">
                   <Landmark className="size-5 text-primary" aria-hidden />
                   <p className="text-[10px] font-medium text-muted-foreground">Active loans</p>
                   <p className="text-sm font-bold tabular-nums text-foreground">
                     {dashboard.stats.activeLoans}
                   </p>
-                </CardContent>
-              </Card>
+                </div>
+              </button>
             </div>
 
             <Card className="rounded-2xl border-border/50 bg-muted/30 py-3">
@@ -404,30 +457,34 @@ export default function HomePage() {
               </CardContent>
             </Card>
 
-            <section className="space-y-2">
+            <section className="space-y-3">
               <div className="flex items-center justify-between gap-2">
                 <h2 className="text-sm font-semibold">Your accounts</h2>
-                <Link
-                  to="/accounts"
-                  className="flex items-center gap-0.5 text-xs font-semibold text-primary"
-                >
-                  View all
-                  <ArrowRight className="size-3.5" />
-                </Link>
+                {showViewAllAccounts ? (
+                  <Link
+                    to="/accounts"
+                    className="flex items-center gap-0.5 text-xs font-semibold text-primary"
+                  >
+                    View all
+                    <ArrowRight className="size-3.5" />
+                  </Link>
+                ) : null}
               </div>
-              {dashboard.accounts.length === 0 ? (
+              {homeAccountsPreview.length === 0 ? (
                 <p className="text-sm text-muted-foreground">No accounts yet.</p>
               ) : (
                 <div className="grid grid-cols-2 gap-2">
-                  {dashboard.accounts.map((a) => {
-                    const full = accounts.find((x) => String(x.id) === a.id)
-                    return <AccountPreviewCard key={a.id} account={a} fullAccount={full} />
+                  {homeAccountsPreview.map((a) => {
+                    const preview =
+                      dashboardAccountById.get(String(a.id)) ??
+                      minimalDashboardPreviewFromAccount(a)
+                    return <AccountPreviewCard key={a.id} account={preview} fullAccount={a} />
                   })}
                 </div>
               )}
             </section>
 
-            <section className="space-y-2">
+            <section className="space-y-3">
               <div className="flex items-center justify-between gap-2">
                 <h2 className="text-sm font-semibold">Recent transactions</h2>
                 <Link
@@ -652,6 +709,28 @@ function MoneyFlowGroupedSection({
   )
 }
 
+function accountDetailKind(kind: string): "loan" | "card" | "account" {
+  const k = String(kind ?? "")
+    .trim()
+    .toLowerCase()
+  if (k === "loan") return "loan"
+  if (k === "credit_card" || k === "creditcard" || k === "card") return "card"
+  return "account"
+}
+
+function minimalDashboardPreviewFromAccount(account: Account): DashboardAccountPreview {
+  const kind = String(account.kind ?? account.type ?? "account")
+  return {
+    id: String(account.id),
+    name: String(account.name ?? "Account"),
+    kind,
+    currentBalance: accountAvailableBalanceInrFromApi(account),
+    creditLimit: 0,
+    currentOutstanding: 0,
+    status: account.isActive === false ? "inactive" : "active",
+  }
+}
+
 function AccountPreviewCard({
   account,
   fullAccount,
@@ -659,11 +738,22 @@ function AccountPreviewCard({
   account: DashboardAccountPreview
   fullAccount?: Account
 }) {
+  const navigate = useNavigate()
   const KindIcon = accountKindIcon(account.kind)
   const label = accountKindBadgeLabel(account.kind)
   const { amount, label: amountContext } = getDashboardAccountDisplay(account, fullAccount)
+  const detailPath = buildAccountsDetailPath({
+    kind: accountDetailKind(account.kind),
+    id: String(account.id),
+  })
+
   return (
-    <div className="flex flex-col rounded-2xl border border-border/60 bg-card p-3 shadow-sm">
+    <button
+      type="button"
+      onClick={() => navigate(detailPath)}
+      className="flex flex-col rounded-2xl border border-border/60 bg-card p-3 shadow-sm hover:shadow-md hover:border-primary/50 transition-all cursor-pointer text-left"
+      aria-label={`View ${account.name} account`}
+    >
       <div className="mb-2 flex items-start justify-between gap-1">
         <div className="flex size-9 items-center justify-center rounded-full bg-muted">
           {createElement(KindIcon, { className: "size-4 text-primary", "aria-hidden": true })}
@@ -681,13 +771,13 @@ function AccountPreviewCard({
       <p className={cn("text-base font-bold tabular-nums", amountContext ? "mt-0.5" : "mt-1")}>
         {formatCurrency(amount)}
       </p>
-    </div>
+    </button>
   )
 }
 
 function HomeSkeleton() {
   return (
-    <div className="space-y-4">
+    <div className="space-y-6">
       <Skeleton className="h-40 w-full rounded-2xl" />
       <Skeleton className="h-40 w-full rounded-2xl" />
       <div className="grid grid-cols-3 gap-2">

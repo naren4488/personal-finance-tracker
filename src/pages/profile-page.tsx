@@ -4,7 +4,7 @@ import { ArrowLeft, Camera, Trash2 } from "lucide-react"
 import { toast } from "sonner"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Card, CardContent, CardHeader } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -22,7 +22,6 @@ import { endUserSession } from "@/lib/auth/end-session"
 import {
   loadProfileDraft,
   saveProfileDraft,
-  type IncomeType,
   type ProfileDraft,
 } from "@/lib/profile/local-profile-draft"
 import {
@@ -42,6 +41,9 @@ import {
 } from "@/lib/ui/app-form-styles"
 import { cn } from "@/lib/utils"
 
+/** TODO: Re-enable profile photo upload when profile API/image upload support is implemented. */
+const PROFILE_PHOTO_UPLOAD_ENABLED = false
+
 function initialsFromName(name: string): string {
   const parts = name.trim().split(/\s+/).filter(Boolean)
   if (parts.length === 0) return "?"
@@ -49,25 +51,10 @@ function initialsFromName(name: string): string {
   return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase()
 }
 
-const incomeOptions: { value: IncomeType; label: string }[] = [
-  { value: "salaried", label: "Salaried" },
-  { value: "business", label: "Business" },
-  { value: "freelance", label: "Freelance" },
-]
-
-function coerceIncomeType(raw: string): IncomeType {
-  if (raw === "business" || raw === "freelance") return raw
-  return "salaried"
-}
-
 function profileUserToDraft(profile: ProfileUser): ProfileDraft {
   const d = profileUserToFormDefaults(profile)
   return {
     phone: d.phone,
-    incomeType: coerceIncomeType(d.incomeType),
-    company: d.company,
-    salaryDay: d.salaryDay,
-    monthlySalary: d.monthlySalary,
   }
 }
 
@@ -132,23 +119,9 @@ function ProfileForm({
       toast.error("Name is required")
       return
     }
-    const dayRaw = draft.salaryDay.trim()
-    if (!dayRaw) {
-      toast.error("Salary day is required (1–31)")
-      return
-    }
-    const day = Number(dayRaw)
-    if (!Number.isInteger(day) || day < 1 || day > 31) {
-      toast.error("Salary day must be a whole number between 1 and 31")
-      return
-    }
     const body = buildUpdateProfileBody({
       name: trimmed,
       phoneNumber: draft.phone,
-      incomeType: draft.incomeType,
-      company: draft.company,
-      salaryDay: day,
-      monthlySalary: draft.monthlySalary,
     })
     try {
       const updated = await updateMe(body).unwrap()
@@ -157,17 +130,9 @@ function ProfileForm({
       setName(next.name || trimmed)
       setDraft({
         phone: next.phone,
-        incomeType: coerceIncomeType(next.incomeType),
-        company: next.company,
-        salaryDay: next.salaryDay,
-        monthlySalary: next.monthlySalary,
       })
       saveProfileDraft(user.id, {
         phone: next.phone,
-        incomeType: coerceIncomeType(next.incomeType),
-        company: next.company,
-        salaryDay: next.salaryDay,
-        monthlySalary: next.monthlySalary,
       })
       toast.success("Profile saved")
     } catch (err) {
@@ -220,20 +185,22 @@ function ProfileForm({
       <Card className="rounded-2xl border-border/80 bg-card text-card-foreground shadow-sm">
         <CardHeader className="border-b border-border/50 pb-4">
           <div className="flex gap-4">
-            <div className="relative shrink-0">
+            <div className={cn("shrink-0", PROFILE_PHOTO_UPLOAD_ENABLED && "relative")}>
               <Avatar className="size-20 border-2 border-primary/20">
                 <AvatarFallback className="bg-muted text-lg font-bold text-primary">
                   {displayInitials}
                 </AvatarFallback>
               </Avatar>
-              <button
-                type="button"
-                onClick={handlePhotoClick}
-                className="absolute -right-0.5 -bottom-0.5 flex size-8 items-center justify-center rounded-full border-2 border-background bg-primary text-primary-foreground shadow-md"
-                aria-label="Change profile photo"
-              >
-                <Camera className="size-3.5" strokeWidth={2} />
-              </button>
+              {PROFILE_PHOTO_UPLOAD_ENABLED ? (
+                <button
+                  type="button"
+                  onClick={handlePhotoClick}
+                  className="absolute -right-0.5 -bottom-0.5 flex size-8 items-center justify-center rounded-full border-2 border-background bg-primary text-primary-foreground shadow-md"
+                  aria-label="Change profile photo"
+                >
+                  <Camera className="size-3.5" strokeWidth={2} />
+                </button>
+              ) : null}
             </div>
             <div className="min-w-0 flex-1 pt-1">
               <h2 className="truncate text-lg font-bold text-foreground">
@@ -295,86 +262,6 @@ function ProfileForm({
               Email comes from your account. Change it when your API supports it.
             </p>
           </div>
-        </CardContent>
-      </Card>
-
-      <Card className="rounded-2xl border-border/80 bg-card text-card-foreground shadow-sm">
-        <CardHeader>
-          <CardTitle className="text-base">Income settings</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="flex rounded-full bg-muted/80 p-1 ring-1 ring-border/40">
-            {incomeOptions.map(({ value, label }) => (
-              <button
-                key={value}
-                type="button"
-                onClick={() => updateDraft("incomeType", value)}
-                className={cn(
-                  "flex-1 rounded-full py-2 text-center text-sm font-medium transition-all",
-                  draft.incomeType === value
-                    ? "bg-card font-semibold text-foreground shadow-sm ring-1 ring-primary/40"
-                    : "text-muted-foreground hover:text-foreground"
-                )}
-              >
-                {label}
-              </button>
-            ))}
-          </div>
-          <div className={APP_FORM_TWO_COL_GRID_CLASS}>
-            <div className="space-y-2">
-              <Label htmlFor="profile-company" className={APP_FORM_LABEL_CLASS}>
-                Company
-              </Label>
-              <Input
-                id="profile-company"
-                value={draft.company}
-                onChange={(e) => updateDraft("company", e.target.value)}
-                placeholder="Company name"
-                className={APP_FORM_FIELD_CLASS}
-                aria-invalid={Boolean(fieldErrors.company)}
-              />
-              {fieldErrors.company ? (
-                <p className="text-xs text-destructive">{fieldErrors.company}</p>
-              ) : null}
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="profile-salary-day" className={APP_FORM_LABEL_CLASS}>
-                Salary day (1–31)
-              </Label>
-              <Input
-                id="profile-salary-day"
-                type="number"
-                min={1}
-                max={31}
-                value={draft.salaryDay}
-                onChange={(e) => updateDraft("salaryDay", e.target.value)}
-                className={APP_FORM_FIELD_CLASS}
-                aria-invalid={Boolean(fieldErrors.salaryDay)}
-              />
-              {fieldErrors.salaryDay ? (
-                <p className="text-xs text-destructive">{String(fieldErrors.salaryDay)}</p>
-              ) : null}
-            </div>
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="profile-salary" className={APP_FORM_LABEL_CLASS}>
-              Monthly salary (₹)
-            </Label>
-            <Input
-              id="profile-salary"
-              inputMode="decimal"
-              value={draft.monthlySalary}
-              onChange={(e) => updateDraft("monthlySalary", e.target.value)}
-              className={APP_FORM_FIELD_CLASS}
-              aria-invalid={Boolean(fieldErrors.monthlySalary)}
-            />
-            {fieldErrors.monthlySalary ? (
-              <p className="text-xs text-destructive">{fieldErrors.monthlySalary}</p>
-            ) : null}
-          </div>
-          {fieldErrors.incomeType ? (
-            <p className="text-xs text-destructive">{fieldErrors.incomeType}</p>
-          ) : null}
         </CardContent>
       </Card>
 

@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useId, useMemo, useState } from "react"
-import { useNavigate } from "react-router-dom"
 import { ChevronDown, Tag, X } from "lucide-react"
 import { toast } from "sonner"
 import { FormDialog } from "@/components/form-dialog"
@@ -15,7 +14,7 @@ import {
 } from "@/lib/api/account-schemas"
 import { getErrorMessage } from "@/lib/api/errors"
 import type { CreateTransactionPayload } from "@/lib/api/schemas"
-import { endUserSession } from "@/lib/auth/end-session"
+import { handleAuthApiErrorIfNeeded } from "@/lib/auth/handle-auth-api-error"
 import { formatCurrency } from "@/lib/format"
 import { interestRatePercentFromAccount } from "@/lib/api/credit-card-map"
 import {
@@ -119,7 +118,6 @@ function RecordLoanPaymentSheetMounted({
   account,
   mode,
 }: RecordLoanPaymentSheetProps & { account: Account }) {
-  const navigate = useNavigate()
   const dispatch = useAppDispatch()
   const user = useAppSelector((s) => s.auth.user)
   const titleId = useId()
@@ -166,14 +164,8 @@ function RecordLoanPaymentSheetMounted({
 
   useEffect(() => {
     if (!isError || !error || !open) return
-    const msg = getErrorMessage(error)
-    if (/authorization token is required/i.test(msg)) {
-      toast.error("Session expired, please login again")
-      endUserSession(dispatch)
-      dismiss()
-      navigate("/login", { replace: true })
-    }
-  }, [isError, error, open, dispatch, dismiss, navigate])
+    handleAuthApiErrorIfNeeded(error, dispatch, { onDismiss: dismiss })
+  }, [isError, error, open, dispatch, dismiss])
 
   function addTagFromInputs() {
     const fromPreset = tagPreset.trim()
@@ -250,15 +242,8 @@ function RecordLoanPaymentSheetMounted({
       toast.success("Loan payment recorded")
       dismiss()
     } catch (err) {
-      const msg = getErrorMessage(err)
-      if (/authorization token is required/i.test(msg)) {
-        toast.error("Session expired, please login again")
-        endUserSession(dispatch)
-        dismiss()
-        navigate("/login", { replace: true })
-        return
-      }
-      toast.error(msg)
+      if (handleAuthApiErrorIfNeeded(err, dispatch, { onDismiss: dismiss })) return
+      toast.error(getErrorMessage(err))
     }
   }
 

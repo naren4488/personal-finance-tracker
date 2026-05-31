@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useMemo, useState } from "react"
-import { useNavigate } from "react-router-dom"
 import {
   Archive,
   ArrowLeft,
@@ -12,12 +11,14 @@ import {
 } from "lucide-react"
 import { toast } from "sonner"
 import { ConfirmDeleteDialog } from "@/components/confirm-delete-dialog"
+import { EntityDeleteButton } from "@/components/entity-delete-button"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import type { Account } from "@/lib/api/account-schemas"
 import { formatOpeningBalanceForApi } from "@/lib/api/account-schemas"
 import { getErrorMessage } from "@/lib/api/errors"
+import { handleAuthApiErrorIfNeeded } from "@/lib/auth/handle-auth-api-error"
 import {
   billCycleLabelFromDay,
   billGenerationDayNumber,
@@ -30,6 +31,7 @@ import {
   paymentDueDayNumber,
 } from "@/lib/api/credit-card-map"
 import { getAccountDeleteWarning } from "@/lib/accounts/account-delete"
+import { useAccountDeleteGuard } from "@/hooks/use-account-delete-guard"
 import { RecentTransactionRow } from "@/features/entries/recent-transaction-row"
 import { useDeleteTransactionFlow } from "@/features/entries/use-delete-transaction-flow"
 import { type RecentTransaction } from "@/lib/api/transaction-schemas"
@@ -41,6 +43,7 @@ import {
   useUpdateAccountMutation,
 } from "@/store/api/base-api"
 import { cn } from "@/lib/utils"
+import { useAppDispatch } from "@/store/hooks"
 
 const CARD_NETWORKS = [
   { value: "visa", label: "Visa" },
@@ -195,7 +198,7 @@ export function CreditCardDetailView({
   onAddSpend?: () => void
   onCardDeleted?: () => void
 }) {
-  const navigate = useNavigate()
+  const dispatch = useAppDispatch()
   const [updateAccount, { isLoading: isSaving }] = useUpdateAccountMutation()
   const [deleteAccount, { isLoading: isDeletingAccount }] = useDeleteAccountMutation()
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false)
@@ -211,6 +214,11 @@ export function CreditCardDetailView({
     { accountId: String(account?.id ?? ""), limit: 500 },
     { skip: !account }
   )
+
+  const deleteGuard = useAccountDeleteGuard(String(account?.id ?? ""), "credit_card", {
+    ledgerEntries: ledgerTransactions,
+    ledgerFetching: txsFetching,
+  })
 
   const dismiss = useCallback(() => {
     setIsEditing(false)
@@ -320,40 +328,25 @@ export function CreditCardDetailView({
     } as Account
 
     try {
-      console.log("[credit-card] saving to backend", {
-        method: "PUT",
-        path: `/accounts/${accountId}`,
-        accountId,
-        payload,
-      })
-      console.log(
-        "[credit-card] backend body (JSON exactly as sent):",
-        JSON.stringify(payload, null, 2)
-      )
       const updated = await updateAccount({ id: accountId, body: payload }).unwrap()
-      console.log("[credit-card] update success", {
-        id: accountId,
-        account: updated.account ?? null,
-        message: updated.message ?? "Card updated successfully",
-      })
       onCardUpdated?.((updated.account as Account | undefined) ?? next)
       toast.success("Card updated successfully")
       setIsEditing(false)
       setDraft(null)
     } catch (error) {
-      console.error("[credit-card] update failed", { id: accountId, error })
-      const msg = getErrorMessage(error)
-      if (/authorization token is required/i.test(msg)) {
-        toast.error("Session expired, please login again")
-        navigate("/login", { replace: true })
-        return
-      }
-      toast.error(msg || "Failed to update card")
+      if (handleAuthApiErrorIfNeeded(error, dispatch)) return
+      toast.error(getErrorMessage(error) || "Failed to update card")
     }
-  }, [account, draft, navigate, onCardUpdated, updateAccount])
+  }, [account, draft, dispatch, onCardUpdated, updateAccount])
 
   const confirmDeleteCard = useCallback(async () => {
     if (!account) return
+    if (deleteGuard.blocked) {
+      toast.error(
+        deleteGuard.message ?? "Delete is only available for empty entities with no history."
+      )
+      return
+    }
     const id = String(account.id ?? "").trim()
     if (!id) {
       toast.error("Unable to delete: missing account id")
@@ -370,7 +363,7 @@ export function CreditCardDetailView({
     } catch (e) {
       toast.error(getErrorMessage(e) || "Failed to delete")
     }
-  }, [account, deleteAccount, onCardDeleted, onBack])
+  }, [account, deleteAccount, deleteGuard, onCardDeleted, onBack])
 
   useEffect(() => {
     if (!account) return
@@ -478,14 +471,14 @@ export function CreditCardDetailView({
             "min-h-0 flex-1 overflow-y-auto overflow-x-hidden overscroll-y-contain px-4 pb-24 pt-0 [-ms-overflow-style:none] [scrollbar-width:thin] sm:px-5 sm:pb-6"
           )}
         >
-          <div className="overflow-hidden rounded-3xl border border-[#1D2E77]/70 bg-[#0B1C66] text-primary-foreground shadow-[0_12px_30px_rgba(8,18,70,0.35)]">
+          <div className="overflow-hidden rounded-3xl border border-primary/70 bg-primary text-primary-foreground shadow-xl">
             <div className="px-4 pb-4 pt-3.5 sm:px-5 sm:pb-5 sm:pt-4">
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0 flex-1">
-                  <p className="truncate text-xl font-bold tracking-tight text-white sm:text-2xl">
+                  <p className="truncate text-xl font-bold tracking-tight text-primary-foreground sm:text-2xl">
                     {model.name || "Credit Card"}
                   </p>
-                  <p className="mt-0.5 truncate text-sm font-medium text-white/80">
+                  <p className="mt-0.5 truncate text-sm font-medium text-primary-foreground/80">
                     {subtitle || networkDisplay || "credit card"}
                   </p>
                 </div>
@@ -494,7 +487,7 @@ export function CreditCardDetailView({
                     type="button"
                     variant="ghost"
                     size="icon-sm"
-                    className="size-8 shrink-0 rounded-full text-white/85 hover:bg-white/12 hover:text-white"
+                    className="size-8 shrink-0 rounded-full text-primary-foreground/85 hover:bg-primary-foreground/12 hover:text-primary-foreground"
                     aria-label={isEditing ? "Editing card" : "Edit card"}
                     disabled={isEditing}
                     onClick={startEdit}
@@ -505,7 +498,7 @@ export function CreditCardDetailView({
                     type="button"
                     variant="ghost"
                     size="icon-sm"
-                    className="size-8 shrink-0 rounded-full text-white/85 hover:bg-white/12 hover:text-white"
+                    className="size-8 shrink-0 rounded-full text-primary-foreground/85 hover:bg-primary-foreground/12 hover:text-primary-foreground"
                     aria-label="Pay bill"
                     onClick={() => onPayBill?.()}
                   >
@@ -515,31 +508,31 @@ export function CreditCardDetailView({
               </div>
 
               {masked ? (
-                <p className="mt-2 truncate text-xs font-medium tracking-[0.12em] text-white/85 sm:text-sm">
+                <p className="mt-2 truncate text-xs font-medium tracking-[0.12em] text-primary-foreground/85 sm:text-sm">
                   {masked}
                 </p>
               ) : null}
 
-              <p className="mt-5 text-[11px] font-medium uppercase tracking-wide text-white/70">
+              <p className="mt-5 text-[11px] font-medium uppercase tracking-wide text-primary-foreground/70">
                 Available Credit
               </p>
-              <p className="mt-1 text-3xl font-bold tabular-nums text-white sm:text-4xl">
+              <p className="mt-1 text-3xl font-bold tabular-nums text-primary-foreground sm:text-4xl">
                 {formatCurrency(available)}
               </p>
               <div className="mt-2 flex items-end justify-between gap-4">
                 <div className="min-w-0">
-                  <p className="text-[11px] font-medium uppercase tracking-wide text-white/70">
+                  <p className="text-[11px] font-medium uppercase tracking-wide text-primary-foreground/70">
                     Outstanding
                   </p>
-                  <p className="mt-0.5 text-sm font-semibold tabular-nums text-white/90 sm:text-base">
+                  <p className="mt-0.5 text-sm font-semibold tabular-nums text-primary-foreground/90 sm:text-base">
                     {formatCurrency(outstanding)}
                   </p>
                 </div>
                 <div className="min-w-0 text-right">
-                  <p className="text-[11px] font-medium uppercase tracking-wide text-white/70">
+                  <p className="text-[11px] font-medium uppercase tracking-wide text-primary-foreground/70">
                     Credit Limit
                   </p>
-                  <p className="mt-0.5 text-sm font-semibold tabular-nums text-white/90 sm:text-base">
+                  <p className="mt-0.5 text-sm font-semibold tabular-nums text-primary-foreground/90 sm:text-base">
                     {formatCurrency(limit)}
                   </p>
                 </div>
@@ -809,15 +802,13 @@ export function CreditCardDetailView({
                   <Archive className="mr-2 size-4 shrink-0" strokeWidth={2} aria-hidden />
                   Archive
                 </Button>
-                <Button
-                  type="button"
-                  variant="destructive"
-                  className="h-12 rounded-xl font-semibold shadow-none"
-                  onClick={() => setDeleteConfirmOpen(true)}
-                >
-                  <Trash2 className="mr-2 size-4 shrink-0" strokeWidth={2} aria-hidden />
-                  Delete
-                </Button>
+                <EntityDeleteButton
+                  guard={deleteGuard}
+                  className="h-12 rounded-xl shadow-none"
+                  onDelete={() => setDeleteConfirmOpen(true)}
+                  label="Delete"
+                  icon={<Trash2 className="mr-2 size-4 shrink-0" strokeWidth={2} aria-hidden />}
+                />
               </div>
             ) : null}
           </div>

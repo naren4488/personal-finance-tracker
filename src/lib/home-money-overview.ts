@@ -1,14 +1,5 @@
 import type { Commitment } from "@/lib/api/commitment-schemas"
 import type { DashboardScheduledItem } from "@/lib/api/dashboard-home-schemas"
-import type { Account } from "@/lib/api/account-schemas"
-import {
-  creditCardMinimumPaymentInr,
-  creditCardOutstandingInr,
-  isCreditCardAccount,
-  nextDueDateFromDay,
-  paymentDueDayNumber,
-} from "@/lib/api/credit-card-map"
-import { isLoanAccount, nextLoanEmiDueDate, resolveLoanEmiAmount } from "@/lib/api/loan-account-map"
 import { parseSignedAmountString } from "@/lib/api/transaction-schemas"
 import type { RecentTransaction } from "@/lib/api/transaction-schemas"
 
@@ -120,18 +111,6 @@ export function mergeMoneyFlowDedupe(rows: MoneyFlowRow[]): MoneyFlowRow[] {
     out.push(r)
   }
   return out
-}
-
-function loanRowTitle(a: Account): string {
-  const name = (a.name ?? "").trim()
-  const r = a as unknown as Record<string, unknown>
-  const lender = typeof r.lenderName === "string" ? r.lenderName.trim() : ""
-  if (name && lender) return `${name} · ${lender}`
-  return name || lender || "Loan"
-}
-
-function cardRowTitle(a: Account): string {
-  return (a.name ?? "Credit card").trim()
 }
 
 /** Inclusive calendar range: `horizonDays === 1` → today only. */
@@ -282,89 +261,4 @@ export function filterByHorizon(
   endInclusive: Date
 ): DashboardScheduledItem[] {
   return items.filter((it) => isDateInHorizon(it.dueDate, start, endInclusive))
-}
-
-/** Loan EMI due in horizon when dashboard did not list this loan (by name match on same due date). */
-export function supplementLoanEmiItems(
-  accounts: Account[],
-  horizonEnd: Date,
-  existing: DashboardScheduledItem[]
-): DashboardScheduledItem[] {
-  const now = startOfLocalDay(new Date())
-  const end = startOfLocalDay(horizonEnd)
-  const out: DashboardScheduledItem[] = []
-
-  for (const a of accounts) {
-    if (!isLoanAccount(a)) continue
-    const nextRaw = nextLoanEmiDueDate(a)
-    if (nextRaw == null) continue
-    const next = startOfLocalDay(nextRaw)
-    if (next.getTime() < now.getTime() || next.getTime() > end.getTime()) continue
-
-    const dueKey = formatYyyyMmDd(next)
-    const emi = resolveLoanEmiAmount(a) ?? 0
-    const title = loanRowTitle(a)
-
-    const dup = existing.some(
-      (e) =>
-        classifyOutgoingItem(e) === "loan_emi" &&
-        e.dueDate.slice(0, 10) === dueKey &&
-        e.title.trim().toLowerCase() === title.toLowerCase()
-    )
-    if (dup) continue
-
-    out.push({
-      id: `loan-supplement:${a.id}:${dueKey}`,
-      title,
-      amount: emi,
-      dueDate: dueKey,
-      kind: "loan_emi",
-      status: "scheduled",
-    })
-  }
-  return out
-}
-
-/** Next card payment due in horizon (minimum due or outstanding fallback). */
-export function supplementCreditCardItems(
-  accounts: Account[],
-  horizonEnd: Date,
-  existing: DashboardScheduledItem[]
-): DashboardScheduledItem[] {
-  const now = startOfLocalDay(new Date())
-  const end = startOfLocalDay(horizonEnd)
-  const out: DashboardScheduledItem[] = []
-
-  for (const a of accounts) {
-    if (!isCreditCardAccount(a)) continue
-    const dayNum = paymentDueDayNumber(a)
-    if (dayNum == null) continue
-    const next = startOfLocalDay(nextDueDateFromDay(dayNum))
-    if (next.getTime() < now.getTime() || next.getTime() > end.getTime()) continue
-
-    const dueKey = formatYyyyMmDd(next)
-    const minDue = creditCardMinimumPaymentInr(a)
-    const amount = minDue ?? creditCardOutstandingInr(a)
-    if (!(amount > 0)) continue
-
-    const title = cardRowTitle(a)
-
-    const dup = existing.some(
-      (e) =>
-        classifyOutgoingItem(e) === "credit_card" &&
-        e.dueDate.slice(0, 10) === dueKey &&
-        e.title.trim().toLowerCase() === title.toLowerCase()
-    )
-    if (dup) continue
-
-    out.push({
-      id: `card-supplement:${a.id}:${dueKey}`,
-      title,
-      amount,
-      dueDate: dueKey,
-      kind: "credit_card",
-      status: "scheduled",
-    })
-  }
-  return out
 }

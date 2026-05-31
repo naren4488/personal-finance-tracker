@@ -9,10 +9,6 @@ export const profileUserSchema = z
     email: z.string(),
     role: z.string().optional(),
     phoneNumber: z.string().optional(),
-    incomeType: z.string().optional(),
-    company: z.string().optional(),
-    salaryDay: z.union([z.number(), z.string()]).optional(),
-    monthlySalary: z.union([z.number(), z.string()]).optional(),
     createdAt: z.string().optional(),
     updatedAt: z.string().optional(),
   })
@@ -42,10 +38,6 @@ export function parseProfileSuccessEnvelope(
 export const updateProfileRequestSchema = z.object({
   name: z.string().min(1, "Name is required").max(120),
   phoneNumber: z.string(),
-  incomeType: z.string().min(1),
-  company: z.string(),
-  salaryDay: z.number().int().min(1).max(31),
-  monthlySalary: z.string().min(1),
 })
 
 export type UpdateProfileRequest = z.infer<typeof updateProfileRequestSchema>
@@ -53,20 +45,10 @@ export type UpdateProfileRequest = z.infer<typeof updateProfileRequestSchema>
 export function buildUpdateProfileBody(input: {
   name: string
   phoneNumber: string
-  incomeType: string
-  company: string
-  salaryDay: number
-  monthlySalary: string
 }): UpdateProfileRequest {
-  /** API expects `monthlySalary` as a string (not a JSON number). */
-  const monthlySalary = input.monthlySalary.trim().replace(/,/g, "") || "0"
   return {
     name: input.name.trim(),
     phoneNumber: input.phoneNumber.trim(),
-    incomeType: input.incomeType.trim() || "salaried",
-    company: input.company.trim(),
-    salaryDay: input.salaryDay,
-    monthlySalary,
   }
 }
 
@@ -84,32 +66,10 @@ export function mergeAuthUserWithProfile(user: AuthUser, profile: ProfileUser): 
 export function profileUserToFormDefaults(user: ProfileUser): {
   name: string
   phone: string
-  incomeType: string
-  company: string
-  salaryDay: string
-  monthlySalary: string
 } {
-  const sd = user.salaryDay
-  const salaryDay =
-    sd === undefined || sd === null || sd === ""
-      ? ""
-      : typeof sd === "number"
-        ? String(sd)
-        : String(sd)
-
-  const ms = user.monthlySalary
-  let monthlySalary = ""
-  if (ms !== undefined && ms !== null && ms !== "") {
-    monthlySalary = typeof ms === "number" ? String(ms) : String(ms)
-  }
-
   return {
     name: user.name?.trim() ?? "",
     phone: user.phoneNumber?.trim() ?? "",
-    incomeType: user.incomeType?.trim() ?? "",
-    company: user.company?.trim() ?? "",
-    salaryDay,
-    monthlySalary,
   }
 }
 

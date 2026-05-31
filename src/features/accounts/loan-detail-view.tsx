@@ -11,8 +11,8 @@ import {
   XCircle,
 } from "lucide-react"
 import { toast } from "sonner"
-import { useNavigate } from "react-router-dom"
 import { ConfirmDeleteDialog } from "@/components/confirm-delete-dialog"
+import { EntityDeleteButton } from "@/components/entity-delete-button"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -36,7 +36,9 @@ import {
 } from "@/lib/api/loan-account-map"
 import { RecentTransactionRow } from "@/features/entries/recent-transaction-row"
 import { getAccountDeleteWarning } from "@/lib/accounts/account-delete"
+import { useAccountDeleteGuard } from "@/hooks/use-account-delete-guard"
 import { getErrorMessage } from "@/lib/api/errors"
+import { handleAuthApiErrorIfNeeded } from "@/lib/auth/handle-auth-api-error"
 import { formatCurrency } from "@/lib/format"
 import {
   useGetAccountLedgerQuery,
@@ -45,6 +47,7 @@ import {
   useUpdateAccountMutation,
 } from "@/store/api/base-api"
 import { cn } from "@/lib/utils"
+import { useAppDispatch } from "@/store/hooks"
 
 function comingSoon(label: string) {
   toast.message("Coming soon", { description: `${label} will be available soon.` })
@@ -90,7 +93,7 @@ export function LoanDetailView({
   onLoanUpdated?: (account: Account) => void
   onLoanDeleted?: () => void
 }) {
-  const navigate = useNavigate()
+  const dispatch = useAppDispatch()
   const [updateAccount, { isLoading: isSavingLoan }] = useUpdateAccountMutation()
   const [deleteAccount, { isLoading: isDeletingAccount }] = useDeleteAccountMutation()
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false)
@@ -106,6 +109,11 @@ export function LoanDetailView({
     { accountId: String(account?.id ?? ""), limit: 500 },
     { skip: !account }
   )
+
+  const deleteGuard = useAccountDeleteGuard(String(account?.id ?? ""), "loan", {
+    ledgerEntries: ledgerTransactions,
+    ledgerFetching: txsFetching,
+  })
 
   const dismiss = useCallback(() => {
     setIsEditing(false)
@@ -241,37 +249,25 @@ export function LoanDetailView({
     }
 
     try {
-      console.log("[loan] saving to backend", {
-        method: "PUT",
-        path: `/accounts/${accountId}`,
-        accountId,
-        payload,
-      })
-      console.log("[loan] backend body (JSON exactly as sent):", JSON.stringify(payload, null, 2))
       const updated = await updateAccount({ id: accountId, body: payload }).unwrap()
-      console.log("[loan] update success", {
-        id: accountId,
-        account: updated.account ?? null,
-        message: updated.message ?? "Loan updated successfully",
-      })
       onLoanUpdated?.((updated.account as Account | undefined) ?? next)
       toast.success("Loan updated successfully")
       setIsEditing(false)
       setDraft(null)
     } catch (error) {
-      console.error("[loan] update failed", { id: accountId, error })
-      const msg = getErrorMessage(error)
-      if (/authorization token is required/i.test(msg)) {
-        toast.error("Session expired, please login again")
-        navigate("/login", { replace: true })
-        return
-      }
-      toast.error(msg || "Failed to update loan")
+      if (handleAuthApiErrorIfNeeded(error, dispatch)) return
+      toast.error(getErrorMessage(error) || "Failed to update loan")
     }
-  }, [account?.id, draft, navigate, onLoanUpdated, updateAccount])
+  }, [account?.id, draft, dispatch, onLoanUpdated, updateAccount])
 
   const confirmDeleteLoan = useCallback(async () => {
     if (!account) return
+    if (deleteGuard.blocked) {
+      toast.error(
+        deleteGuard.message ?? "Delete is only available for empty entities with no history."
+      )
+      return
+    }
     const id = String(account.id ?? "").trim()
     if (!id) {
       toast.error("Unable to delete: missing account id")
@@ -288,7 +284,7 @@ export function LoanDetailView({
     } catch (e) {
       toast.error(getErrorMessage(e) || "Failed to delete")
     }
-  }, [account, deleteAccount, onLoanDeleted, onBack])
+  }, [account, deleteAccount, deleteGuard, onLoanDeleted, onBack])
 
   useEffect(() => {
     if (!account) return
@@ -764,15 +760,13 @@ export function LoanDetailView({
                 <XCircle className="mr-2 size-4 shrink-0" strokeWidth={2} aria-hidden />
                 Close Loan
               </Button>
-              <Button
-                type="button"
-                variant="destructive"
-                className="h-11 w-full rounded-xl font-semibold"
-                onClick={() => setDeleteConfirmOpen(true)}
-              >
-                <Trash2 className="mr-2 size-4 shrink-0" strokeWidth={2} aria-hidden />
-                Delete Loan
-              </Button>
+              <EntityDeleteButton
+                guard={deleteGuard}
+                className="h-11 rounded-xl"
+                label="Delete Loan"
+                onDelete={() => setDeleteConfirmOpen(true)}
+                icon={<Trash2 className="mr-2 size-4 shrink-0" strokeWidth={2} aria-hidden />}
+              />
             </div>
           ) : null}
 

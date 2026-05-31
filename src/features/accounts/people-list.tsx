@@ -5,12 +5,12 @@ import type { Person } from "@/lib/api/people-schemas"
 import { getErrorMessage } from "@/lib/api/errors"
 import { ACTION_GROUP_ROW } from "@/lib/ui/action-group-classes"
 import { cn } from "@/lib/utils"
-import { PersonCard } from "@/features/accounts/person-card"
+import { PersonListItem } from "@/features/accounts/person-list-item"
 import { Users } from "lucide-react"
 
 function PersonCardSkeleton() {
   return (
-    <div className="flex w-full items-center justify-between gap-3 rounded-xl border border-[#E5E7EB] bg-card px-4 py-3 shadow-sm dark:border-border">
+    <div className="flex w-full items-center justify-between gap-3 rounded-xl border border-border bg-card px-4 py-3 shadow-sm">
       <div className="min-w-0 flex-1 space-y-2">
         <Skeleton className="h-4 w-32" />
         <Skeleton className="h-3 w-24" />
@@ -97,7 +97,7 @@ export function PeopleList({
       {people.map((person) => {
         return (
           <li key={person.id}>
-            <PersonCard person={person} onClick={onPersonClick} onDelete={onPersonDelete} />
+            <PersonListItem person={person} onClick={onPersonClick} onDelete={onPersonDelete} />
           </li>
         )
       })}

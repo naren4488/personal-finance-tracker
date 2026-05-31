@@ -148,6 +148,37 @@ export function filterRepaymentSourceAccounts(accounts: Account[]): Account[] {
   return filterActiveAccounts(filterNormalAccounts(accounts))
 }
 
+function accountCreatedAtMs(account: Account): number {
+  const r = account as Record<string, unknown>
+  const raw =
+    (typeof r.createdAt === "string" && r.createdAt.trim()) ||
+    (typeof r.created_at === "string" && r.created_at.trim())
+  if (!raw) return 0
+  const t = Date.parse(raw)
+  return Number.isNaN(t) ? 0 : t
+}
+
+/** Newest accounts first — prefers `createdAt`, then numeric id descending. */
+export function compareAccountsNewestFirst(a: Account, b: Account): number {
+  const aCreated = accountCreatedAtMs(a)
+  const bCreated = accountCreatedAtMs(b)
+  if (aCreated !== bCreated) return bCreated - aCreated
+
+  const aId = String(a.id)
+  const bId = String(b.id)
+  const aNum = Number(aId)
+  const bNum = Number(bId)
+  if (Number.isFinite(aNum) && Number.isFinite(bNum) && aNum !== bNum) {
+    return bNum - aNum
+  }
+
+  return bId.localeCompare(aId)
+}
+
+export function sortAccountsNewestFirst(accounts: Account[]): Account[] {
+  return [...accounts].sort(compareAccountsNewestFirst)
+}
+
 /** `linkedRepaymentAccountId` from GET/POST account payload. */
 export function linkedRepaymentAccountIdFromAccount(account: Account): string | null {
   const r = account as Record<string, unknown>

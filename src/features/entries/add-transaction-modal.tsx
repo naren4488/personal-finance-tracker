@@ -4,6 +4,7 @@ import { useNavigate } from "react-router-dom"
 import { ChevronDown, CreditCard, Gem, Landmark, Plus, Tag, X } from "lucide-react"
 import { type UseFormReturn, useForm, useWatch } from "react-hook-form"
 import { toast } from "sonner"
+import { AppFieldError } from "@/components/app-field-error"
 import { FormDialog } from "@/components/form-dialog"
 import { Badge } from "@/components/ui/badge"
 import { ToggleTile } from "@/components/toggle-tile"
@@ -46,7 +47,13 @@ import type {
 } from "@/lib/api/schemas"
 import { ACCOUNTS_HIGHLIGHT_TX } from "@/features/accounts/accounts-route"
 import { formatCurrency } from "@/lib/format"
-import { assertSourceAccountCoversAmount } from "@/lib/validation/source-account-balance"
+import { handleFormApiError } from "@/lib/forms/form-api-errors"
+import { handleAuthApiErrorIfNeeded } from "@/lib/auth/handle-auth-api-error"
+import {
+  validateTransactionSubmit,
+  type TransactionSubmitField,
+} from "@/lib/forms/transaction-submit-validation"
+import { getSourceAccountBalanceError } from "@/lib/validation/source-account-balance"
 import { cn } from "@/lib/utils"
 import {
   useAddTransactionMutation,
@@ -568,6 +575,9 @@ function AddTransactionModalMounted({
     principal?: string
     interest?: string
   } | null>(null)
+  const [fieldErrors, setFieldErrors] = useState<Partial<Record<TransactionSubmitField, string>>>(
+    {}
+  )
 
   const effectiveType: TransactionType = expenseFlow ? "expense" : txType
   const hasAccount = accounts.length > 0
@@ -802,13 +812,8 @@ function AddTransactionModalMounted({
 
   useEffect(() => {
     if (!isError || !error) return
-    const msg = getErrorMessage(error)
-    if (/authorization token is required/i.test(msg)) {
-      toast.error(msg)
-      onOpenChange(false)
-      navigate("/login", { replace: true })
-    }
-  }, [isError, error, navigate, onOpenChange])
+    handleAuthApiErrorIfNeeded(error, dispatch, { onDismiss: () => onOpenChange(false) })
+  }, [isError, error, dispatch, onOpenChange])
 
   function addTagFromInputs() {
     const fromPreset = tagPreset.trim()
@@ -825,25 +830,35 @@ function AddTransactionModalMounted({
     if (amt == null) return
     const feeParsed = parseNonNegativeFee(values.feeAmount)
     if (feeParsed === null) {
-      toast.error("Fee must be empty or a non-negative number")
+      ccExpenseForm.setError("feeAmount", {
+        message: "Fee must be a non-negative number or empty",
+      })
       return
     }
     const card = accounts.find((a) => a.id === values.creditCardAccountId)
     if (!card) {
-      toast.error("Select a credit card")
+      ccExpenseForm.setError("creditCardAccountId", { message: "Select a credit card" })
       return
     }
-    if (!assertSourceAccountCoversAmount(card, amt)) return
+    const balanceErr = getSourceAccountBalanceError(card, amt)
+    if (balanceErr) {
+      ccExpenseForm.setError("creditCardAccountId", { message: balanceErr })
+      return
+    }
 
     const cardLabel = accountSelectLabel(card)
+    const ccFieldErrors: Partial<Record<TransactionSubmitField, string>> = {}
     if (effectiveOnBehalfEnabled && !effectiveOnBehalfPersonId) {
-      toast.error("Select a person")
-      return
+      ccFieldErrors.onBehalfPersonId = "Select a person"
     }
     if (effectiveOnBehalfEnabled && effectiveOnBehalfPersonId && !expectedReturnDate.trim()) {
-      toast.error("Select expected return date")
+      ccFieldErrors.expectedReturnDate = "Select expected return date"
+    }
+    if (Object.keys(ccFieldErrors).length > 0) {
+      setFieldErrors(ccFieldErrors)
       return
     }
+    setFieldErrors({})
     const mergedNote = [description.trim(), values.note.trim()].filter(Boolean).join(" — ")
     const payload: CreateTransactionPayload = {
       type: "expense",
@@ -873,8 +888,7 @@ function AddTransactionModalMounted({
       const created = await addTransaction(payload).unwrap()
       completeAfterSuccess(expenseFlow ? "Expense added" : "Transaction added", created)
     } catch (err) {
-      console.error("[transactions] submit error", err)
-      toast.error(getErrorMessage(err))
+      handleFormApiError(err, dispatch)
     }
   }
 
@@ -899,21 +913,6 @@ function AddTransactionModalMounted({
         (effectiveType === "expense" ? category.trim() || "Expense" : "Income")
     }
 
-    if (effectiveType !== "transfer") {
-      const n = amount.replace(/\D/g, "")
-      if (!n || Number(n) <= 0) {
-        toast.error("Enter a valid amount")
-        return
-      }
-    }
-    if (effectiveType === "expense" && !category) {
-      toast.error("Select a category")
-      return
-    }
-    if (effectiveType === "income" && !incomeSource) {
-      toast.error("Select income source")
-      return
-    }
     const sourceAccountIdForSubmit =
       effectiveType === "transfer" && transferDestinationType === "credit_card_bill"
         ? accountId || creditCardPayment.fromAccountId || ""
@@ -922,46 +921,6 @@ function AddTransactionModalMounted({
       isOnBehalfLocked && !transferSourceAccounts.some((a) => a.id === sourceAccountIdForSubmit)
         ? ""
         : sourceAccountIdForSubmit
-
-    if (!validSourceAccountIdForSubmit) {
-      toast.error(effectiveType === "transfer" ? "Select source account" : "Select an account")
-      return
-    }
-    if (effectiveType === "transfer") {
-      if (transferDestinationType === "account") {
-        if (!toAccountId) {
-          toast.error("Select destination account")
-          return
-        }
-        if (toAccountId === accountId) {
-          toast.error("Choose a different account to transfer to")
-          return
-        }
-        const n = amount.replace(/\D/g, "")
-        if (!n || Number(n) <= 0) {
-          toast.error("Enter a valid amount")
-          return
-        }
-      } else if (transferDestinationType === "credit_card_bill") {
-        if (!creditCardAccountId) {
-          toast.error("Select credit card")
-          return
-        }
-        if (isCreditCardPaymentDisabled) {
-          toast.error("Payment is not available for this card")
-          return
-        }
-      } else if (transferDestinationType === "loan_emi") {
-        if (!loanAccountId) {
-          toast.error("Select loan account")
-          return
-        }
-        if (loanEmiAutoFill.isDisabled) {
-          toast.error("EMI is not available for this loan")
-          return
-        }
-      }
-    }
 
     let submitAmountNum: number
     if (effectiveType === "transfer") {
@@ -977,21 +936,35 @@ function AddTransactionModalMounted({
     }
 
     const acc = accounts.find((a) => a.id === validSourceAccountIdForSubmit)
-    if (effectiveType !== "income" && !assertSourceAccountCoversAmount(acc, submitAmountNum)) {
+
+    const validationErrors = validateTransactionSubmit({
+      effectiveType,
+      isCreditCardExpenseMode: false,
+      amount,
+      category,
+      incomeSource,
+      validSourceAccountIdForSubmit,
+      transferDestinationType,
+      toAccountId,
+      accountId,
+      creditCardAccountId,
+      isCreditCardPaymentDisabled,
+      loanAccountId,
+      loanEmiDisabled: loanEmiAutoFill.isDisabled,
+      effectiveOnBehalfEnabled,
+      effectiveOnBehalfPersonId,
+      expectedReturnDate,
+      submitAmountNum,
+      sourceAccount: acc,
+    })
+    if (Object.keys(validationErrors).length > 0) {
+      setFieldErrors(validationErrors)
       return
     }
+    setFieldErrors({})
 
     const displayTitle = [titleBase, ...tags].filter(Boolean).join(" · ")
     const noteForApi = [description.trim(), note.trim()].filter(Boolean).join(" — ")
-
-    if (effectiveOnBehalfEnabled && !effectiveOnBehalfPersonId) {
-      toast.error("Select a person")
-      return
-    }
-    if (effectiveOnBehalfEnabled && effectiveOnBehalfPersonId && !expectedReturnDate.trim()) {
-      toast.error("Select expected return date")
-      return
-    }
 
     const payload = {
       type: effectiveType,
@@ -1040,8 +1013,6 @@ function AddTransactionModalMounted({
         effectiveType === "expense" && acc ? accountApiTypeOrKind(acc) : undefined,
     }
 
-    console.log("[add-transaction] submit — CreateTransactionPayload:", payload)
-
     try {
       const created = await addTransaction(payload).unwrap()
       completeAfterSuccess(
@@ -1053,8 +1024,7 @@ function AddTransactionModalMounted({
         created
       )
     } catch (err) {
-      console.error("[transactions] submit error", err)
-      toast.error(getErrorMessage(err))
+      handleFormApiError(err, dispatch)
     }
   }
 
@@ -1227,6 +1197,7 @@ function AddTransactionModalMounted({
                     </select>
                     <SelectChevron />
                   </div>
+                  <AppFieldError message={fieldErrors.accountId} />
                 </section>
                 <section>
                   <Label htmlFor={transferDestinationTypeId} className={TX_FORM_LABEL_CLASS}>
@@ -1280,6 +1251,7 @@ function AddTransactionModalMounted({
                     </select>
                     <SelectChevron />
                   </div>
+                  <AppFieldError message={fieldErrors.toAccountId} />
                 </section>
               ) : transferDestinationType === "credit_card_bill" ? (
                 <>
@@ -1599,12 +1571,23 @@ function AddTransactionModalMounted({
                   inputMode="numeric"
                   placeholder="0"
                   value={amount}
-                  onChange={(e) => setAmount(e.target.value.replace(/[^\d]/g, ""))}
+                  onChange={(e) => {
+                    setAmount(e.target.value.replace(/[^\d]/g, ""))
+                    if (fieldErrors.amount) {
+                      setFieldErrors((fe) => {
+                        const next = { ...fe }
+                        delete next.amount
+                        return next
+                      })
+                    }
+                  }}
                   className={cn(
                     TX_FORM_FIELD_CLASS,
                     "h-14 bg-muted/20 text-center text-2xl font-bold tabular-nums text-primary/80 placeholder:text-primary/40"
                   )}
+                  aria-invalid={!!fieldErrors.amount}
                 />
+                <AppFieldError message={fieldErrors.amount} />
               </section>
 
               <div className="grid grid-cols-2 gap-4">
@@ -1629,6 +1612,7 @@ function AddTransactionModalMounted({
                         </select>
                         <SelectChevron />
                       </div>
+                      <AppFieldError message={fieldErrors.incomeSource} />
                     </>
                   ) : (
                     <>
@@ -1639,8 +1623,18 @@ function AddTransactionModalMounted({
                         <select
                           id={categoryId}
                           value={category}
-                          onChange={(e) => setCategory(e.target.value)}
+                          onChange={(e) => {
+                            setCategory(e.target.value)
+                            if (fieldErrors.category) {
+                              setFieldErrors((fe) => {
+                                const next = { ...fe }
+                                delete next.category
+                                return next
+                              })
+                            }
+                          }}
                           className={cn(TX_FORM_SELECT_CLASS, !category && "text-muted-foreground")}
+                          aria-invalid={!!fieldErrors.category}
                         >
                           <option value="">Select category</option>
                           {TX_CATEGORIES.map((c) => (
@@ -1651,6 +1645,7 @@ function AddTransactionModalMounted({
                         </select>
                         <SelectChevron />
                       </div>
+                      <AppFieldError message={fieldErrors.category} />
                     </>
                   )}
                 </section>
@@ -1717,6 +1712,7 @@ function AddTransactionModalMounted({
                   </select>
                   <SelectChevron />
                 </div>
+                <AppFieldError message={fieldErrors.accountId} />
               </section>
             </>
           )}

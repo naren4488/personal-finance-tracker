@@ -1,21 +1,11 @@
 const PREFIX = "koin_profile_draft_"
 
-export type IncomeType = "salaried" | "business" | "freelance"
-
 export type ProfileDraft = {
   phone: string
-  incomeType: IncomeType
-  company: string
-  salaryDay: string
-  monthlySalary: string
 }
 
 const defaultDraft: ProfileDraft = {
   phone: "",
-  incomeType: "salaried",
-  company: "",
-  salaryDay: "1",
-  monthlySalary: "0",
 }
 
 function keyForUser(userId: string | undefined) {

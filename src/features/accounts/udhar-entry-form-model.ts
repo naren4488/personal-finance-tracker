@@ -87,8 +87,8 @@ export function initialUdharFormState(): UdharFormState {
     fundingSource: "account",
     feeAmount: "",
     date: d,
-    askRepayBy: d,
-    payBackBy: d,
+    askRepayBy: "",
+    payBackBy: "",
     note: "",
   }
 }

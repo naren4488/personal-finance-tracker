@@ -17,7 +17,6 @@ import { PasswordInput } from "@/features/auth/password-input"
 import { registerRequestSchema, type RegisterRequest } from "@/lib/api/auth-schemas"
 import { getAuthErrorMessage } from "@/lib/api/errors"
 import { useRegisterMutation } from "@/store/api/base-api"
-import { isAuthApiDebugEnabled } from "@/lib/debug/auth-api-log"
 import { safeReturnPath } from "@/features/auth/safe-return-path"
 import { APP_FORM_FIELD_CLASS, APP_FORM_SUBMIT_CLASS } from "@/lib/ui/app-form-styles"
 
@@ -37,33 +36,13 @@ export function RegisterForm() {
       email: values.email.trim(),
       password: values.password,
     }
-    if (isAuthApiDebugEnabled()) {
-      console.groupCollapsed("[Koin auth] Register form — submit clicked")
-      console.log("Step: Zod validation passed; calling register mutation")
-      console.log("Payload:", body)
-      console.log("Keys:", Object.keys(body).sort().join(", "))
-      console.groupEnd()
-    }
     try {
       const data = await registerUser(body).unwrap()
-      if (isAuthApiDebugEnabled()) {
-        console.log(
-          "[Koin auth] Register form — mutation succeeded → auto-login → dashboard",
-          data.user
-        )
-      }
       toast.success(data.user.name ? `Welcome, ${data.user.name}!` : "Account created")
       const next = safeReturnPath((location.state as { from?: string } | null)?.from) ?? "/"
       navigate(next, { replace: true })
     } catch (err) {
-      const msg = getAuthErrorMessage(err)
-      if (isAuthApiDebugEnabled()) {
-        console.groupCollapsed("[Koin auth] Register form — mutation failed")
-        console.error("Shown in UI:", msg)
-        console.error("Raw error:", err)
-        console.groupEnd()
-      }
-      toast.error(msg)
+      toast.error(getAuthErrorMessage(err))
     }
   })
 

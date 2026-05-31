@@ -17,7 +17,6 @@ import { PasswordInput } from "@/features/auth/password-input"
 import { loginRequestSchema, type LoginRequest } from "@/lib/api/auth-schemas"
 import { getAuthErrorMessage } from "@/lib/api/errors"
 import { useLoginMutation } from "@/store/api/base-api"
-import { isAuthApiDebugEnabled } from "@/lib/debug/auth-api-log"
 import { safeReturnPath } from "@/features/auth/safe-return-path"
 import { APP_FORM_FIELD_CLASS, APP_FORM_SUBMIT_CLASS } from "@/lib/ui/app-form-styles"
 
@@ -36,30 +35,13 @@ export function LoginForm() {
       email: values.email.trim(),
       password: values.password,
     }
-    if (isAuthApiDebugEnabled()) {
-      console.groupCollapsed("[Koin auth] Login form — submit clicked")
-      console.log("Step: Zod validation passed; calling login mutation")
-      console.log("Payload (password hidden):", { email: body.email, password: "(hidden)" })
-      console.log("Keys:", Object.keys(body).sort().join(", "))
-      console.groupEnd()
-    }
     try {
       await login(body).unwrap()
-      if (isAuthApiDebugEnabled()) {
-        console.log("[Koin auth] Login form — mutation succeeded → redirect to dashboard")
-      }
       toast.success("Welcome back")
       const next = safeReturnPath((location.state as { from?: string } | null)?.from) ?? "/"
       navigate(next, { replace: true })
     } catch (err) {
-      const msg = getAuthErrorMessage(err)
-      if (isAuthApiDebugEnabled()) {
-        console.groupCollapsed("[Koin auth] Login form — mutation failed")
-        console.error("Shown in UI:", msg)
-        console.error("Raw error:", err)
-        console.groupEnd()
-      }
-      toast.error(msg)
+      toast.error(getAuthErrorMessage(err))
     }
   })
 

@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react"
 import { useLocation, useNavigate, useSearchParams } from "react-router-dom"
 import { toast } from "sonner"
-import { CreditCard, Landmark, Users, Wallet } from "lucide-react"
+import { CreditCard, Landmark, Search, Users, Wallet } from "lucide-react"
 import { ConfirmDeleteDialog } from "@/components/confirm-delete-dialog"
 import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Card, CardContent } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -13,11 +14,12 @@ import { AddCreditCardSheet } from "@/features/accounts/add-credit-card-sheet"
 import { AddLoanSheet } from "@/features/accounts/add-loan-sheet"
 import { AddUdharEntrySheet } from "@/features/accounts/add-udhar-entry-sheet"
 import { AdjustBalanceSheet } from "@/features/accounts/adjust-balance-sheet"
-import { AccountCard, AccountCardSkeleton } from "@/features/accounts/account-card"
+import { AccountCardSkeleton } from "@/features/accounts/account-card"
+import { AccountListItem } from "@/features/accounts/account-list-item"
 import {
   ACCOUNTS_SEGMENT_META,
   type AccountsSegmentId,
-} from "@/features/accounts/accounts-mock-data"
+} from "@/features/accounts/accounts-segments"
 import {
   ACCOUNTS_HIGHLIGHT_TX,
   ACCOUNTS_URL_ACCOUNT,
@@ -37,7 +39,12 @@ import type { Account } from "@/lib/api/account-schemas"
 import { getAccountDeleteWarning } from "@/lib/accounts/account-delete"
 import { accountSelectLabel, filterNormalAccounts } from "@/lib/api/account-schemas"
 import { getErrorMessage } from "@/lib/api/errors"
+import { handleAuthApiErrorIfNeeded } from "@/lib/auth/handle-auth-api-error"
 import { resolvePersonDeleteTarget } from "@/lib/people/person-delete"
+import { useAccountDeleteGuard } from "@/hooks/use-account-delete-guard"
+import { useDebouncedValue } from "@/hooks/use-debounced-value"
+import { useOrderedPeopleForUdhar } from "@/hooks/use-ordered-people-for-udhar"
+import { usePersonDeleteGuard } from "@/hooks/use-person-delete-guard"
 import type { Person } from "@/lib/api/people-schemas"
 import type { UdharEntryTypeScope } from "@/features/accounts/udhar-entry-form-model"
 import type { UdharEntryType } from "@/lib/api/udhar-schemas"
@@ -50,7 +57,7 @@ import {
   useDeletePersonMutation,
   useGetPeopleQuery,
 } from "@/store/api/base-api"
-import { useAppSelector } from "@/store/hooks"
+import { useAppDispatch, useAppSelector } from "@/store/hooks"
 
 const SEGMENT_ORDER: AccountsSegmentId[] = ["accounts", "people", "loans", "cards"]
 
@@ -63,10 +70,12 @@ const SEGMENT_ICONS: Record<AccountsSegmentId, typeof Users> = {
 
 /** `<select>` value for People tab: list everyone with udhar across accounts (GET /people with no filter). */
 const PEOPLE_ACCOUNT_ALL_VALUE = "__all_accounts__"
+const PEOPLE_SEARCH_DEBOUNCE_MS = 400
 
 export default function AccountsPage() {
   const navigate = useNavigate()
   const location = useLocation()
+  const dispatch = useAppDispatch()
   const [searchParams, setSearchParams] = useSearchParams()
   const loanQ = searchParams.get(ACCOUNTS_URL_LOAN)
   const cardQ = searchParams.get(ACCOUNTS_URL_CARD)
@@ -83,6 +92,7 @@ export default function AccountsPage() {
   const [cardOpen, setCardOpen] = useState(false)
   /** User-picked account for People tab; falls back to first normal account when unset or stale. */
   const [peopleAccountPick, setPeopleAccountPick] = useState<string | null>(null)
+  const [peopleSearchInput, setPeopleSearchInput] = useState("")
   const [udharSheetPersonContext, setUdharSheetPersonContext] = useState<"from_people" | "free">(
     "free"
   )
@@ -112,8 +122,22 @@ export default function AccountsPage() {
     setCardInlineSpendOpen(true)
   }, [])
 
+  const pendingListDeleteGuard = useAccountDeleteGuard(
+    pendingListDeleteAccount ? String(pendingListDeleteAccount.id) : undefined,
+    "account"
+  )
+
+  const pendingPersonDeleteGuard = usePersonDeleteGuard(pendingDeletePerson)
+
   const confirmDeleteFromList = useCallback(async () => {
     if (!pendingListDeleteAccount) return
+    if (pendingListDeleteGuard.blocked) {
+      toast.error(
+        pendingListDeleteGuard.message ??
+          "Delete is only available for empty entities with no history."
+      )
+      return
+    }
     const id = String(pendingListDeleteAccount.id ?? "").trim()
     if (!id) return
     try {
@@ -123,10 +147,17 @@ export default function AccountsPage() {
     } catch (e) {
       toast.error(getErrorMessage(e) || "Failed to delete")
     }
-  }, [deleteAccount, pendingListDeleteAccount])
+  }, [deleteAccount, pendingListDeleteAccount, pendingListDeleteGuard])
 
   const confirmDeletePerson = useCallback(async () => {
     if (!pendingDeletePerson) return
+    if (pendingPersonDeleteGuard.blocked) {
+      toast.error(
+        pendingPersonDeleteGuard.message ??
+          "Delete is only available for empty entities with no history."
+      )
+      return
+    }
     setIsConfirmingPersonDelete(true)
     try {
       const target = resolvePersonDeleteTarget(pendingDeletePerson)
@@ -143,7 +174,7 @@ export default function AccountsPage() {
     } finally {
       setIsConfirmingPersonDelete(false)
     }
-  }, [deleteAccount, deletePerson, pendingDeletePerson])
+  }, [deleteAccount, deletePerson, pendingDeletePerson, pendingPersonDeleteGuard])
 
   const meta = ACCOUNTS_SEGMENT_META[segment]
   const user = useAppSelector((s) => s.auth.user)
@@ -174,21 +205,13 @@ export default function AccountsPage() {
 
   useEffect(() => {
     if (!creditCardsError || !creditCardsQueryError) return
-    const msg = getErrorMessage(creditCardsQueryError)
-    if (/authorization token is required/i.test(msg)) {
-      toast.error("Session expired, please login again")
-      navigate("/login", { replace: true })
-    }
-  }, [creditCardsError, creditCardsQueryError, navigate])
+    handleAuthApiErrorIfNeeded(creditCardsQueryError, dispatch)
+  }, [creditCardsError, creditCardsQueryError, dispatch])
 
   useEffect(() => {
     if (!loansError || !loansQueryError) return
-    const msg = getErrorMessage(loansQueryError)
-    if (/authorization token is required/i.test(msg)) {
-      toast.error("Session expired, please login again")
-      navigate("/login", { replace: true })
-    }
-  }, [loansError, loansQueryError, navigate])
+    handleAuthApiErrorIfNeeded(loansQueryError, dispatch)
+  }, [loansError, loansQueryError, dispatch])
 
   /** Deep link: `/accounts?loan=` / `?card=` / `?account=` → correct tab before paint. */
   useLayoutEffect(() => {
@@ -231,11 +254,23 @@ export default function AccountsPage() {
   }, [normalAccounts, peopleAccountPick])
 
   useEffect(() => {
-    const seg = (location.state as { accountsSegment?: AccountsSegmentId } | undefined)
-      ?.accountsSegment
-    if (!seg || !SEGMENT_ORDER.includes(seg)) return
-    setSegment(seg)
-    navigate(`${location.pathname}${location.search}`, { replace: true, state: {} })
+    const state = location.state as
+      | { accountsSegment?: AccountsSegmentId; openAddAccount?: boolean }
+      | undefined
+    const seg = state?.accountsSegment
+    const openAdd = state?.openAddAccount === true
+
+    if (seg && SEGMENT_ORDER.includes(seg)) {
+      setSegment(seg)
+    }
+    if (openAdd) {
+      setSegment("accounts")
+      setAddAccountOpen(true)
+    }
+
+    if (seg || openAdd) {
+      navigate(`${location.pathname}${location.search}`, { replace: true, state: {} })
+    }
   }, [location.pathname, location.search, location.state, navigate])
 
   const navigateToPersonView = useCallback(
@@ -287,7 +322,7 @@ export default function AccountsPage() {
     { skip: peopleQuerySkip }
   )
 
-  const peopleForList = useMemo(() => {
+  const peopleDeduped = useMemo(() => {
     if (resolvedPeopleAccountFilter !== PEOPLE_ACCOUNT_ALL_VALUE) return peopleForAccount
     const seen = new Set<string>()
     return peopleForAccount.filter((p) => {
@@ -296,6 +331,13 @@ export default function AccountsPage() {
       return true
     })
   }, [peopleForAccount, resolvedPeopleAccountFilter])
+
+  const debouncedPeopleSearch = useDebouncedValue(peopleSearchInput, PEOPLE_SEARCH_DEBOUNCE_MS)
+
+  const peopleForList = useOrderedPeopleForUdhar(peopleDeduped, {
+    search: debouncedPeopleSearch,
+    enabled: segment === "people" || udharOpen,
+  })
 
   const showPeopleLoading =
     segment === "people" && normalAccounts.length > 0 && (peopleQueryLoading || peopleQueryFetching)
@@ -645,6 +687,25 @@ export default function AccountsPage() {
                   </select>
                 </div>
               ) : null}
+              <label className="sr-only" htmlFor="people-search">
+                Search people
+              </label>
+              <div className="relative">
+                <Search
+                  className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground"
+                  strokeWidth={2}
+                  aria-hidden
+                />
+                <Input
+                  id="people-search"
+                  type="search"
+                  placeholder="Search by name or phone…"
+                  value={peopleSearchInput}
+                  onChange={(e) => setPeopleSearchInput(e.target.value)}
+                  className="h-11 rounded-xl border-border/80 bg-muted/40 pl-10"
+                  autoComplete="off"
+                />
+              </div>
               <PeopleList
                 people={peopleForList}
                 loading={showPeopleLoading && !peopleListError}
@@ -757,7 +818,7 @@ export default function AccountsPage() {
                 >
                   {normalAccounts.map((a) => (
                     <li key={a.id}>
-                      <AccountCard
+                      <AccountListItem
                         account={a}
                         onOpen={() => {
                           navigate(`/accounts/${encodeURIComponent(String(a.id))}`)

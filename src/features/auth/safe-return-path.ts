@@ -4,5 +4,7 @@ export function safeReturnPath(from: unknown): string | null {
   if (!from.startsWith("/")) return null
   if (from.startsWith("//") || from.includes("://")) return null
   if (from === "/login" || from === "/register") return null
+  /** Profile is only reachable via explicit navigation — never a post-login redirect target. */
+  if (from === "/profile") return null
   return from
 }

@@ -4,7 +4,6 @@ import { useNavigate, useParams, useSearchParams } from "react-router-dom"
 import { ConfirmDeleteDialog } from "@/components/confirm-delete-dialog"
 import { DetailLayout } from "@/components/detail-layout"
 import { Button } from "@/components/ui/button"
-import { Skeleton } from "@/components/ui/skeleton"
 import { AddUdharEntrySheet } from "@/features/accounts/add-udhar-entry-sheet"
 import { AddTransactionModal } from "@/features/entries/add-transaction-modal"
 import {
@@ -13,15 +12,23 @@ import {
   PersonUdharNetAndQuadrants,
 } from "@/features/accounts/person-udhar-panels"
 import { useDeleteTransactionFlow } from "@/features/entries/use-delete-transaction-flow"
-import type { AccountsSegmentId } from "@/features/accounts/accounts-mock-data"
+import type { AccountsSegmentId } from "@/features/accounts/accounts-segments"
 import type { UdharEntryType } from "@/lib/api/udhar-schemas"
-import { parsePersonTotalBalance } from "@/lib/api/people-schemas"
+import { getPersonUdharTotals, type PersonUdharTotals } from "@/lib/api/people-schemas"
 import {
   useGetAccountsQuery,
   useGetPeopleQuery,
   useGetPersonLedgerQuery,
 } from "@/store/api/base-api"
 import { useAppSelector } from "@/store/hooks"
+
+const EMPTY_PERSON_UDHAR_TOTALS: PersonUdharTotals = {
+  totalBalance: 0,
+  totalGiven: 0,
+  totalTaken: 0,
+  totalReceived: 0,
+  totalPaid: 0,
+}
 
 export default function PersonDetailPage() {
   const { personId = "" } = useParams<{ personId: string }>()
@@ -35,12 +42,10 @@ export default function PersonDetailPage() {
   const person = useMemo(() => people.find((x) => String(x.id) === pid), [people, pid])
   const personName = person?.name?.trim() || "Person"
 
-  const listTotalBalanceForNet = useMemo(() => {
-    if (!person) return undefined
-    const raw = person.totalBalance
-    if (raw === undefined || raw === null || raw === "") return undefined
-    return parsePersonTotalBalance(raw)
-  }, [person])
+  const apiTotals = useMemo(
+    () => (person ? getPersonUdharTotals(person) : EMPTY_PERSON_UDHAR_TOTALS),
+    [person]
+  )
 
   const {
     data: entries = [],
@@ -126,42 +131,17 @@ export default function PersonDetailPage() {
             <p className="text-sm text-muted-foreground">Missing person.</p>
           ) : (
             <>
-              <PersonUdharAvatarTitle personName={personName} />
+              <PersonUdharAvatarTitle
+                personName={personName}
+                apiTotalBalance={apiTotals.totalBalance}
+              />
 
-              {isError ? (
-                <div className="space-y-2 rounded-2xl border border-destructive/30 bg-destructive/5 px-4 py-4">
-                  <p className="text-sm text-destructive">Could not load ledger.</p>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    className="rounded-xl"
-                    onClick={() => void refetch()}
-                  >
-                    Retry
-                  </Button>
-                </div>
-              ) : loadingLedger ? (
-                <div className="space-y-3" aria-busy aria-label="Loading person ledger">
-                  <Skeleton className="h-28 w-full rounded-2xl" />
-                  <div className="grid grid-cols-2 gap-2">
-                    <Skeleton className="h-20 rounded-2xl" />
-                    <Skeleton className="h-20 rounded-2xl" />
-                    <Skeleton className="h-20 rounded-2xl" />
-                    <Skeleton className="h-20 rounded-2xl" />
-                  </div>
-                </div>
-              ) : (
-                <PersonUdharNetAndQuadrants
-                  entries={entries}
-                  listTotalBalance={listTotalBalanceForNet}
-                />
-              )}
+              <PersonUdharNetAndQuadrants apiTotals={apiTotals} />
 
               <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                 <Button
                   type="button"
-                  className="h-11 w-full rounded-xl bg-[#071f78] font-semibold text-white hover:bg-[#071f78]/90"
+                  className="h-11 w-full rounded-xl font-semibold"
                   onClick={openAddForm}
                 >
                   Add
@@ -186,6 +166,19 @@ export default function PersonDetailPage() {
                     onDeleteEntry={txDelete.requestDelete}
                   />
                 </section>
+              ) : isError ? (
+                <div className="space-y-2 rounded-2xl border border-destructive/30 bg-destructive/5 px-4 py-4">
+                  <p className="text-sm text-destructive">Could not load ledger.</p>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="rounded-xl"
+                    onClick={() => void refetch()}
+                  >
+                    Retry
+                  </Button>
+                </div>
               ) : null}
             </>
           )}

@@ -67,16 +67,14 @@ export const RecentTransactionRow = memo(function RecentTransactionRow({
     >
       <div className="flex items-center justify-between gap-3 px-4 py-3.5">
         <div className="min-w-0 flex-1">
-          <p className="truncate text-[15px] font-bold leading-tight text-[#111827] dark:text-foreground">
+          <p className="truncate text-[15px] font-bold leading-tight text-foreground">
             {primaryTitle}
           </p>
           {sub.line1 ? (
-            <p className="mt-1 text-xs leading-snug text-[#6B7280] dark:text-muted-foreground">
-              {sub.line1}
-            </p>
+            <p className="mt-1 text-xs leading-snug text-muted-foreground">{sub.line1}</p>
           ) : null}
           {sub.line2 ? (
-            <p className="mt-0.5 wrap-break-word text-xs leading-snug text-[#6B7280] dark:text-muted-foreground">
+            <p className="mt-0.5 wrap-break-word text-xs leading-snug text-muted-foreground">
               {sub.line2}
             </p>
           ) : null}

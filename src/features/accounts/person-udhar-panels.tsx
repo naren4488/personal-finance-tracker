@@ -1,4 +1,3 @@
-import { useMemo } from "react"
 import { TransactionBottomTag } from "@/features/entries/emi-transaction-bottom-tag"
 import { TransactionEntryDeleteButton } from "@/features/entries/transaction-entry-delete-button"
 import {
@@ -7,7 +6,7 @@ import {
   buildRecentTxSubtitleParts,
 } from "@/features/entries/transaction-list-utils"
 import type { Account } from "@/lib/api/account-schemas"
-import { aggregateUdharLedgerQuadrantTotals } from "@/lib/udhar/udhar-totals"
+import type { PersonUdharTotals } from "@/lib/api/people-schemas"
 import { getUdharLedgerRowHeading } from "@/lib/udhar/udhar-entry-labels"
 import { getUdharEffect, udharEffectTextClassName } from "@/lib/udhar/udhar-effect"
 import {
@@ -19,36 +18,18 @@ import {
 } from "@/lib/api/transaction-schemas"
 import { ACTION_GROUP_ROW_TX } from "@/lib/ui/action-group-classes"
 import { formatCurrency, formatDate } from "@/lib/format"
+import {
+  personNetAmountClassName,
+  personNetBalanceLine,
+  personNetListCaption,
+  personNetTextClassName,
+} from "@/lib/people/person-balance-display"
 import { cn } from "@/lib/utils"
 
-const quadrantTile = "rounded-2xl border border-border bg-card p-3 shadow-sm"
+const summaryTile = "rounded-2xl border border-border bg-card p-3 shadow-sm"
 
-/** Matches People list: positive → you receive; negative → you pay. */
-function netListCaption(signed: number): string {
-  if (signed > 0) return "You will get"
-  if (signed < 0) return "You will give"
-  return "Settled"
-}
-
-function netHeadlineTextClassName(signed: number): string {
-  if (signed > 0) return "text-emerald-600 dark:text-emerald-400"
-  if (signed < 0) return "text-red-600 dark:text-red-400"
-  return "text-muted-foreground"
-}
-
-export function PersonUdharNetAndQuadrants({
-  entries,
-  listTotalBalance,
-}: {
-  entries: RecentTransaction[]
-  /**
-   * Signed net from `GET /people` (`person.totalBalance`) when set so the headline matches the People list.
-   * Omitted/undefined: derived only from the ledger (same as before).
-   */
-  listTotalBalance?: number
-}) {
-  const totals = useMemo(() => aggregateUdharLedgerQuadrantTotals(entries), [entries])
-  const signed = listTotalBalance !== undefined ? listTotalBalance : totals.net
+export function PersonUdharNetAndQuadrants({ apiTotals }: { apiTotals: PersonUdharTotals }) {
+  const signed = apiTotals.totalBalance
   const netDisplay = formatCurrency(Math.abs(signed))
 
   return (
@@ -58,40 +39,43 @@ export function PersonUdharNetAndQuadrants({
         <p
           className={cn(
             "mt-1 text-3xl font-bold tabular-nums tracking-tight",
-            netHeadlineTextClassName(signed)
+            personNetTextClassName(signed)
           )}
         >
           {netDisplay}
         </p>
-        <p className={cn("mt-1 text-xs", netHeadlineTextClassName(signed))}>
-          {netListCaption(signed)}
+        <p className={cn("mt-1 text-xs", personNetTextClassName(signed))}>
+          {personNetListCaption(signed)}
         </p>
       </div>
 
-      <div className="grid grid-cols-2 gap-2 sm:gap-2.5">
-        <div className={quadrantTile}>
-          <p className="text-xs text-muted-foreground">Money Given</p>
-          <p className="mt-1 text-base font-bold tabular-nums text-income">
-            {formatCurrency(totals.given)}
-          </p>
-        </div>
-        <div className={quadrantTile}>
-          <p className="text-xs text-muted-foreground">Money Taken</p>
-          <p className="mt-1 text-base font-bold tabular-nums text-destructive">
-            {formatCurrency(totals.taken)}
-          </p>
-        </div>
-        <div className={quadrantTile}>
-          <p className="text-xs text-muted-foreground">Payment Received</p>
-          <p className="mt-1 text-base font-bold tabular-nums text-foreground">
-            {formatCurrency(totals.receivedBack)}
-          </p>
-        </div>
-        <div className={quadrantTile}>
-          <p className="text-xs text-muted-foreground">Payment Made</p>
-          <p className="mt-1 text-base font-bold tabular-nums text-foreground">
-            {formatCurrency(totals.paidBack)}
-          </p>
+      <div className="space-y-2">
+        <p className="text-xs font-medium text-muted-foreground">Summary</p>
+        <div className="grid grid-cols-2 gap-2 sm:gap-2.5">
+          <div className={summaryTile}>
+            <p className="text-xs text-muted-foreground">Total Given</p>
+            <p className="mt-1 text-base font-bold tabular-nums text-income">
+              {formatCurrency(apiTotals.totalGiven)}
+            </p>
+          </div>
+          <div className={summaryTile}>
+            <p className="text-xs text-muted-foreground">Total Taken</p>
+            <p className="mt-1 text-base font-bold tabular-nums text-destructive">
+              {formatCurrency(apiTotals.totalTaken)}
+            </p>
+          </div>
+          <div className={summaryTile}>
+            <p className="text-xs text-muted-foreground">Total Received</p>
+            <p className="mt-1 text-base font-bold tabular-nums text-foreground">
+              {formatCurrency(apiTotals.totalReceived)}
+            </p>
+          </div>
+          <div className={summaryTile}>
+            <p className="text-xs text-muted-foreground">Total Paid</p>
+            <p className="mt-1 text-base font-bold tabular-nums text-foreground">
+              {formatCurrency(apiTotals.totalPaid)}
+            </p>
+          </div>
         </div>
       </div>
     </>
@@ -198,7 +182,14 @@ export function PersonUdharLedgerList({
   )
 }
 
-export function PersonUdharAvatarTitle({ personName }: { personName: string }) {
+export function PersonUdharAvatarTitle({
+  personName,
+  apiTotalBalance,
+}: {
+  personName: string
+  /** Signed `person.totalBalance` from GET /people — matches People list. */
+  apiTotalBalance: number
+}) {
   const initial = (personName.trim().charAt(0) || "?").toUpperCase()
   return (
     <div className="flex items-center gap-3">
@@ -208,7 +199,12 @@ export function PersonUdharAvatarTitle({ personName }: { personName: string }) {
       >
         {initial}
       </div>
-      <h2 className="truncate text-xl font-bold text-foreground">{personName}</h2>
+      <div className="min-w-0">
+        <h2 className="truncate text-xl font-bold text-foreground">{personName}</h2>
+        <p className={cn("mt-0.5 text-sm", personNetAmountClassName(apiTotalBalance))}>
+          {personNetBalanceLine(apiTotalBalance)}
+        </p>
+      </div>
     </div>
   )
 }

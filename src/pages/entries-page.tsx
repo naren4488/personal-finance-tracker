@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
-import { useNavigate, useSearchParams } from "react-router-dom"
-import { toast } from "sonner"
+import { useSearchParams } from "react-router-dom"
 import {
   ArrowLeftRight,
   ArrowRightLeft,
@@ -17,13 +16,13 @@ import { Input } from "@/components/ui/input"
 import { Skeleton } from "@/components/ui/skeleton"
 import { AddAccountSheet } from "@/features/accounts/add-account-sheet"
 import { AddUdharEntrySheet } from "@/features/accounts/add-udhar-entry-sheet"
-import { PeopleList } from "@/features/accounts/people-list"
 import { AddTransactionModal } from "@/features/entries/add-transaction-modal"
 import { RecentTransactionRow } from "@/features/entries/recent-transaction-row"
 import { TransferTransactionRow } from "@/features/entries/transfer-transaction-row"
 import { useDeleteTransactionFlow } from "@/features/entries/use-delete-transaction-flow"
 import { useDebouncedValue } from "@/hooks/use-debounced-value"
 import { getErrorMessage } from "@/lib/api/errors"
+import { handleAuthApiErrorIfNeeded } from "@/lib/auth/handle-auth-api-error"
 import type { UdharEntryType } from "@/lib/api/udhar-schemas"
 import type { TransactionType } from "@/lib/api/schemas"
 import type { RecentTransactionsQueryArg } from "@/store/api/base-api"
@@ -35,12 +34,8 @@ import {
 } from "@/lib/api/transaction-schemas"
 import { formatCurrency } from "@/lib/format"
 import { cn } from "@/lib/utils"
-import {
-  useGetAccountsQuery,
-  useGetPeopleQuery,
-  useGetRecentTransactionsQuery,
-} from "@/store/api/base-api"
-import { useAppSelector } from "@/store/hooks"
+import { useGetAccountsQuery, useGetRecentTransactionsQuery } from "@/store/api/base-api"
+import { useAppDispatch, useAppSelector } from "@/store/hooks"
 import {
   ENTRIES_ADD_SEARCH_PARAM,
   ENTRIES_FAB_OPEN_EVENT,
@@ -117,10 +112,51 @@ function dateRangeAllDaysThroughToday(now: Date = new Date()): {
   return { fromDate: ALL_DAYS_FROM, toDate: formatYyyyMmDd(startOfLocalDay(now)) }
 }
 
+function normalizeSearchText(value: unknown): string {
+  if (typeof value !== "string") return ""
+  return value.trim().toLowerCase()
+}
+
+function matchesUdharSearch(tx: RecentTransaction, query: string): boolean {
+  const normalized = normalizeSearchText(query)
+  if (!normalized) return true
+
+  const fields = [tx.personName, tx.title, tx.subtitle, tx.note, tx.sourceName, tx.destinationName]
+    .filter(Boolean)
+    .map((item) => normalizeSearchText(item))
+    .join(" ")
+
+  if (fields.includes(normalized)) return true
+
+  const numericNeedle = Number(normalized.replace(/[^\d.-]/g, ""))
+  if (Number.isFinite(numericNeedle)) {
+    const amountValue = parseSignedAmountString(tx.signedAmount)
+    if (amountValue === numericNeedle || amountValue === -numericNeedle) return true
+    const amountText = normalizeSearchText(tx.amount ?? "")
+    if (amountText.includes(normalized)) return true
+  }
+
+  return false
+}
+
+function parseIsoDate(value: string): Date | null {
+  const trimmed = value.trim()
+  const date = new Date(trimmed)
+  return Number.isNaN(date.getTime()) ? null : date
+}
+
+function isDateInRange(tx: RecentTransaction, fromDate: string, toDate: string): boolean {
+  const txDate = parseIsoDate(tx.date ?? "")
+  const start = parseIsoDate(fromDate)
+  const end = parseIsoDate(toDate)
+  if (!txDate || !start || !end) return true
+  return txDate >= start && txDate <= end
+}
+
 function headerTotalLabel(
   segment: EntrySegment,
   list: RecentTransaction[]
-): { text: string; className: string } {
+): { text: string; className: string } | null {
   if (segment === "expenses") {
     const total = list.reduce((s, t) => {
       if (t.type !== "expense") return s
@@ -141,14 +177,11 @@ function headerTotalLabel(
       ),
     }
   }
-  return {
-    text: formatCurrency(0),
-    className: "font-bold tabular-nums text-muted-foreground",
-  }
+  return null
 }
 
 export default function EntriesPage() {
-  const navigate = useNavigate()
+  const dispatch = useAppDispatch()
   const [searchParams, setSearchParams] = useSearchParams()
   const addQuery = searchParams.get(ENTRIES_ADD_SEARCH_PARAM)
   const creditCardFilterId = searchParams.get("creditCardAccountId")?.trim() ?? ""
@@ -225,7 +258,7 @@ export default function EntriesPage() {
     error,
     refetch,
   } = useGetRecentTransactionsQuery(recentQueryArg, {
-    skip: !user || segment === "udhar",
+    skip: !user,
   })
 
   const {
@@ -234,37 +267,15 @@ export default function EntriesPage() {
     error: accountsError,
   } = useGetAccountsQuery(undefined, { skip: !user })
 
-  const {
-    data: people = [],
-    isLoading: peopleLoading,
-    isFetching: peopleFetching,
-    isError: peopleError,
-    error: peopleErrorValue,
-    refetch: refetchPeople,
-  } = useGetPeopleQuery(
-    {},
-    {
-      skip: !user || segment !== "udhar",
-    }
-  )
-
   useEffect(() => {
     if (!isError || !error) return
-    const msg = getErrorMessage(error)
-    if (/authorization token is required/i.test(msg)) {
-      toast.error(msg)
-      navigate("/login", { replace: true })
-    }
-  }, [isError, error, navigate])
+    handleAuthApiErrorIfNeeded(error, dispatch)
+  }, [isError, error, dispatch])
 
   useEffect(() => {
     if (!accountsQueryError || !accountsError) return
-    const msg = getErrorMessage(accountsError)
-    if (/authorization token is required/i.test(msg)) {
-      toast.error(msg)
-      navigate("/login", { replace: true })
-    }
-  }, [accountsQueryError, accountsError, navigate])
+    handleAuthApiErrorIfNeeded(accountsError, dispatch)
+  }, [accountsQueryError, accountsError, dispatch])
 
   useEffect(() => {
     try {
@@ -308,10 +319,10 @@ export default function EntriesPage() {
     return () => window.removeEventListener(ENTRIES_FAB_OPEN_EVENT, onFab)
   }, [])
 
-  /** Deep link / Home FAB: `?add=txns|expenses|transfer|udhar` opens that flow once. */
+  /** Deep link / Home FAB: `?add=txns|expenses|transfer|udhar|income` opens that flow once. */
   useEffect(() => {
     if (!user || !addQuery) return
-    const valid: EntryAddQueryValue[] = ["txns", "expenses", "transfer", "udhar"]
+    const valid: EntryAddQueryValue[] = ["txns", "expenses", "transfer", "udhar", "income"]
     const seg = valid.find((v) => v === addQuery)
     setSearchParams(
       (prev) => {
@@ -323,6 +334,12 @@ export default function EntriesPage() {
     )
     if (!seg) return
     const id = window.setTimeout(() => {
+      if (seg === "income") {
+        setSegment("txns")
+        setTxModalInitialType("income")
+        setTxModalOpen(true)
+        return
+      }
       setSegment(seg as EntrySegment)
       if (seg === "txns") {
         setTxModalInitialType("expense")
@@ -356,25 +373,32 @@ export default function EntriesPage() {
         return tx.type === "expense"
       })
     }
+    if (segment === "udhar") {
+      list = list.filter((tx) => isUdharRecentTransaction(tx))
+    }
     return list
   }, [recentTransactions, creditCardFilterId, segment])
 
-  const displayList: RecentTransaction[] = sortedServerList
+  const range = useMemo(
+    () =>
+      useAllDaysRange
+        ? dateRangeAllDaysThroughToday(new Date())
+        : dateRangeRollingDaysFromToday(dayWindowDays, new Date()),
+    [dayWindowDays, useAllDaysRange]
+  )
+
+  const displayList: RecentTransaction[] = useMemo(() => {
+    if (segment !== "udhar") return sortedServerList
+    const normalizedSearch = debouncedSearch.trim().toLowerCase()
+    return sortedServerList.filter((tx) => {
+      if (!isDateInRange(tx, range.fromDate, range.toDate)) return false
+      return matchesUdharSearch(tx, normalizedSearch)
+    })
+  }, [segment, sortedServerList, debouncedSearch, range])
 
   const entriesHasList = useMemo(() => {
-    if (segment === "udhar")
-      return !peopleLoading && !peopleFetching && !peopleError && people.length > 0
-    return !isLoading && !isError && sortedServerList.length > 0
-  }, [
-    segment,
-    isLoading,
-    isError,
-    peopleLoading,
-    peopleFetching,
-    peopleError,
-    people.length,
-    sortedServerList.length,
-  ])
+    return !isLoading && !isError && displayList.length > 0
+  }, [isLoading, isError, displayList.length])
 
   const totalDisplay = headerTotalLabel(segment, displayList)
 
@@ -518,17 +542,15 @@ export default function EntriesPage() {
             {pageTitle}
           </h1>
           <div className="flex min-h-[1.75rem] flex-wrap items-center justify-start gap-x-3 gap-y-1 sm:justify-end">
-            <div className="flex min-w-[5.5rem] items-center justify-end tabular-nums sm:min-w-[6rem]">
-              {showHeaderTotal && !isLoading && !isError ? (
-                <span className={totalDisplay.className}>{totalDisplay.text}</span>
-              ) : showHeaderTotal && isLoading ? (
-                <Skeleton className="h-6 w-16 rounded-md" />
-              ) : (
-                <span className="invisible text-lg font-bold tabular-nums" aria-hidden>
-                  —
-                </span>
-              )}
-            </div>
+            {showHeaderTotal ? (
+              <div className="flex min-w-[5.5rem] items-center justify-end tabular-nums sm:min-w-[6rem]">
+                {!isLoading && !isError && totalDisplay ? (
+                  <span className={totalDisplay.className}>{totalDisplay.text}</span>
+                ) : isLoading ? (
+                  <Skeleton className="h-6 w-16 rounded-md" />
+                ) : null}
+              </div>
+            ) : null}
             {user ? (
               <Button
                 type="button"
@@ -723,12 +745,14 @@ export default function EntriesPage() {
                     <Banknote className="size-6 text-primary" strokeWidth={2} aria-hidden />
                   )}
                 </div>
-                <p className="w-full text-base font-bold text-primary">No transactions found</p>
+                <p className="w-full text-base font-bold text-primary">
+                  {segment === "transfer" ? "No transfers yet" : "No transactions found"}
+                </p>
                 <p className="mx-auto mt-2 max-w-xs text-sm text-muted-foreground">
                   {segment === "udhar"
                     ? "No udhar entries in this range. Add an udhar entry to track money given or taken."
                     : segment === "transfer"
-                      ? "No transfer entries in this range. Add a transfer entry to track money given or taken."
+                      ? "No transfers in this range. Start by transferring money between accounts."
                       : "Try adjusting filters or date range."}
                 </p>
                 {segment === "txns" ? (
@@ -799,18 +823,20 @@ export default function EntriesPage() {
             )}
 
             {segment === "udhar" && (
-              <div className="flex min-h-0 min-w-0 flex-1 flex-col pb-4">
-                <PeopleList
-                  people={people}
-                  loading={peopleLoading || peopleFetching}
-                  error={peopleError ? peopleErrorValue : null}
-                  onRetry={() => void refetchPeople()}
-                  onAddClick={openUdharSheetFree}
-                  onPersonClick={(person) => {
-                    navigate(`/people/${encodeURIComponent(String(person.id))}`)
-                  }}
-                />
-              </div>
+              <ul
+                className="flex min-h-0 min-w-0 flex-1 list-none flex-col gap-3 pb-4"
+                aria-label="Udhar entries list"
+              >
+                {displayList.map((tx) => (
+                  <li key={tx.id} className="shrink-0">
+                    <RecentTransactionRow
+                      tx={tx}
+                      accounts={accounts}
+                      onDelete={txDelete.requestDelete}
+                    />
+                  </li>
+                ))}
+              </ul>
             )}
 
             {segment === "transfer" && (

@@ -1,15 +1,36 @@
-import { useCallback, useId, useMemo, useState } from "react"
-import { useNavigate } from "react-router-dom"
+import { zodResolver } from "@hookform/resolvers/zod"
+import { useCallback, useId, useMemo } from "react"
+import { useForm, useWatch } from "react-hook-form"
 import { ChevronDown, X } from "lucide-react"
 import { toast } from "sonner"
+import { AppFormInputField } from "@/components/app-form-fields"
 import { FormDialog } from "@/components/form-dialog"
 import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
-import { accountSelectLabel, filterActiveAccounts } from "@/lib/api/account-schemas"
-import { buildCreateCommitmentBody } from "@/lib/api/commitment-schemas"
-import { getErrorMessage } from "@/lib/api/errors"
-import { endUserSession } from "@/lib/auth/end-session"
+import {
+  Form,
+  FormControl,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage,
+} from "@/components/ui/form"
+import {
+  buildCommitmentCreatePayload,
+  buildEntityCatalog,
+  COMMITMENT_KIND_DEFINITIONS,
+  getCommitmentKindDef,
+  getEntityOptionsForKind,
+  PAYABLE_COMMITMENT_STATUSES,
+  type CommitmentDirection,
+  type CommitmentKindValue,
+} from "@/lib/commitments/commitment-kind-config"
+import {
+  commitmentFormDefaultValues,
+  commitmentFormSchema,
+  type CommitmentFormValues,
+} from "@/lib/forms/commitment-form-schema"
+import { handleFormApiError } from "@/lib/forms/form-api-errors"
+import type { Commitment } from "@/lib/api/commitment-schemas"
 import {
   APP_FORM_FIELD_CLASS,
   APP_FORM_HEADER_CLASS,
@@ -21,27 +42,19 @@ import {
   APP_FORM_TWO_COL_GRID_CLASS,
 } from "@/lib/ui/app-form-styles"
 import { cn } from "@/lib/utils"
-import { useCreateCommitmentMutation, useGetCreditCardsQuery } from "@/store/api/base-api"
+import {
+  useCreateCommitmentMutation,
+  useGetAccountsQuery,
+  useGetCreditCardsQuery,
+  useGetLoansQuery,
+  useGetPeopleQuery,
+} from "@/store/api/base-api"
 import { useAppDispatch, useAppSelector } from "@/store/hooks"
 
-const DIRECTIONS = [
-  { value: "payable" as const, label: "payable" },
-  { value: "receivable" as const, label: "receivable" },
+const DIRECTIONS: { value: CommitmentDirection; label: string }[] = [
+  { value: "payable", label: "Payable" },
+  { value: "incoming", label: "Incoming" },
 ]
-
-const KINDS = [
-  { value: "card_bill" as const, label: "card_bill" },
-  { value: "loan" as const, label: "loan" },
-  { value: "other" as const, label: "other" },
-]
-
-function todayIsoDate(): string {
-  const d = new Date()
-  const y = d.getFullYear()
-  const m = String(d.getMonth() + 1).padStart(2, "0")
-  const day = String(d.getDate()).padStart(2, "0")
-  return `${y}-${m}-${day}`
-}
 
 function SelectChevron() {
   return (
@@ -55,111 +68,124 @@ function SelectChevron() {
 export type AddCommitmentModalProps = {
   open: boolean
   onOpenChange: (open: boolean) => void
-}
-
-type FormState = {
-  direction: (typeof DIRECTIONS)[number]["value"]
-  kind: (typeof KINDS)[number]["value"]
-  title: string
-  amount: string
-  dueDate: string
-  cardAccountId: string
-  note: string
-}
-
-function initialForm(): FormState {
-  return {
-    direction: "payable",
-    kind: "card_bill",
-    title: "",
-    amount: "",
-    dueDate: todayIsoDate(),
-    cardAccountId: "",
-    note: "",
-  }
+  /** Called after a successful save (modal closes first). */
+  onCreatedSuccess?: (commitment: Commitment) => void
 }
 
 type MountedProps = {
   open: boolean
   onOpenChange: (open: boolean) => void
+  onCreatedSuccess?: (commitment: Commitment) => void
 }
 
-function AddCommitmentModalMounted({ open, onOpenChange }: MountedProps) {
+function AddCommitmentModalMounted({ open, onOpenChange, onCreatedSuccess }: MountedProps) {
   const titleId = useId()
-  const navigate = useNavigate()
+  const entitySelectId = useId()
   const dispatch = useAppDispatch()
   const user = useAppSelector((s) => s.auth.user)
   const [createCommitment, { isLoading: isCreating }] = useCreateCommitmentMutation()
-  const {
-    data: cardsRaw = [],
-    isLoading: cardsLoading,
-    isFetching: cardsFetching,
-  } = useGetCreditCardsQuery(undefined, { skip: !user })
-  const cards = useMemo(() => filterActiveAccounts(cardsRaw), [cardsRaw])
-  const cardsBusy = cardsLoading || cardsFetching
 
-  const [form, setForm] = useState(() => initialForm())
+  const { data: people = [], isFetching: peopleFetching } = useGetPeopleQuery(undefined, {
+    skip: !user || !open,
+  })
+  const { data: loans = [], isFetching: loansFetching } = useGetLoansQuery(undefined, {
+    skip: !user || !open,
+  })
+  const { data: creditCards = [], isFetching: cardsFetching } = useGetCreditCardsQuery(undefined, {
+    skip: !user || !open,
+  })
+  const { data: allAccounts = [], isFetching: accountsFetching } = useGetAccountsQuery(undefined, {
+    skip: !user || !open,
+  })
+
+  const catalog = useMemo(
+    () => buildEntityCatalog({ people, loans, creditCards, allAccounts }),
+    [people, loans, creditCards, allAccounts]
+  )
+
+  const form = useForm<CommitmentFormValues>({
+    resolver: zodResolver(commitmentFormSchema),
+    defaultValues: commitmentFormDefaultValues(),
+  })
+
+  const kind = useWatch({ control: form.control, name: "kind" })
+  const direction = useWatch({ control: form.control, name: "direction" })
+  const kindDef = useMemo(() => getCommitmentKindDef(kind), [kind])
+  const showStatus = direction === "payable"
+  const entityOptions = useMemo(() => getEntityOptionsForKind(kind, catalog), [kind, catalog])
+  const showEntity = kindDef.entity.field !== "none"
+
+  const entityBusy = useMemo(() => {
+    if (!showEntity) return false
+    const entity = kindDef.entity
+    if (entity.field === "personId") return peopleFetching
+    if (entity.field === "accountId") {
+      if (entity.source === "loans") return loansFetching
+      if (entity.source === "credit_cards") return cardsFetching
+      return accountsFetching
+    }
+    return false
+  }, [showEntity, kindDef, peopleFetching, loansFetching, cardsFetching, accountsFetching])
 
   const dismiss = useCallback(() => {
     onOpenChange(false)
   }, [onOpenChange])
 
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault()
-    const title = form.title.trim()
-    if (!title) {
-      toast.error("Enter a title")
-      return
+  function setKind(nextKind: CommitmentKindValue) {
+    const def = getCommitmentKindDef(nextKind)
+    form.setValue("kind", nextKind)
+    form.setValue("direction", def.defaultDirection)
+    if (def.defaultDirection === "payable") {
+      form.setValue("status", "pending")
+    } else {
+      form.setValue("status", undefined)
+      form.clearErrors("status")
     }
-    const n = form.amount.replace(/[^\d.]/g, "")
-    const amountNum = Number(n)
-    if (!n || !Number.isFinite(amountNum) || amountNum <= 0) {
-      toast.error("Enter a valid amount")
-      return
-    }
-    if (!form.dueDate) {
-      toast.error("Select due date")
-      return
-    }
-    if (form.kind === "card_bill" && !form.cardAccountId) {
-      toast.error("Select a card")
-      return
-    }
+    form.setValue("entityId", "")
+    form.clearErrors("entityId")
+  }
 
-    let body
-    try {
-      body = buildCreateCommitmentBody({
-        direction: form.direction,
-        kind: form.kind,
-        title,
-        amountInput: form.amount,
-        dueDate: form.dueDate,
-        status: "pending",
-        accountId: form.kind === "card_bill" ? form.cardAccountId : undefined,
-        note: form.note,
-      })
-    } catch {
-      toast.error("Enter a valid amount")
-      return
-    }
-
-    try {
-      await createCommitment(body).unwrap()
-      toast.success("Commitment saved")
-      setForm(initialForm())
-      dismiss()
-    } catch (err) {
-      const msg = getErrorMessage(err)
-      if (/authorization token is required/i.test(msg)) {
-        toast.error("Please sign in again")
-        endUserSession(dispatch)
-        dismiss()
-        navigate("/login", { replace: true })
-        return
-      }
-      toast.error(msg)
+  function setDirection(nextDirection: CommitmentDirection) {
+    form.setValue("direction", nextDirection)
+    if (nextDirection === "payable") {
+      form.setValue("status", form.getValues("status")?.trim() || "pending")
+    } else {
+      form.setValue("status", undefined)
+      form.clearErrors("status")
     }
   }
+
+  const onSubmit = form.handleSubmit(async (values) => {
+    let body
+    try {
+      body = buildCommitmentCreatePayload({
+        direction: values.direction,
+        kind: values.kind,
+        title: values.title.trim(),
+        amountInput: values.amount,
+        dueDate: values.dueDate,
+        status: values.status,
+        entityId: values.entityId,
+        note: values.note,
+      })
+    } catch {
+      form.setError("amount", { message: "Enter a valid amount" })
+      return
+    }
+
+    try {
+      const created = await createCommitment(body).unwrap()
+      toast.success("Commitment saved")
+      form.reset(commitmentFormDefaultValues())
+      dismiss()
+      onCreatedSuccess?.(created)
+    } catch (err) {
+      handleFormApiError(err, dispatch, { onDismiss: dismiss })
+    }
+  })
+
+  const entityLabel =
+    kindDef.entity.field === "none" ? null : kindDef.entity.selectLabel.replace(/^Select /i, "")
 
   return (
     <FormDialog
@@ -183,155 +209,208 @@ function AddCommitmentModalMounted({ open, onOpenChange }: MountedProps) {
           </Button>
         </header>
       }
-      formProps={{ onSubmit: (e) => void handleSubmit(e) }}
+      formProps={{ onSubmit: (e) => void onSubmit(e) }}
       footer={
         <Button type="submit" disabled={isCreating} className={APP_FORM_SUBMIT_CLASS}>
           {isCreating ? "Saving…" : "Save Commitment"}
         </Button>
       }
     >
-      <div className={APP_FORM_STACK_CLASS}>
-        <div className={APP_FORM_TWO_COL_GRID_CLASS}>
-          <div className="space-y-1.5">
-            <Label htmlFor="commitment-direction" className={APP_FORM_LABEL_CLASS}>
-              Direction
-            </Label>
-            <div className="relative">
-              <select
-                id="commitment-direction"
-                value={form.direction}
-                onChange={(e) =>
-                  setForm((f) => ({
-                    ...f,
-                    direction: e.target.value as FormState["direction"],
-                  }))
-                }
-                className={APP_FORM_SELECT_CLASS}
-              >
-                {DIRECTIONS.map((d) => (
-                  <option key={d.value} value={d.value}>
-                    {d.label}
-                  </option>
-                ))}
-              </select>
-              <SelectChevron />
-            </div>
-          </div>
+      <Form {...form}>
+        <div className={APP_FORM_STACK_CLASS}>
+          <div className={APP_FORM_TWO_COL_GRID_CLASS}>
+            <FormField
+              control={form.control}
+              name="direction"
+              render={({ field }) => (
+                <FormItem className="space-y-1.5">
+                  <FormLabel className={APP_FORM_LABEL_CLASS}>Direction</FormLabel>
+                  <FormControl>
+                    <div className="relative">
+                      <select
+                        id="commitment-direction"
+                        className={APP_FORM_SELECT_CLASS}
+                        value={field.value}
+                        onChange={(e) => setDirection(e.target.value as CommitmentDirection)}
+                        onBlur={field.onBlur}
+                        ref={field.ref}
+                      >
+                        {DIRECTIONS.map((d) => (
+                          <option key={d.value} value={d.value}>
+                            {d.label}
+                          </option>
+                        ))}
+                      </select>
+                      <SelectChevron />
+                    </div>
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
 
-          <div className="space-y-1.5">
-            <Label htmlFor="commitment-kind" className={APP_FORM_LABEL_CLASS}>
-              Kind
-            </Label>
-            <div className="relative">
-              <select
-                id="commitment-kind"
-                value={form.kind}
-                onChange={(e) =>
-                  setForm((f) => ({
-                    ...f,
-                    kind: e.target.value as FormState["kind"],
-                  }))
-                }
-                className={APP_FORM_SELECT_CLASS}
-              >
-                {KINDS.map((k) => (
-                  <option key={k.value} value={k.value}>
-                    {k.label}
-                  </option>
-                ))}
-              </select>
-              <SelectChevron />
-            </div>
-          </div>
+            <FormField
+              control={form.control}
+              name="kind"
+              render={({ field }) => (
+                <FormItem className="space-y-1.5">
+                  <FormLabel className={APP_FORM_LABEL_CLASS}>Kind</FormLabel>
+                  <FormControl>
+                    <div className="relative">
+                      <select
+                        id="commitment-kind"
+                        className={APP_FORM_SELECT_CLASS}
+                        value={field.value}
+                        onChange={(e) => setKind(e.target.value as CommitmentKindValue)}
+                        onBlur={field.onBlur}
+                        ref={field.ref}
+                      >
+                        {COMMITMENT_KIND_DEFINITIONS.map((k) => (
+                          <option key={k.value} value={k.value}>
+                            {k.label}
+                          </option>
+                        ))}
+                      </select>
+                      <SelectChevron />
+                    </div>
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
 
-          <div className="space-y-1.5">
-            <Label htmlFor="commitment-title" className={APP_FORM_LABEL_CLASS}>
-              Title
-            </Label>
-            <Input
-              id="commitment-title"
-              value={form.title}
-              onChange={(e) => setForm((f) => ({ ...f, title: e.target.value }))}
-              className={APP_FORM_FIELD_CLASS}
-              placeholder=""
+            <AppFormInputField
+              control={form.control}
+              name="title"
+              label="Title"
               autoComplete="off"
             />
-          </div>
 
-          <div className="space-y-1.5">
-            <Label htmlFor="commitment-amount" className={APP_FORM_LABEL_CLASS}>
-              Amount
-            </Label>
-            <Input
-              id="commitment-amount"
+            <AppFormInputField
+              control={form.control}
+              name="amount"
+              label="Amount"
               inputMode="decimal"
-              value={form.amount}
-              onChange={(e) => setForm((f) => ({ ...f, amount: e.target.value }))}
-              className={APP_FORM_FIELD_CLASS}
               placeholder="0.00"
             />
-          </div>
 
-          <div className="space-y-1.5">
-            <Label htmlFor="commitment-due" className={APP_FORM_LABEL_CLASS}>
-              Due Date
-            </Label>
-            <Input
-              id="commitment-due"
+            <AppFormInputField
+              control={form.control}
+              name="dueDate"
+              label="Due Date"
               type="date"
-              value={form.dueDate}
-              onChange={(e) => setForm((f) => ({ ...f, dueDate: e.target.value }))}
-              className={cn(APP_FORM_FIELD_CLASS, "scheme-light dark:scheme-dark")}
+              inputClassName={cn(APP_FORM_FIELD_CLASS, "scheme-light dark:scheme-dark")}
             />
-          </div>
 
-          <div className="space-y-1.5">
-            <Label htmlFor="commitment-card" className={APP_FORM_LABEL_CLASS}>
-              Card
-            </Label>
-            <div className="relative">
-              <select
-                id="commitment-card"
-                value={form.cardAccountId}
-                onChange={(e) => setForm((f) => ({ ...f, cardAccountId: e.target.value }))}
-                disabled={cardsBusy}
-                className={cn(
-                  APP_FORM_SELECT_CLASS,
-                  !form.cardAccountId && "text-muted-foreground"
+            {showStatus ? (
+              <FormField
+                control={form.control}
+                name="status"
+                render={({ field }) => (
+                  <FormItem className="space-y-1.5">
+                    <FormLabel className={APP_FORM_LABEL_CLASS}>Status</FormLabel>
+                    <FormControl>
+                      <div className="relative">
+                        <select
+                          id="commitment-status"
+                          className={APP_FORM_SELECT_CLASS}
+                          value={field.value ?? "pending"}
+                          onChange={field.onChange}
+                          onBlur={field.onBlur}
+                          ref={field.ref}
+                        >
+                          {PAYABLE_COMMITMENT_STATUSES.map((s) => (
+                            <option key={s} value={s}>
+                              {s}
+                            </option>
+                          ))}
+                        </select>
+                        <SelectChevron />
+                      </div>
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
                 )}
-              >
-                <option value="">{cardsBusy ? "Loading cards…" : "Select card"}</option>
-                {cards.map((a) => (
-                  <option key={a.id} value={a.id}>
-                    {accountSelectLabel(a)}
-                  </option>
-                ))}
-              </select>
-              <SelectChevron />
-            </div>
-          </div>
-        </div>
+              />
+            ) : null}
 
-        <div className="space-y-1.5">
-          <Label htmlFor="commitment-note" className={APP_FORM_LABEL_CLASS}>
-            Note
-          </Label>
-          <Input
-            id="commitment-note"
-            value={form.note}
-            onChange={(e) => setForm((f) => ({ ...f, note: e.target.value }))}
-            className={APP_FORM_FIELD_CLASS}
-            placeholder=""
-            autoComplete="off"
-          />
+            {showEntity ? (
+              <FormField
+                control={form.control}
+                name="entityId"
+                render={({ field }) => (
+                  <FormItem className="space-y-1.5 sm:col-span-2">
+                    <FormLabel htmlFor={entitySelectId} className={APP_FORM_LABEL_CLASS}>
+                      {entityLabel ? `Select ${entityLabel}` : "Linked entity"}
+                    </FormLabel>
+                    <FormControl>
+                      <div className="relative">
+                        <select
+                          id={entitySelectId}
+                          disabled={entityBusy}
+                          className={cn(
+                            APP_FORM_SELECT_CLASS,
+                            !field.value && "text-muted-foreground"
+                          )}
+                          value={field.value}
+                          onChange={field.onChange}
+                          onBlur={field.onBlur}
+                          ref={field.ref}
+                        >
+                          <option value="">
+                            {entityBusy
+                              ? "Loading…"
+                              : kindDef.entity.field === "none"
+                                ? ""
+                                : kindDef.entity.placeholder}
+                          </option>
+                          {entityOptions.map((opt) => (
+                            <option key={opt.id} value={opt.id}>
+                              {opt.label}
+                            </option>
+                          ))}
+                        </select>
+                        <SelectChevron />
+                      </div>
+                    </FormControl>
+                    {kindDef.entityHint ? (
+                      <p className="text-[11px] text-muted-foreground">{kindDef.entityHint}</p>
+                    ) : null}
+                    {!entityBusy && entityOptions.length === 0 ? (
+                      <p className="text-[11px] text-amber-700 dark:text-amber-400">
+                        No {entityLabel ?? "options"} available — add one in Accounts first.
+                      </p>
+                    ) : null}
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            ) : (
+              <p className="text-[11px] text-muted-foreground sm:col-span-2">
+                No linked entity required for this kind.
+              </p>
+            )}
+          </div>
+
+          <AppFormInputField control={form.control} name="note" label="Note" autoComplete="off" />
         </div>
-      </div>
+      </Form>
     </FormDialog>
   )
 }
 
 /** Wrapper has no hooks — mounted subtree owns form state and resets on unmount when `open` is false. */
-export function AddCommitmentModal({ open, onOpenChange }: AddCommitmentModalProps) {
+export function AddCommitmentModal({
+  open,
+  onOpenChange,
+  onCreatedSuccess,
+}: AddCommitmentModalProps) {
   if (!open) return null
-  return <AddCommitmentModalMounted open={open} onOpenChange={onOpenChange} />
+  return (
+    <AddCommitmentModalMounted
+      open={open}
+      onOpenChange={onOpenChange}
+      onCreatedSuccess={onCreatedSuccess}
+    />
+  )
 }

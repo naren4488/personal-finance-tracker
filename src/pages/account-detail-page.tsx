@@ -3,7 +3,7 @@ import { useLocation, useNavigate, useParams, useSearchParams } from "react-rout
 import { DetailLayout } from "@/components/detail-layout"
 import { AdjustBalanceSheet } from "@/features/accounts/adjust-balance-sheet"
 import { AccountDetailView } from "@/features/accounts/account-detail-view"
-import type { AccountsSegmentId } from "@/features/accounts/accounts-mock-data"
+import type { AccountsSegmentId } from "@/features/accounts/accounts-segments"
 import { ACCOUNTS_HIGHLIGHT_TX } from "@/features/accounts/accounts-route"
 import type { Account } from "@/lib/api/account-schemas"
 import { filterNormalAccounts } from "@/lib/api/account-schemas"

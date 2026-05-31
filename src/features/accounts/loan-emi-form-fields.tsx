@@ -1,5 +1,6 @@
 import { useEffect, useId, useMemo } from "react"
 import { ChevronDown } from "lucide-react"
+import { AppFieldError } from "@/components/app-field-error"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
@@ -36,6 +37,7 @@ export function LoanEmiFormFields({
   showOverdue = false,
   repaymentAccounts = [],
   repaymentAccountsLoading = false,
+  fieldErrors = {},
 }: {
   value: LoanEmiFormModel
   onChange: (patch: Partial<LoanEmiFormModel>) => void
@@ -47,6 +49,7 @@ export function LoanEmiFormFields({
   /** Bank/cash/UPI/wallet accounts for `linkedRepaymentAccountId`. */
   repaymentAccounts?: Account[]
   repaymentAccountsLoading?: boolean
+  fieldErrors?: Record<string, string>
 }) {
   const overdueAmountId = useId()
 
@@ -108,7 +111,9 @@ export function LoanEmiFormFields({
             onChange={(e) => onChange({ bankLender: e.target.value })}
             placeholder="e.g. SBI"
             className={APP_FORM_FIELD_CLASS}
+            aria-invalid={!!fieldErrors.bankLender}
           />
+          <AppFieldError message={fieldErrors.bankLender} />
         </section>
         <section>
           <Label htmlFor="emi-acct" className={APP_FORM_LABEL_CLASS}>
@@ -137,7 +142,9 @@ export function LoanEmiFormFields({
           value={value.principal}
           onChange={(e) => onChange({ principal: e.target.value.replace(/[^\d]/g, "") })}
           className={APP_FORM_FIELD_CLASS}
+          aria-invalid={!!fieldErrors.principal}
         />
+        <AppFieldError message={fieldErrors.principal} />
         <p className="mt-1 text-[11px] leading-snug text-muted-foreground">
           Sent as <span className="font-mono text-[10px]">principalAmount</span> on the loan
           account. EMI is calculated from this amount, not from overdue.
@@ -170,7 +177,9 @@ export function LoanEmiFormFields({
             value={value.tenureMonths}
             onChange={(e) => onChange({ tenureMonths: e.target.value.replace(/\D/g, "") })}
             className={APP_FORM_FIELD_CLASS}
+            aria-invalid={!!fieldErrors.tenureMonths}
           />
+          <AppFieldError message={fieldErrors.tenureMonths} />
         </section>
       </div>
 
@@ -220,7 +229,9 @@ export function LoanEmiFormFields({
               onChange({ startDate })
             }}
             className={cn(APP_FORM_FIELD_CLASS, "scheme-light dark:scheme-dark")}
+            aria-invalid={!!fieldErrors.startDate}
           />
+          <AppFieldError message={fieldErrors.startDate} />
         </section>
         {value.dueCycle !== "rolling" ? (
           <section>
@@ -233,6 +244,7 @@ export function LoanEmiFormFields({
                 value={value.emiDueDay}
                 onChange={(e) => onChange({ emiDueDay: e.target.value })}
                 className={cn(APP_FORM_SELECT_CLASS, "focus:border-primary")}
+                aria-invalid={!!fieldErrors.emiDueDay}
               >
                 <option value="" disabled>
                   Select day
@@ -245,6 +257,7 @@ export function LoanEmiFormFields({
               </select>
               <SelectChevron />
             </div>
+            <AppFieldError message={fieldErrors.emiDueDay} />
           </section>
         ) : null}
       </div>
@@ -370,7 +383,9 @@ export function LoanEmiFormFields({
                 onChange({ overrideEmiAmount: e.target.value.replace(/[^\d]/g, "") })
               }
               className={APP_FORM_FIELD_CLASS}
+              aria-invalid={!!fieldErrors.overrideEmiAmount}
             />
+            <AppFieldError message={fieldErrors.overrideEmiAmount} />
           </div>
         )}
       </div>

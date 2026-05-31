@@ -1,10 +1,14 @@
 import { Navigate } from "react-router-dom"
-import { getToken } from "@/lib/auth/token"
+import { selectAuthUser } from "@/store/auth-selectors"
+import { useAppSelector } from "@/store/hooks"
 
-/** Send logged-in users away from login/register. */
+/** Send validated logged-in users away from login/register. */
 export function RedirectIfAuthed() {
-  if (getToken()) {
+  const user = useAppSelector(selectAuthUser)
+
+  if (user) {
     return <Navigate to="/" replace />
   }
+
   return null
 }

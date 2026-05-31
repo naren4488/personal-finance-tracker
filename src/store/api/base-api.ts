@@ -14,7 +14,9 @@ import { DASHBOARD_PATHS } from "@/api/dashboard-paths"
 import { COMMITMENT_PATHS } from "@/api/commitment-paths"
 import { isAccountCreateApiDisabled } from "@/lib/feature-flags"
 import { BASE_URL } from "@/lib/env"
-import { clearToken, getRefreshToken, setAuthTokens } from "@/lib/auth/token"
+import { getRefreshToken, getToken, setAuthTokens } from "@/lib/auth/token"
+import { isAccessTokenExpired } from "@/lib/auth/jwt"
+import { signOutAndRedirectToLogin } from "@/lib/auth/sign-out-and-redirect"
 import {
   parseApiFailureMessage,
   parseAuthSuccessResponse,
@@ -68,12 +70,23 @@ import {
   type DashboardHomeView,
 } from "@/lib/api/dashboard-home-schemas"
 import {
+  filterCommitmentsAfterAccountDelete,
+  filterCommitmentsAfterPersonDelete,
   parseCreateCommitmentSuccess,
   parseGetCommitmentsSuccess,
   type Commitment,
   type CreateCommitmentRequest,
   type GetCommitmentsQueryArg,
 } from "@/lib/api/commitment-schemas"
+import { upsertCommitmentInListDraft } from "@/lib/commitments/commitment-cache"
+
+const COMMITMENTS_LIST_CACHE_KEY = "LIST"
+
+function refetchCommitmentsList(dispatch: (action: unknown) => void) {
+  void dispatch(
+    baseApi.endpoints.getCommitments.initiate({}, { subscribe: false, forceRefetch: true })
+  )
+}
 
 export type DashboardAnalyticsQueryArg = {
   days: number
@@ -138,18 +151,8 @@ import {
   type CreateUdharEntryResult,
 } from "@/lib/api/udhar-schemas"
 import { type CreateTransactionPayload, type Transaction } from "@/lib/api/schemas"
-import { getToken } from "@/lib/auth/token"
-import { getErrorMessage } from "@/lib/api/errors"
-import {
-  isAuthApiDebugEnabled,
-  logAuthFailure,
-  logAuthRequestStart,
-  logAuthResponseParsed,
-  logAuthResponseSuccess,
-} from "@/lib/debug/auth-api-log"
-import { clearAllProfileDraftsFromStorage } from "@/lib/profile/local-profile-draft"
-import { clearUser, setUser } from "@/store/auth-slice"
-import { addPerson, resetPeople, setPeople } from "@/store/people-slice"
+import { setUser } from "@/store/auth-slice"
+import { addPerson, setPeople } from "@/store/people-slice"
 
 function normalizeFetchError(error: FetchBaseQueryError): FetchBaseQueryError {
   if (typeof error.status !== "number") {
@@ -204,11 +207,25 @@ const rawBaseQuery = fetchBaseQuery({
   },
 })
 
-let refreshInFlight: Promise<boolean> | null = null
+function messageFromFetchError(error: FetchBaseQueryError | undefined): string | undefined {
+  if (!error) return undefined
+  const fromEnvelope = parseApiFailureMessage(error.data)
+  if (fromEnvelope) return fromEnvelope
+  if (typeof error.data === "string" && error.data.trim()) return error.data.trim()
+  if (typeof error.data === "object" && error.data !== null) {
+    const o = error.data as Record<string, unknown>
+    if (typeof o.message === "string" && o.message.trim()) return o.message.trim()
+  }
+  return undefined
+}
 
-function performTokenRefresh(api: BaseQueryApi): Promise<boolean> {
+let refreshInFlight: Promise<{ ok: true } | { ok: false; message?: string }> | null = null
+
+function performTokenRefresh(
+  api: BaseQueryApi
+): Promise<{ ok: true } | { ok: false; message?: string }> {
   const rt = getRefreshToken()
-  if (!rt) return Promise.resolve(false)
+  if (!rt) return Promise.resolve({ ok: false, message: "authorization token is required" })
 
   if (!refreshInFlight) {
     refreshInFlight = (async () => {
@@ -222,8 +239,17 @@ function performTokenRefresh(api: BaseQueryApi): Promise<boolean> {
           api,
           {}
         )
-        if (res.error) return false
-        return tryApplyAuthResponse(res.data, api)
+        if (res.error) {
+          return { ok: false, message: messageFromFetchError(res.error) }
+        }
+        const failMsg = parseApiFailureMessage(res.data)
+        if (failMsg) {
+          return { ok: false, message: failMsg }
+        }
+        if (!tryApplyAuthResponse(res.data, api)) {
+          return { ok: false, message: "Invalid refresh token response." }
+        }
+        return { ok: true }
       } finally {
         refreshInFlight = null
       }
@@ -238,18 +264,40 @@ const baseQueryWithReauth: BaseQueryFn<string | FetchArgs, unknown, FetchBaseQue
   api,
   extraOptions
 ) => {
+  const accessToken = getToken()
+  if (
+    accessToken &&
+    isAccessTokenExpired(accessToken) &&
+    getRefreshToken() &&
+    !isRefreshRequest(args) &&
+    !isLogoutRequest(args)
+  ) {
+    const refresh = await performTokenRefresh(api)
+    if (!refresh.ok) {
+      signOutAndRedirectToLogin(api.dispatch, refresh.message)
+      return {
+        error: {
+          status: 401,
+          data: refresh.message ?? "authorization token is required",
+        },
+      }
+    }
+  }
+
   let result = await rawBaseQuery(args, api, extraOptions)
 
   if (result.error?.status === 401 && !isRefreshRequest(args) && !isLogoutRequest(args)) {
-    const refreshed = await performTokenRefresh(api)
-    if (refreshed) {
+    const refresh = await performTokenRefresh(api)
+    if (refresh.ok) {
       result = await rawBaseQuery(args, api, extraOptions)
+      if (result.error?.status === 401) {
+        const msg = messageFromFetchError(result.error) ?? "authorization token is required"
+        signOutAndRedirectToLogin(api.dispatch, msg)
+      }
     } else {
-      clearAllProfileDraftsFromStorage()
-      clearToken()
-      api.dispatch(clearUser())
-      api.dispatch(baseApi.util.resetApiState())
-      api.dispatch(resetPeople())
+      const msg =
+        refresh.message ?? messageFromFetchError(result.error) ?? "authorization token is required"
+      signOutAndRedirectToLogin(api.dispatch, msg)
     }
   }
 
@@ -364,15 +412,6 @@ export const baseApi = createApi({
         if (!parsed.ok) {
           return { error: { status: 422, data: parsed.error } }
         }
-        if (import.meta.env.DEV) {
-          const raw = res.data as { message?: string }
-          console.log(
-            "[accounts] GET list — count:",
-            parsed.accounts.length,
-            raw.message ? `message: ${raw.message}` : ""
-          )
-          console.log("[accounts] GET list — accounts:", parsed.accounts)
-        }
         return { data: parsed.accounts }
       },
       providesTags: ["Accounts", { type: "Account", id: "LIST" }],
@@ -398,7 +437,13 @@ export const baseApi = createApi({
           return { error: { status: 422, data: parsed.error } }
         }
         const onlyCards = parsed.accounts.filter(isCreditCardAccount)
-        return { data: onlyCards.length > 0 ? onlyCards : parsed.accounts }
+        if (import.meta.env.DEV && onlyCards.length === 0 && parsed.accounts.length > 0) {
+          console.warn(
+            "[getCreditCards] No accounts matched kind=credit_card in the API response; returning an empty list.",
+            { returnedCount: parsed.accounts.length }
+          )
+        }
+        return { data: onlyCards }
       },
       providesTags: ["Accounts", { type: "Account", id: "LIST" }],
     }),
@@ -437,7 +482,13 @@ export const baseApi = createApi({
           return { error: { status: 422, data: parsed.error } }
         }
         const onlyLoans = parsed.accounts.filter(isLoanAccount)
-        return { data: onlyLoans.length > 0 ? onlyLoans : parsed.accounts }
+        if (import.meta.env.DEV && onlyLoans.length === 0 && parsed.accounts.length > 0) {
+          console.warn(
+            "[getLoans] No accounts matched kind=loan in the API response; returning an empty list.",
+            { returnedCount: parsed.accounts.length }
+          )
+        }
+        return { data: onlyLoans }
       },
       providesTags: ["Accounts", { type: "Account", id: "LIST" }],
     }),
@@ -467,40 +518,22 @@ export const baseApi = createApi({
           }
         }
         const postBody = buildCreateAccountPostBody(body)
-        console.log("[accounts] create — client mutation arg (CreateAccountRequest):", body)
-        console.log("[accounts] create — POST body (object):", postBody)
-        console.log(
-          "[accounts] create — POST body (exact JSON):",
-          JSON.stringify(postBody, null, 2)
-        )
         const res = await baseQuery({
           url: ACCOUNT_PATHS.create,
           method: "POST",
           body: postBody,
         })
         if (res.error) {
-          const fe = res.error as { status?: unknown; data?: unknown }
-          console.error("[accounts] create failed — HTTP status:", fe.status)
-          console.error(
-            "[accounts] create failed — response body:",
-            JSON.stringify(fe.data, null, 2)
-          )
-          console.error("[accounts] create failed — request body was:", postBody)
           return { error: normalizeFetchError(res.error) }
         }
-        console.log("[accounts] create — response (raw):", res.data)
         const failMsg = parseApiFailureMessage(res.data)
         if (failMsg) {
-          console.error("[accounts] create — success:false envelope:", failMsg)
           return { error: { status: 400, data: failMsg } }
         }
         const parsed = parseCreateAccountSuccess(res.data)
         if (!parsed.ok) {
-          console.error("[accounts] create — parse error:", parsed.error)
           return { error: { status: 422, data: parsed.error } }
         }
-        console.log("[accounts] create — success message:", parsed.message)
-        console.log("[accounts] create — parsed account:", parsed.account ?? null)
         return {
           data: {
             ...(parsed.account ? { account: parsed.account } : {}),
@@ -612,6 +645,12 @@ export const baseApi = createApi({
               stripDeleted(draft)
             )
           )
+          dispatch(
+            baseApi.util.updateQueryData("getCommitments", {}, (draft) =>
+              filterCommitmentsAfterAccountDelete(draft, id)
+            )
+          )
+          refetchCommitmentsList(dispatch)
         } catch {
           // No-op: error handling remains in calling UI via `.unwrap()` branch.
         }
@@ -708,6 +747,21 @@ export const baseApi = createApi({
         }
         return { data: { message: parsed.message } }
       },
+      async onQueryStarted(personId, { dispatch, queryFulfilled }) {
+        const id = personId.trim()
+        if (!id) return
+        try {
+          await queryFulfilled
+          dispatch(
+            baseApi.util.updateQueryData("getCommitments", {}, (draft) =>
+              filterCommitmentsAfterPersonDelete(draft, id)
+            )
+          )
+          refetchCommitmentsList(dispatch)
+        } catch {
+          /* error surfaced in UI */
+        }
+      },
       invalidatesTags: [
         "Accounts",
         "Transactions",
@@ -729,18 +783,12 @@ export const baseApi = createApi({
           arg && typeof arg === "object" && typeof arg.accountId === "string"
             ? arg.accountId.trim()
             : undefined
-        if (import.meta.env.DEV) {
-          console.debug("[people] GET list", accountId ? { accountId } : {})
-        }
         const res = await baseQuery({
           url: PEOPLE_PATHS.list,
           method: "GET",
           params: accountId ? { accountId } : undefined,
         })
         if (res.error) {
-          if (import.meta.env.DEV) {
-            console.error("[people] GET failed", res.error)
-          }
           return { error: normalizeFetchError(res.error) }
         }
         const failMsg = parseApiFailureMessage(res.data)
@@ -752,9 +800,6 @@ export const baseApi = createApi({
           return { error: { status: 422, data: parsed.error } }
         }
         const people = parsed.data.people
-        if (import.meta.env.DEV) {
-          console.debug("[people] OK, count:", people.length)
-        }
         if (!accountId) {
           api.dispatch(setPeople(people))
         }
@@ -887,35 +932,22 @@ export const baseApi = createApi({
 
     register: build.mutation<AuthResult, RegisterRequest>({
       async queryFn(body, api, _extraOptions, baseQuery) {
-        logAuthRequestStart("register", AUTH_PATHS.register, "POST", body)
         const res = await baseQuery({
           url: AUTH_PATHS.register,
           method: "POST",
           body,
         })
         if (res.error) {
-          const normalized = normalizeFetchError(res.error)
-          if (isAuthApiDebugEnabled()) {
-            logAuthFailure("register", "http", res.error, getErrorMessage(normalized))
-          }
-          return { error: normalized }
+          return { error: normalizeFetchError(res.error) }
         }
         const failMsg = parseApiFailureMessage(res.data)
         if (failMsg) {
-          if (isAuthApiDebugEnabled()) {
-            logAuthFailure("register", "success-false", res.data, failMsg)
-          }
           return { error: { status: 400, data: failMsg } }
         }
-        logAuthResponseSuccess("register", res.data)
         const parsed = parseAuthSuccessResponse(res.data)
         if (!parsed.ok) {
-          if (isAuthApiDebugEnabled()) {
-            logAuthFailure("register", "parse", res.data, parsed.error)
-          }
           return { error: { status: 422, data: parsed.error } }
         }
-        logAuthResponseParsed("register", parsed.result)
         setAuthTokens(parsed.result.accessToken, parsed.result.refreshToken)
         api.dispatch(setUser(parsed.result.user))
         return { data: parsed.result }
@@ -924,35 +956,22 @@ export const baseApi = createApi({
 
     login: build.mutation<AuthResult, LoginRequest>({
       async queryFn(body, api, _extraOptions, baseQuery) {
-        logAuthRequestStart("login", AUTH_PATHS.login, "POST", body)
         const res = await baseQuery({
           url: AUTH_PATHS.login,
           method: "POST",
           body,
         })
         if (res.error) {
-          const normalized = normalizeFetchError(res.error)
-          if (isAuthApiDebugEnabled()) {
-            logAuthFailure("login", "http", res.error, getErrorMessage(normalized))
-          }
-          return { error: normalized }
+          return { error: normalizeFetchError(res.error) }
         }
         const failMsg = parseApiFailureMessage(res.data)
         if (failMsg) {
-          if (isAuthApiDebugEnabled()) {
-            logAuthFailure("login", "success-false", res.data, failMsg)
-          }
           return { error: { status: 401, data: failMsg } }
         }
-        logAuthResponseSuccess("login", res.data)
         const parsed = parseAuthSuccessResponse(res.data)
         if (!parsed.ok) {
-          if (isAuthApiDebugEnabled()) {
-            logAuthFailure("login", "parse", res.data, parsed.error)
-          }
           return { error: { status: 422, data: parsed.error } }
         }
-        logAuthResponseParsed("login", parsed.result)
         setAuthTokens(parsed.result.accessToken, parsed.result.refreshToken)
         api.dispatch(setUser(parsed.result.user))
         return { data: parsed.result }
@@ -967,12 +986,10 @@ export const baseApi = createApi({
           body: {},
         })
         if (res.error) {
-          console.error("Logout failed", res.error)
           return { error: normalizeFetchError(res.error) }
         }
         const failMsg = parseApiFailureMessage(res.data)
         if (failMsg) {
-          console.error(failMsg)
           return { error: { status: 400, data: failMsg } }
         }
         const parsed = parseLogoutSuccess(res.data)
@@ -989,9 +1006,6 @@ export const baseApi = createApi({
         if (!rt) {
           return { error: { status: 401, data: "No refresh token" } }
         }
-        logAuthRequestStart("refreshToken", AUTH_PATHS.refreshToken, "POST", {
-          refreshToken: "[redacted]",
-        })
         const res = await rawBaseQuery(
           {
             url: AUTH_PATHS.refreshToken,
@@ -1002,28 +1016,16 @@ export const baseApi = createApi({
           extraOptions
         )
         if (res.error) {
-          const normalized = normalizeFetchError(res.error)
-          if (isAuthApiDebugEnabled()) {
-            logAuthFailure("refreshToken", "http", res.error, getErrorMessage(normalized))
-          }
-          return { error: normalized }
+          return { error: normalizeFetchError(res.error) }
         }
         const failMsg = parseApiFailureMessage(res.data)
         if (failMsg) {
-          if (isAuthApiDebugEnabled()) {
-            logAuthFailure("refreshToken", "success-false", res.data, failMsg)
-          }
           return { error: { status: 401, data: failMsg } }
         }
-        logAuthResponseSuccess("refreshToken", res.data)
         const parsed = parseAuthSuccessResponse(res.data)
         if (!parsed.ok) {
-          if (isAuthApiDebugEnabled()) {
-            logAuthFailure("refreshToken", "parse", res.data, parsed.error)
-          }
           return { error: { status: 422, data: parsed.error } }
         }
-        logAuthResponseParsed("refreshToken", parsed.result)
         setAuthTokens(parsed.result.accessToken, parsed.result.refreshToken)
         api.dispatch(setUser(parsed.result.user))
         return { data: parsed.result }
@@ -1139,6 +1141,8 @@ export const baseApi = createApi({
     }),
 
     getCommitments: build.query<Commitment[], GetCommitmentsQueryArg | void>({
+      serializeQueryArgs: () => COMMITMENTS_LIST_CACHE_KEY,
+      keepUnusedDataFor: 0,
       async queryFn(arg, _api, _extraOptions, baseQuery) {
         const params: Record<string, string> = {}
         if (arg && typeof arg === "object") {
@@ -1186,7 +1190,20 @@ export const baseApi = createApi({
         }
         return { data: parsed.commitment }
       },
-      invalidatesTags: [{ type: "Commitment", id: "LIST" }],
+      invalidatesTags: [{ type: "Commitment", id: "LIST" }, "Dashboard", "DashboardAnalytics"],
+      async onQueryStarted(_body, { dispatch, queryFulfilled }) {
+        try {
+          const { data: created } = await queryFulfilled
+          dispatch(
+            baseApi.util.updateQueryData("getCommitments", {}, (draft) => {
+              upsertCommitmentInListDraft(draft, created)
+            })
+          )
+          refetchCommitmentsList(dispatch)
+        } catch {
+          /* error surfaced in UI */
+        }
+      },
     }),
 
     /** Deletes any transaction by id; invalidates accounts + recent tx so balances and lists stay consistent. */
@@ -1228,7 +1245,6 @@ export const baseApi = createApi({
         { type: "UdharSummary" },
         { type: "People", id: "LIST" },
         { type: "DashboardAnalytics", id: "LIST" },
-        { type: "Commitment", id: "LIST" },
       ],
     }),
 
@@ -1239,22 +1255,17 @@ export const baseApi = createApi({
           apiBody = buildTransactionPostBody(body)
         } catch (e) {
           const msg = e instanceof Error ? e.message : "Invalid transaction payload"
-          console.error("[transactions] build body failed", msg, body)
           return { error: { status: 422, data: msg } }
         }
 
         const validated = createTransactionApiBodySchema.safeParse(apiBody)
         if (!validated.success) {
-          console.error("[transactions] invalid payload", validated.error.flatten(), apiBody)
           return { error: { status: 422, data: "Invalid transaction payload" } }
         }
 
         const finalBody = sanitizeApiRequestBody(
           validated.data as unknown as Record<string, unknown>
         ) as CreateTransactionApiBody
-
-        console.log("[transactions] create — client payload (CreateTransactionPayload):", body)
-        console.log("FINAL CLEAN PAYLOAD BEFORE POST", JSON.stringify(finalBody))
 
         const res = await baseQuery({
           url: TRANSACTION_PATHS.create,
@@ -1263,35 +1274,21 @@ export const baseApi = createApi({
         })
 
         if (res.error) {
-          const err = normalizeFetchError(res.error)
-          console.error("[transactions] create failed — HTTP error:", err)
-          console.error("[transactions] create failed — POST body was:", finalBody)
-          return { error: err }
+          return { error: normalizeFetchError(res.error) }
         }
-
-        console.log("[transactions] create — response (raw):", res.data)
 
         const failMsg = parseApiFailureMessage(res.data)
         if (failMsg) {
-          console.error("[transactions] create — success:false envelope:", failMsg, res.data)
           return { error: { status: 400, data: failMsg } }
         }
 
         const parsed = parseCreateTransactionSuccess(res.data)
         if (!parsed.ok) {
-          console.warn(
-            "[transactions] unexpected success shape, using fallback client row",
-            parsed.error,
-            res.data
-          )
           const tx = mapApiTransactionToClient({}, body)
-          console.log("[transactions] created (fallback) — client row:", tx)
           return { data: tx }
         }
 
         const tx = mapApiTransactionToClient(parsed.transaction, body)
-        console.log("[transactions] create — parsed transaction:", parsed.transaction)
-        console.log("[transactions] create — client row:", tx)
         return { data: tx }
       },
       invalidatesTags: [
@@ -1315,28 +1312,20 @@ export const baseApi = createApi({
           return { error: { status: 422, data: first ?? "Invalid udhar entry payload" } }
         }
         const postBody = buildUdharEntryPostBody(validated.data)
-        console.log("[udhar] create — request (validated):", validated.data)
-        console.log("[udhar] create — POST body:", postBody)
-        console.log("[udhar] create — auth token present:", Boolean(getToken()))
         const res = await baseQuery({
           url: TRANSACTION_PATHS.udhar,
           method: "POST",
           body: postBody,
         })
         if (res.error) {
-          const err = normalizeFetchError(res.error)
-          console.error("[udhar] create failed — HTTP error:", err)
-          return { error: err }
+          return { error: normalizeFetchError(res.error) }
         }
-        console.log("[udhar] create — response (raw):", res.data)
         const failMsg = parseApiFailureMessage(res.data)
         if (failMsg) {
-          console.error("[udhar] create — success:false envelope:", failMsg, res.data)
           return { error: { status: 400, data: failMsg } }
         }
         const parsed = parseCreateUdharEntrySuccess(res.data)
         if (!parsed.ok) {
-          console.error("[udhar] create — parse failed:", parsed.error, res.data)
           return { error: { status: 422, data: parsed.error } }
         }
         if (parsed.entry?.person) {
@@ -1349,7 +1338,6 @@ export const baseApi = createApi({
           parsed.message?.trim() && parsed.message.trim().length > 0
             ? parsed.message.trim()
             : "udhar entry created successfully"
-        console.log("[udhar] create — parsed entry:", parsed.entry)
         return {
           data: {
             message,
@@ -1367,7 +1355,6 @@ export const baseApi = createApi({
         { type: "People", id: "LIST" },
         { type: "Account", id: "LIST" },
         { type: "UdharSummary" },
-        { type: "Commitment", id: "LIST" },
         { type: "DashboardAnalytics", id: "LIST" },
       ],
     }),

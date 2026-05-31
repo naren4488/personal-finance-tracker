@@ -3,7 +3,7 @@ import { useNavigate, useParams } from "react-router-dom"
 import { DetailLayout } from "@/components/detail-layout"
 import { AddCardSpendSheet } from "@/features/accounts/add-card-spend-sheet"
 import { CreditCardDetailView } from "@/features/accounts/credit-card-detail-view"
-import type { AccountsSegmentId } from "@/features/accounts/accounts-mock-data"
+import type { AccountsSegmentId } from "@/features/accounts/accounts-segments"
 import { buildAccountsDetailPath } from "@/features/accounts/accounts-route"
 import type { Account } from "@/lib/api/account-schemas"
 import {

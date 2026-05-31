@@ -179,12 +179,6 @@ export function parseCreateUdharEntrySuccess(
           entry: parsed.data,
         }
       }
-      if (import.meta.env.DEV) {
-        console.warn(
-          "[udhar] POST success — entry shape differs from expected schema; using loose parse",
-          parsed.error.flatten()
-        )
-      }
       const e = entryRaw as Record<string, unknown>
       return {
         ok: true,

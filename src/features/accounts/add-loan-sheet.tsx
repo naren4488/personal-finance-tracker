@@ -1,7 +1,7 @@
 import { useCallback, useId, useMemo, useState } from "react"
-import { useNavigate } from "react-router-dom"
 import { ChevronDown, X } from "lucide-react"
 import { toast } from "sonner"
+import { AppFieldError } from "@/components/app-field-error"
 import { FormDialog } from "@/components/form-dialog"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -11,8 +11,9 @@ import {
   loanTypeLabelToApiSlug,
   type CreateAccountRequest,
 } from "@/lib/api/account-schemas"
-import { getErrorMessage } from "@/lib/api/errors"
-import { endUserSession } from "@/lib/auth/end-session"
+import { loanCreateFormSchema } from "@/lib/forms/loan-create-schema"
+import { handleFormApiError } from "@/lib/forms/form-api-errors"
+import { zodErrorToFieldMap } from "@/lib/forms/zod-helpers"
 import { LoanEmiFormFields } from "@/features/accounts/loan-emi-form-fields"
 import {
   createInitialLoanEmiModel,
@@ -62,7 +63,6 @@ type MountedProps = {
 }
 
 function AddLoanSheetMounted({ open, onOpenChange }: MountedProps) {
-  const navigate = useNavigate()
   const dispatch = useAppDispatch()
   const titleId = useId()
   const loanTypeId = useId()
@@ -70,6 +70,7 @@ function AddLoanSheetMounted({ open, onOpenChange }: MountedProps) {
   const [loanType, setLoanType] = useState<string>(LOAN_TYPES[0])
   const [loanName, setLoanName] = useState("")
   const [emi, setEmi] = useState<LoanEmiFormModel>(() => createInitialLoanEmiModel())
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({})
   const [createAccount, { isLoading: isSubmitting }] = useCreateAccountMutation()
   const user = useAppSelector((s) => s.auth.user)
   const { data: accountsRaw = [], isLoading: accountsLoading } = useGetAccountsQuery(undefined, {
@@ -89,55 +90,31 @@ function AddLoanSheetMounted({ open, onOpenChange }: MountedProps) {
     setLoanType(LOAN_TYPES[0])
     setLoanName("")
     setEmi(createInitialLoanEmiModel())
+    setFieldErrors({})
   }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
+
+    const parsed = loanCreateFormSchema.safeParse({
+      loanType,
+      loanName,
+      ...emi,
+    })
+    if (!parsed.success) {
+      setFieldErrors(zodErrorToFieldMap(parsed.error))
+      return
+    }
+    setFieldErrors({})
+
     const name = loanName.trim()
-    if (!name) {
-      toast.error("Enter a loan name")
-      return
-    }
-
     const lender = emi.bankLender.trim()
-    if (!lender) {
-      toast.error("Enter bank or lender name")
-      return
-    }
-
     const p = emi.principal.replace(/\D/g, "")
-    if (!p || Number(p) <= 0) {
-      toast.error("Enter a valid principal amount")
-      return
-    }
-
     const tenure = Number(emi.tenureMonths.replace(/\D/g, "")) || 0
-    if (tenure < 1) {
-      toast.error("Enter tenure in months")
-      return
-    }
-
-    if (!emi.startDate || !/^\d{4}-\d{2}-\d{2}$/.test(emi.startDate)) {
-      toast.error("Enter a valid start date")
-      return
-    }
-
-    const emiDay = resolveEmiDueDayForLoanSubmit(emi)
-    if (emiDay == null) {
-      toast.error(emi.dueCycle === "rolling" ? "Enter a valid start date" : "Select EMI due day")
-      return
-    }
-
+    const emiDay = resolveEmiDueDayForLoanSubmit(emi)!
     const overrideEmiDigits = emi.overrideEmi
       ? Number(emi.overrideEmiAmount.replace(/\D/g, "")) || 0
       : 0
-    if (emi.overrideEmi) {
-      if (!overrideEmiDigits || overrideEmiDigits <= 0) {
-        toast.error("Enter a valid custom EMI amount")
-        return
-      }
-    }
-
     const linkedRepaymentId = emi.linkedRepaymentAccountId.trim()
 
     const principalDigits = Number(p)
@@ -169,15 +146,7 @@ function AddLoanSheetMounted({ open, onOpenChange }: MountedProps) {
       resetForm()
       dismiss()
     } catch (err) {
-      const msg = getErrorMessage(err)
-      if (/authorization token is required/i.test(msg)) {
-        toast.error("Session expired, please login again")
-        endUserSession(dispatch)
-        dismiss()
-        navigate("/login", { replace: true })
-        return
-      }
-      toast.error(msg)
+      handleFormApiError(err, dispatch, { onDismiss: dismiss })
     }
   }
 
@@ -239,10 +208,21 @@ function AddLoanSheetMounted({ open, onOpenChange }: MountedProps) {
           <Input
             id="loan-name"
             value={loanName}
-            onChange={(e) => setLoanName(e.target.value)}
+            onChange={(e) => {
+              setLoanName(e.target.value)
+              if (fieldErrors.loanName) {
+                setFieldErrors((fe) => {
+                  const next = { ...fe }
+                  delete next.loanName
+                  return next
+                })
+              }
+            }}
             placeholder="e.g. Home Loan - SBI"
             className={APP_FORM_FIELD_CLASS}
+            aria-invalid={!!fieldErrors.loanName}
           />
+          <AppFieldError message={fieldErrors.loanName} />
         </section>
 
         <LoanEmiFormFields
@@ -251,6 +231,7 @@ function AddLoanSheetMounted({ open, onOpenChange }: MountedProps) {
           showOverdue={false}
           repaymentAccounts={repaymentAccounts}
           repaymentAccountsLoading={accountsLoading}
+          fieldErrors={fieldErrors}
         />
       </div>
     </FormDialog>

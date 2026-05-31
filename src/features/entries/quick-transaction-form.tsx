@@ -65,14 +65,11 @@ export function QuickTransactionForm({ onSuccess, className }: QuickTransactionF
       if (values.type === "expense") {
         if (!assertSourceAccountCoversAmount(acc, payload.amount)) return
       }
-      console.log("[transactions] quick add — payload:", payload)
       await addTransaction(payload).unwrap()
-      console.log("[transactions] quick add — success", payload)
       toast.success("Transaction added")
       form.reset({ title: "", amount: "", type: values.type })
       onSuccess?.()
     } catch (err) {
-      console.error("[transactions] quick add error", err)
       toast.error(getErrorMessage(err))
     }
   })

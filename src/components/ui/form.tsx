@@ -6,6 +6,7 @@ import {
   Controller,
   FormProvider,
   useFormContext,
+  useFormState,
   type ControllerProps,
   type FieldPath,
   type FieldValues,
@@ -43,7 +44,6 @@ const FormItemContext = React.createContext<{ id: string } | null>(null)
 function useFormField() {
   const fieldContext = React.useContext(FormFieldContext)
   const itemContext = React.useContext(FormItemContext)
-  const { getFieldState, formState } = useFormContext()
 
   if (!fieldContext) {
     throw new Error("useFormField must be used within <FormField>")
@@ -53,6 +53,9 @@ function useFormField() {
     throw new Error("useFormField must be used within <FormItem>")
   }
 
+  const { getFieldState } = useFormContext()
+  // Per-field subscription — required for FormMessage to update after submit (RHF 7 proxy).
+  const formState = useFormState({ name: fieldContext.name })
   const fieldState = getFieldState(fieldContext.name, formState)
   const { id } = itemContext
 
@@ -130,7 +133,7 @@ FormDescription.displayName = "FormDescription"
 const FormMessage = React.forwardRef<HTMLParagraphElement, React.ComponentProps<"p">>(
   ({ className, children, ...props }, ref) => {
     const { error, formMessageId } = useFormField()
-    const body = error ? String(error.message ?? children) : children
+    const body = error?.message ? String(error.message) : children
 
     if (!body) {
       return null
@@ -140,6 +143,7 @@ const FormMessage = React.forwardRef<HTMLParagraphElement, React.ComponentProps<
       <p
         ref={ref}
         id={formMessageId}
+        role="alert"
         className={cn("text-sm font-medium text-destructive", className)}
         {...props}
       >

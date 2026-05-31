@@ -1,6 +1,5 @@
-import { useEffect, useMemo, useRef, useState } from "react"
-import { useNavigate } from "react-router-dom"
-import { toast } from "sonner"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { useLocation, useNavigate } from "react-router-dom"
 import { TrendingUp, TrendingDown, Search, Wallet, CreditCard } from "lucide-react"
 import {
   PieChart,
@@ -20,15 +19,28 @@ import { Input } from "@/components/ui/input"
 import { Skeleton } from "@/components/ui/skeleton"
 import { AddCommitmentModal } from "@/features/analytics/add-commitment-modal"
 import { getErrorMessage } from "@/lib/api/errors"
+import { handleAuthApiErrorIfNeeded } from "@/lib/auth/handle-auth-api-error"
+import { CommitmentsSection } from "@/features/analytics/commitments-section"
+import { scrollToCommitmentsSection } from "@/lib/commitments/focus-commitments-section"
+import type { Account } from "@/lib/api/account-schemas"
 import type { Commitment } from "@/lib/api/commitment-schemas"
+import type { Person } from "@/lib/api/people-schemas"
 import {
   monthlyTrendHasExtendedSeries,
   type DashboardAnalyticsView,
 } from "@/lib/api/dashboard-analytics-schemas"
 import { formatDate } from "@/lib/format"
 import { useDebouncedValue } from "@/hooks/use-debounced-value"
-import { useGetCommitmentsQuery, useGetDashboardAnalyticsQuery } from "@/store/api/base-api"
-import { useAppSelector } from "@/store/hooks"
+import {
+  useGetAccountsQuery,
+  useGetCommitmentsQuery,
+  useGetCreditCardsQuery,
+  useGetDashboardAnalyticsQuery,
+  useGetLoansQuery,
+  useGetPeopleQuery,
+  useGetRecentTransactionsQuery,
+} from "@/store/api/base-api"
+import { useAppDispatch, useAppSelector } from "@/store/hooks"
 import { cn } from "@/lib/utils"
 
 const RANGE_TABS = ["7 Days", "Month", "3 Months", "Year"] as const
@@ -48,13 +60,11 @@ function formatExpenseDateLabel(raw: string): string {
   return formatDate(raw)
 }
 
-function formatCommitmentInr(amount: string | number): string {
-  const n = Number(String(amount).replace(/,/g, "").trim())
-  return Number.isFinite(n) ? n.toLocaleString("en-IN") : String(amount)
-}
-
 export default function AnalyticsFullPage() {
   const navigate = useNavigate()
+  const location = useLocation()
+  const dispatch = useAppDispatch()
+  const pendingCommitmentsFocusRef = useRef(false)
   const user = useAppSelector((s) => s.auth.user)
   const [activeTab, setActiveTab] = useState<(typeof RANGE_TABS)[number]>("Month")
   const [searchInput, setSearchInput] = useState("")
@@ -81,16 +91,51 @@ export default function AnalyticsFullPage() {
     isLoading: commitmentsLoading,
     isError: commitmentsError,
     error: commitmentsQueryError,
-  } = useGetCommitmentsQuery({}, { skip: !user })
+  } = useGetCommitmentsQuery(
+    {},
+    {
+      skip: !user,
+      refetchOnMountOrArgChange: true,
+      refetchOnFocus: true,
+      refetchOnReconnect: true,
+    }
+  )
+
+  const { data: commitmentPeople = [] } = useGetPeopleQuery(undefined, { skip: !user })
+  const { data: commitmentLoans = [] } = useGetLoansQuery(undefined, { skip: !user })
+  const { data: commitmentCards = [] } = useGetCreditCardsQuery(undefined, { skip: !user })
+  const { data: commitmentAccounts = [] } = useGetAccountsQuery(undefined, { skip: !user })
+  const { data: recentTransactions = [] } = useGetRecentTransactionsQuery(
+    { limit: 500 },
+    { skip: !user }
+  )
+
+  const commitmentTransactionIds = useMemo(
+    () => recentTransactions.map((t) => ({ id: String(t.id) })),
+    [recentTransactions]
+  )
+
+  useEffect(() => {
+    const state = location.state as { focusCommitments?: boolean } | null
+    if (!state?.focusCommitments) return
+    pendingCommitmentsFocusRef.current = true
+    navigate(location.pathname, { replace: true, state: {} })
+  }, [location.state, location.pathname, navigate])
+
+  useEffect(() => {
+    if (!pendingCommitmentsFocusRef.current || commitmentsLoading) return
+    pendingCommitmentsFocusRef.current = false
+    scrollToCommitmentsSection()
+  }, [commitmentsLoading, commitments.length])
+
+  const handleCommitmentCreated = useCallback(() => {
+    scrollToCommitmentsSection()
+  }, [])
 
   useEffect(() => {
     if (!isError || !error) return
-    const msg = getErrorMessage(error)
-    if (/authorization token is required/i.test(msg)) {
-      toast.error(msg)
-      navigate("/login", { replace: true })
-    }
-  }, [isError, error, navigate])
+    handleAuthApiErrorIfNeeded(error, dispatch)
+  }, [isError, error, dispatch])
 
   const showSkeleton = Boolean(user) && isLoading && !dashboardData
   const analyticsUpdating = isFetching || searchDebouncePending
@@ -102,7 +147,11 @@ export default function AnalyticsFullPage() {
         analyticsUpdating && dashboardData && "opacity-95"
       )}
     >
-      <AddCommitmentModal open={commitmentOpen} onOpenChange={setCommitmentOpen} />
+      <AddCommitmentModal
+        open={commitmentOpen}
+        onOpenChange={setCommitmentOpen}
+        onCreatedSuccess={handleCommitmentCreated}
+      />
       <main className="flex-1 max-w-3xl mx-auto w-full p-4 space-y-4">
         <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
           <div className="flex flex-wrap justify-start gap-2">
@@ -170,6 +219,11 @@ export default function AnalyticsFullPage() {
                 ? getErrorMessage(commitmentsQueryError)
                 : undefined
             }
+            commitmentPeople={commitmentPeople}
+            commitmentLoans={commitmentLoans}
+            commitmentCards={commitmentCards}
+            commitmentAccounts={commitmentAccounts}
+            commitmentTransactions={commitmentTransactionIds}
           />
         ) : null}
       </main>
@@ -207,6 +261,11 @@ type AnalyticsContentProps = {
   commitmentsLoading: boolean
   commitmentsError: boolean
   commitmentsErrorMessage?: string
+  commitmentPeople: Person[]
+  commitmentLoans: Account[]
+  commitmentCards: Account[]
+  commitmentAccounts: Account[]
+  commitmentTransactions: { id: string }[]
 }
 
 function MeasuredChart({
@@ -259,15 +318,16 @@ function AnalyticsContent({
   commitmentsLoading,
   commitmentsError,
   commitmentsErrorMessage,
+  commitmentPeople,
+  commitmentLoans,
+  commitmentCards,
+  commitmentAccounts,
+  commitmentTransactions,
 }: AnalyticsContentProps) {
   const netPositive = dashboardData.summary.netSavings >= 0
   const udharNet = dashboardData.udhar.net
   const udharNetPositive = udharNet >= 0
   const showExtendedMonthly = monthlyTrendHasExtendedSeries(dashboardData.monthlyTrends)
-  const commitmentsSorted = useMemo(
-    () => [...commitments].sort((a, b) => a.dueDate.localeCompare(b.dueDate)),
-    [commitments]
-  )
 
   return (
     <>
@@ -711,48 +771,17 @@ function AnalyticsContent({
         </CardContent>
       </Card>
 
-      <Card className="rounded-2xl border-border shadow-sm">
-        <CardHeader className="pb-2">
-          <CardTitle className="text-sm font-bold">Commitments</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-0 pt-0">
-          {commitmentsLoading ? (
-            <p className="py-4 text-center text-sm text-muted-foreground">Loading commitments…</p>
-          ) : commitmentsError ? (
-            <p className="text-sm text-destructive py-3">
-              {commitmentsErrorMessage ?? "Could not load commitments."}
-            </p>
-          ) : commitmentsSorted.length === 0 ? (
-            <p className="py-4 text-center text-sm text-muted-foreground">No commitments yet.</p>
-          ) : (
-            commitmentsSorted.map((c) => (
-              <div
-                key={c.id}
-                className="flex flex-col gap-1 border-b border-border/40 py-3 last:border-0"
-              >
-                <div className="flex justify-between gap-2 items-start">
-                  <span className="text-xs font-bold text-foreground">{c.title}</span>
-                  <span className="shrink-0 text-xs font-bold text-foreground tabular-nums">
-                    ₹{formatCommitmentInr(c.amount)}
-                  </span>
-                </div>
-                <div className="flex flex-wrap gap-x-2 gap-y-1 text-[10px] text-muted-foreground">
-                  <span>{c.dueDate}</span>
-                  <span aria-hidden>·</span>
-                  <span>{c.direction}</span>
-                  <span aria-hidden>·</span>
-                  <span>{c.kind}</span>
-                  <span aria-hidden>·</span>
-                  <span className="capitalize">{c.status}</span>
-                </div>
-                {c.note?.trim() ? (
-                  <p className="line-clamp-2 text-[10px] text-muted-foreground">{c.note.trim()}</p>
-                ) : null}
-              </div>
-            ))
-          )}
-        </CardContent>
-      </Card>
+      <CommitmentsSection
+        commitments={commitments}
+        loading={commitmentsLoading}
+        error={commitmentsError}
+        errorMessage={commitmentsErrorMessage}
+        people={commitmentPeople}
+        loans={commitmentLoans}
+        creditCards={commitmentCards}
+        allAccounts={commitmentAccounts}
+        transactions={commitmentTransactions}
+      />
     </>
   )
 }

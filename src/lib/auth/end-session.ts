@@ -1,7 +1,7 @@
 import { clearAllProfileDraftsFromStorage } from "@/lib/profile/local-profile-draft"
 import { clearToken } from "@/lib/auth/token"
 import { baseApi } from "@/store/api/base-api"
-import { clearUser } from "@/store/auth-slice"
+import { clearUser, setSessionReady } from "@/store/auth-slice"
 import { resetPeople } from "@/store/people-slice"
 import type { AppDispatch } from "@/store"
 
@@ -13,6 +13,7 @@ export function endUserSession(dispatch: AppDispatch) {
   clearAllProfileDraftsFromStorage()
   clearToken()
   dispatch(clearUser())
+  dispatch(setSessionReady())
   dispatch(baseApi.util.resetApiState())
   dispatch(resetPeople())
 }

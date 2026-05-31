@@ -1,6 +1,7 @@
 import type { Dispatch, SetStateAction } from "react"
 import { useMemo } from "react"
 import { ChevronDown, CreditCard, Gem } from "lucide-react"
+import { AppFieldError } from "@/components/app-field-error"
 import { ToggleTile } from "@/components/toggle-tile"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -14,7 +15,6 @@ import {
 } from "@/lib/udhar/udhar-entry-flow"
 import {
   UDHAR_ENTRY_TYPE_OPTIONS,
-  todayIsoDate,
   udharEntryTypesForScope,
   type UdharEntryTypeScope,
   type UdharFormState,
@@ -68,6 +68,7 @@ export type UdharEntryFormProps = {
   selectPersonId: string
   /** When set, only those types are shown in the Type section (single form, narrowed choices). */
   entryTypeScope?: UdharEntryTypeScope
+  fieldErrors?: Record<string, string>
 }
 
 export function UdharEntryForm({
@@ -81,6 +82,7 @@ export function UdharEntryForm({
   accountsListLoading,
   selectPersonId,
   entryTypeScope = "all",
+  fieldErrors = {},
 }: UdharEntryFormProps) {
   const entryTypeTiles = useMemo(() => {
     const allowed = new Set(udharEntryTypesForScope(entryTypeScope))
@@ -117,8 +119,8 @@ export function UdharEntryForm({
                     entryType: id,
                     accountId: "",
                     feeAmount: "",
-                    askRepayBy: id === "money_given" ? todayIsoDate() : f.askRepayBy,
-                    payBackBy: id === "money_taken" ? todayIsoDate() : f.payBackBy,
+                    ...(id === "money_given" ? { askRepayBy: "" } : {}),
+                    ...(id === "money_taken" ? { payBackBy: "" } : {}),
                   }))
                 }
               >
@@ -197,6 +199,7 @@ export function UdharEntryForm({
                   </select>
                   <SelectChevron />
                 </div>
+                <AppFieldError message={fieldErrors.selectedPersonId} />
               </div>
             ) : (
               <div className={APP_FORM_TWO_COL_GRID_CLASS}>
@@ -206,6 +209,7 @@ export function UdharEntryForm({
                   onChange={(e) => setForm((f) => ({ ...f, personName: e.target.value }))}
                   className={APP_FORM_FIELD_CLASS}
                   autoComplete="name"
+                  aria-invalid={!!fieldErrors.personName}
                 />
                 <Input
                   type="tel"
@@ -217,6 +221,7 @@ export function UdharEntryForm({
                 />
               </div>
             )}
+            <AppFieldError message={fieldErrors.personName} />
           </>
         )}
       </section>
@@ -235,7 +240,9 @@ export function UdharEntryForm({
             APP_FORM_AMOUNT_PRIMARY_CLASS,
             "text-2xl font-semibold text-primary/80 placeholder:text-primary/40"
           )}
+          aria-invalid={!!fieldErrors.amount}
         />
+        <AppFieldError message={fieldErrors.amount} />
       </section>
 
       <section>
@@ -307,6 +314,7 @@ export function UdharEntryForm({
           </select>
           <SelectChevron />
         </div>
+        <AppFieldError message={fieldErrors.accountId} />
       </section>
 
       {form.fundingSource === "credit_card" ? (
@@ -331,6 +339,7 @@ export function UdharEntryForm({
           <p className="mt-1 text-xs text-muted-foreground">
             Optional: bank or card charges (cash advance, etc.).
           </p>
+          <AppFieldError message={fieldErrors.feeAmount} />
         </section>
       ) : null}
 
@@ -354,7 +363,7 @@ export function UdharEntryForm({
                 htmlFor={showAskRepayBy ? "udhar-ask-repay" : "udhar-pay-back-by"}
                 className={APP_FORM_LABEL_CLASS}
               >
-                Money Back / Pay Date
+                {showAskRepayBy ? "Money Back Date" : "Pay Back Date"}
               </Label>
               <Input
                 id={showAskRepayBy ? "udhar-ask-repay" : "udhar-pay-back-by"}
@@ -369,6 +378,9 @@ export function UdharEntryForm({
                   }))
                 }
                 className={cn(APP_FORM_FIELD_CLASS, "scheme-light dark:scheme-dark")}
+              />
+              <AppFieldError
+                message={showAskRepayBy ? fieldErrors.askRepayBy : fieldErrors.payBackBy}
               />
             </div>
           </div>

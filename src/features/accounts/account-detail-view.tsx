@@ -3,11 +3,13 @@ import { useNavigate } from "react-router-dom"
 import { Archive, ArrowLeft, Banknote, Pencil, Scale, Trash2 } from "lucide-react"
 import { toast } from "sonner"
 import { ConfirmDeleteDialog } from "@/components/confirm-delete-dialog"
+import { EntityDeleteButton } from "@/components/entity-delete-button"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
 import { getAccountDeleteWarning } from "@/lib/accounts/account-delete"
+import { useAccountDeleteGuard } from "@/hooks/use-account-delete-guard"
 import type { Account } from "@/lib/api/account-schemas"
 import {
   accountAvailableBalanceInrFromApi,
@@ -15,7 +17,8 @@ import {
   accountSubtitleForList,
   openingBalanceInrFromApi,
 } from "@/lib/api/account-schemas"
-import { getErrorMessage, isFetchBaseQueryError } from "@/lib/api/errors"
+import { getErrorMessage } from "@/lib/api/errors"
+import { handleAuthApiErrorIfNeeded } from "@/lib/auth/handle-auth-api-error"
 import { RecentTransactionRow } from "@/features/entries/recent-transaction-row"
 import { useDeleteTransactionFlow } from "@/features/entries/use-delete-transaction-flow"
 import { formatCurrency } from "@/lib/format"
@@ -26,7 +29,7 @@ import {
   useGetAccountsQuery,
   useUpdateAccountMutation,
 } from "@/store/api/base-api"
-import { useAppSelector } from "@/store/hooks"
+import { useAppDispatch, useAppSelector } from "@/store/hooks"
 import {
   TX_FORM_DESCRIPTION_CLASS,
   TX_FORM_FIELDS_STACK_CLASS,
@@ -116,6 +119,7 @@ export function AccountDetailView({
   onHighlightTransactionConsumed?: () => void
 }) {
   const navigate = useNavigate()
+  const dispatch = useAppDispatch()
   const user = useAppSelector((s) => s.auth.user)
   const [updateAccount, { isLoading: isSaving }] = useUpdateAccountMutation()
   const [deleteAccount, { isLoading: isDeletingAccount }] = useDeleteAccountMutation()
@@ -130,10 +134,16 @@ export function AccountDetailView({
     skip: !user || !account,
   })
 
-  const { data: accountLedgerEntries = [] } = useGetAccountLedgerQuery(
-    { accountId: String(account?.id ?? ""), limit: 500 },
-    { skip: !account }
-  )
+  const { data: accountLedgerEntries = [], isFetching: accountLedgerFetching } =
+    useGetAccountLedgerQuery(
+      { accountId: String(account?.id ?? ""), limit: 500 },
+      { skip: !account }
+    )
+
+  const deleteGuard = useAccountDeleteGuard(String(account?.id ?? ""), "account", {
+    ledgerEntries: accountLedgerEntries,
+    ledgerFetching: accountLedgerFetching,
+  })
 
   const dismiss = useCallback(() => {
     setDeleteConfirmOpen(false)
@@ -177,7 +187,6 @@ export function AccountDetailView({
     }
 
     try {
-      console.log("[account] PUT minimal body:", JSON.stringify(payload, null, 2))
       const response = await updateAccount({ id: accountId, body: payload }).unwrap()
       const next = (response.account as Account | undefined) ?? {
         ...account,
@@ -190,19 +199,10 @@ export function AccountDetailView({
       setIsEditing(false)
       setDraft(null)
     } catch (error) {
-      console.error("[account] update failed", error)
-      const msg = getErrorMessage(error)
-      const unauthorized =
-        (isFetchBaseQueryError(error) && error.status === 401) ||
-        /authorization token is required/i.test(msg)
-      if (unauthorized) {
-        toast.error("Session expired, please login again")
-        navigate("/login", { replace: true })
-        return
-      }
-      toast.error(msg || "Failed to update account")
+      if (handleAuthApiErrorIfNeeded(error, dispatch)) return
+      toast.error(getErrorMessage(error) || "Failed to update account")
     }
-  }, [account, draft, navigate, onAccountUpdated, updateAccount])
+  }, [account, draft, dispatch, onAccountUpdated, updateAccount])
 
   useEffect(() => {
     if (!account) return
@@ -217,6 +217,12 @@ export function AccountDetailView({
 
   const confirmDeleteAccount = useCallback(async () => {
     if (!account) return
+    if (deleteGuard.blocked) {
+      toast.error(
+        deleteGuard.message ?? "Delete is only available for empty entities with no history."
+      )
+      return
+    }
     const accountId = String(account.id ?? "").trim()
     if (!accountId) {
       toast.error("Unable to delete: missing account id")
@@ -234,7 +240,7 @@ export function AccountDetailView({
       const msg = getErrorMessage(error)
       toast.error(msg || "Failed to delete")
     }
-  }, [account, deleteAccount, onAccountDeleted, onBack])
+  }, [account, deleteAccount, deleteGuard, onAccountDeleted, onBack])
 
   const { monthIn, monthOut } = useMemo(() => {
     if (!account) return { monthIn: 0, monthOut: 0 }
@@ -510,15 +516,13 @@ export function AccountDetailView({
                 <Archive className="mr-2 size-4 shrink-0" strokeWidth={2} aria-hidden />
                 Archive
               </Button>
-              <Button
-                type="button"
-                variant="destructive"
-                className="h-11 rounded-xl font-semibold"
-                onClick={() => setDeleteConfirmOpen(true)}
-              >
-                <Trash2 className="mr-2 size-4 shrink-0" strokeWidth={2} aria-hidden />
-                Delete
-              </Button>
+              <EntityDeleteButton
+                guard={deleteGuard}
+                className="h-11 min-w-0 rounded-xl"
+                onDelete={() => setDeleteConfirmOpen(true)}
+                label="Delete"
+                icon={<Trash2 className="mr-2 size-4 shrink-0" strokeWidth={2} aria-hidden />}
+              />
             </div>
           </div>
 

@@ -45,6 +45,36 @@ export function getAuthErrorMessage(error: unknown): string {
   return getErrorMessage(error)
 }
 
+/** Toast copy: backend `message` verbatim when present; no auth/generic substitution. */
+export function getBackendToastMessage(error: unknown): string {
+  if (isFetchBaseQueryError(error)) {
+    if (error.status === "FETCH_ERROR") {
+      return "Network error — check your connection."
+    }
+    if (error.status === "PARSING_ERROR") {
+      return "Invalid response from server."
+    }
+
+    const fromFields = flattenValidationErrors(error.data)
+    const primary = primaryMessageFromErrorData(error.data)
+
+    if (fromFields && primary) {
+      return `${primary} ${fromFields}`
+    }
+    if (primary) return primary
+    if (fromFields) return fromFields
+
+    if (typeof error.status === "number") {
+      return `Request failed (${String(error.status)})`
+    }
+    return "Something went wrong."
+  }
+  if (error instanceof Error && error.message.trim()) {
+    return error.message.trim()
+  }
+  return "Something went wrong."
+}
+
 /** Human-readable message for toasts or error UI. */
 export function getErrorMessage(error: unknown): string {
   if (isFetchBaseQueryError(error)) {
