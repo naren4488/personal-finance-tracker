@@ -30,8 +30,8 @@ function normalizeEntryTypeToken(raw: string): UdharEntryTypeNorm | null {
   /** Backend destinationType slugs for person ledger rows. */
   if (t === "person_lend") return "money_given"
   if (t === "person_borrow") return "money_taken"
-  if (t === "person_repayment_in") return "payment_received"
-  if (t === "person_repayment_out") return "payment_made"
+  if (t === "person_repayment" || t === "person_repayment_in") return "payment_received"
+  if (t === "person_payment" || t === "person_repayment_out") return "payment_made"
   return null
 }
 

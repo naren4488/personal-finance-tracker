@@ -436,6 +436,8 @@ export type AddTransactionModalProps = {
   open: boolean
   onOpenChange: (open: boolean) => void
   expenseFlow?: boolean
+  /** Transfer tab / transfer-only entry: hide Income/Expense type switcher; lock form to transfer. */
+  transferFlow?: boolean
   expenseOnBehalfPreset?: { personId: string; personName?: string; lock?: boolean } | null
   initialType?: TransactionType
   onOpenAddAccount?: () => void
@@ -453,6 +455,7 @@ type MountedProps = {
   open: boolean
   onOpenChange: (open: boolean) => void
   expenseFlow: boolean
+  transferFlow: boolean
   expenseOnBehalfPreset: { personId: string; personName?: string; lock?: boolean } | null
   initialType: TransactionType
   onOpenAddAccount?: () => void
@@ -467,6 +470,7 @@ function AddTransactionModalMounted({
   open,
   onOpenChange,
   expenseFlow,
+  transferFlow,
   expenseOnBehalfPreset,
   initialType,
   onOpenAddAccount,
@@ -524,7 +528,7 @@ function AddTransactionModalMounted({
   const presetPersonId = expenseOnBehalfPreset?.personId?.trim() ?? ""
   const presetPersonName = expenseOnBehalfPreset?.personName?.trim() ?? ""
   const [txType, setTxType] = useState<TransactionType>(() =>
-    expenseFlow ? "expense" : lockTransferPayment ? "transfer" : initialType
+    expenseFlow ? "expense" : transferFlow || lockTransferPayment ? "transfer" : initialType
   )
   const [amount, setAmount] = useState("")
   const [description, setDescription] = useState("")
@@ -579,7 +583,11 @@ function AddTransactionModalMounted({
     {}
   )
 
-  const effectiveType: TransactionType = expenseFlow ? "expense" : txType
+  const effectiveType: TransactionType = expenseFlow
+    ? "expense"
+    : transferFlow
+      ? "transfer"
+      : txType
   const hasAccount = accounts.length > 0
   const showPaidOnBehalf = effectiveType === "expense"
   const isOnBehalfLocked = Boolean(
@@ -744,8 +752,12 @@ function AddTransactionModalMounted({
     return list
   }, [loanAccounts, accounts, lockTransferPayment, transferPaymentPreset, loanAccountId])
 
-  const modalTitle = expenseFlow ? "Add Expense" : "Add Transaction"
-  const submitLabel = expenseFlow ? "Add Expense" : "Add Transaction"
+  const modalTitle = expenseFlow ? "Add Expense" : transferFlow ? "Add Transfer" : "Add Transaction"
+  const submitLabel = expenseFlow
+    ? "Add Expense"
+    : transferFlow
+      ? "Add Transfer"
+      : "Add Transaction"
 
   const peopleListLoading = peopleLoading || peopleFetching
 
@@ -789,9 +801,16 @@ function AddTransactionModalMounted({
     queueMicrotask(() => {
       setAccountId(raw)
       setPaymentMethod(card ? "card" : "account")
-      if (card && !expenseFlow) setTxType("expense")
+      if (card && !expenseFlow && !transferFlow) setTxType("expense")
     })
-  }, [open, prefillAccountId, transferSourceAccounts, creditCardAccounts, expenseFlow])
+  }, [
+    open,
+    prefillAccountId,
+    transferSourceAccounts,
+    creditCardAccounts,
+    expenseFlow,
+    transferFlow,
+  ])
 
   useEffect(() => {
     if (!open || expenseFlow) return
@@ -1059,7 +1078,11 @@ function AddTransactionModalMounted({
             </Button>
           </div>
           <DialogDescription className={TX_FORM_DESCRIPTION_CLASS}>
-            Log income, expenses, or transfers in one place.
+            {transferFlow
+              ? "Move money between accounts, pay a credit card bill, or record a loan EMI."
+              : expenseFlow
+                ? "Record an expense from an account or credit card."
+                : "Log income, expenses, or transfers in one place."}
           </DialogDescription>
         </header>
       }
@@ -1129,7 +1152,7 @@ function AddTransactionModalMounted({
 
       {!isLoading && !isError && hasAccount && (
         <div className={TX_FORM_FIELDS_STACK_CLASS}>
-          {!expenseFlow && !lockTransferPayment && (
+          {!expenseFlow && !transferFlow && !lockTransferPayment && (
             <section>
               <Label className={TX_FORM_LABEL_CLASS}>Type</Label>
               <div className="grid grid-cols-3 gap-3">
@@ -2023,6 +2046,7 @@ export function AddTransactionModal({
   open,
   onOpenChange,
   expenseFlow = false,
+  transferFlow = false,
   expenseOnBehalfPreset = null,
   initialType = "expense",
   onOpenAddAccount,
@@ -2033,7 +2057,7 @@ export function AddTransactionModal({
   onTransactionSuccess,
 }: AddTransactionModalProps) {
   if (!open) return null
-  const typeKey = expenseFlow ? "expense" : initialType
+  const typeKey = expenseFlow ? "expense" : transferFlow ? "transfer" : initialType
   const presetKey = transferPaymentPreset
     ? `${transferPaymentPreset.kind}-${
         transferPaymentPreset.kind === "credit_card_bill"
@@ -2048,8 +2072,9 @@ export function AddTransactionModal({
       key={`${typeKey}-${presetKey}-${prefillKey}-${onBehalfKey}`}
       open={open}
       expenseFlow={expenseFlow}
+      transferFlow={transferFlow}
       expenseOnBehalfPreset={expenseOnBehalfPreset}
-      initialType={expenseFlow ? "expense" : initialType}
+      initialType={expenseFlow ? "expense" : transferFlow ? "transfer" : initialType}
       onOpenChange={onOpenChange}
       onOpenAddAccount={onOpenAddAccount}
       transferPaymentPreset={transferPaymentPreset}

@@ -27,24 +27,14 @@ import {
   accountAvailableBalanceInrFromApi,
   sortAccountsNewestFirst,
 } from "@/lib/api/account-schemas"
-import type { DashboardAccountPreview } from "@/lib/api/dashboard-home-schemas"
 import {
-  buildHorizonBounds,
-  filterMoneyFlowByHorizon,
-  formatYyyyMmDd,
-  incomeTxToMoneyFlowRow,
-  mergeMoneyFlowDedupe,
-  scheduledToPayRow,
-  scheduledToReceiveRow,
-  sortMoneyFlowRows,
-  type MoneyFlowRow,
-} from "@/lib/home-money-overview"
+  resolveHomeCardDuesDisplayInr,
+  type DashboardAccountPreview,
+} from "@/lib/api/dashboard-home-schemas"
+import { buildHomeIncomingGroups, buildHomeOutgoingGroups } from "@/lib/home-money-flow-filters"
+import type { MoneyFlowRow } from "@/lib/home-money-overview"
 import { formatCurrency, formatDayMonthShort } from "@/lib/format"
-import {
-  useGetAccountsQuery,
-  useGetDashboardQuery,
-  useGetRecentTransactionsQuery,
-} from "@/store/api/base-api"
+import { useGetAccountsQuery, useGetDashboardQuery } from "@/store/api/base-api"
 import { buildAccountsDetailPath } from "@/features/accounts/accounts-route"
 import { GettingStartedCard } from "@/features/home/getting-started-card"
 import { useAppDispatch, useAppSelector } from "@/store/hooks"
@@ -103,83 +93,29 @@ export default function HomePage() {
     isFetching: accountsFetching,
   } = useGetAccountsQuery(undefined, { skip: !user })
 
-  const incomeDateRange = useMemo(() => {
-    const { start, end } = buildHorizonBounds(horizonDays)
-    const lookback = new Date(start)
-    lookback.setDate(lookback.getDate() - 45)
-    return { fromDate: formatYyyyMmDd(lookback), toDate: formatYyyyMmDd(end) }
-  }, [horizonDays])
-
-  const { data: incomeTransactions = [] } = useGetRecentTransactionsQuery(
-    {
-      type: "income",
-      limit: 400,
-      fromDate: incomeDateRange.fromDate,
-      toDate: incomeDateRange.toDate,
-    },
-    { skip: !user }
-  )
-
   const outgoingRows = useMemo(() => {
     if (!dashboard) {
-      return { udhar: [] as MoneyFlowRow[], loan: [] as MoneyFlowRow[], card: [] as MoneyFlowRow[] }
-    }
-    // Use dashboard items directly (backend handles horizon filtering & includes all items)
-    const items = dashboard.toBePaid.items.map(scheduledToPayRow)
-
-    const udhar: MoneyFlowRow[] = []
-    const loan: MoneyFlowRow[] = []
-    const card: MoneyFlowRow[] = []
-
-    for (const item of items) {
-      // Classify each row by type
-      const title = item.title.toLowerCase()
-      const isLoan = title.includes("loan") || title.includes("emi")
-      const isCard = title.includes("card") || title.includes("credit")
-
-      if (isCard) {
-        card.push(item)
-      } else if (isLoan) {
-        loan.push(item)
-      } else {
-        udhar.push(item)
+      return {
+        udhar: [] as MoneyFlowRow[],
+        loan: [] as MoneyFlowRow[],
+        card: [] as MoneyFlowRow[],
+        total: 0,
       }
     }
-
-    return {
-      udhar: sortMoneyFlowRows(udhar),
-      loan: sortMoneyFlowRows(loan),
-      card: sortMoneyFlowRows(card),
-    }
-  }, [dashboard])
+    return buildHomeOutgoingGroups(dashboard.toBePaid.items, horizonDays)
+  }, [dashboard, horizonDays])
 
   const incomingRows = useMemo(() => {
     if (!dashboard) {
-      return { udhar: [] as MoneyFlowRow[], income: [] as MoneyFlowRow[] }
+      return { udhar: [] as MoneyFlowRow[], income: [] as MoneyFlowRow[], total: 0 }
     }
-    const { start, end } = buildHorizonBounds(horizonDays)
+    return buildHomeIncomingGroups(dashboard.incomingMoney.items, horizonDays)
+  }, [dashboard, horizonDays])
 
-    // Dashboard scheduled items for incoming money
-    const scheduledRows = dashboard.incomingMoney.items.map(scheduledToReceiveRow)
-
-    // Income transactions (recent, within horizon)
-    const txRows = incomeTransactions
-      .map(incomeTxToMoneyFlowRow)
-      .filter((r): r is MoneyFlowRow => r != null)
-    const txInHorizon = filterMoneyFlowByHorizon(txRows, start, end)
-
-    // Merge and deduplicate
-    const allRows = mergeMoneyFlowDedupe([...scheduledRows, ...txInHorizon])
-
-    // Classify
-    const udhar = allRows.filter((r) => r.title.toLowerCase().includes("udhar"))
-    const income = allRows.filter((r) => !r.title.toLowerCase().includes("udhar"))
-
-    return {
-      udhar: sortMoneyFlowRows(udhar),
-      income: sortMoneyFlowRows(income),
-    }
-  }, [dashboard, horizonDays, incomeTransactions])
+  const cardDuesDisplay = useMemo(() => {
+    if (!dashboard) return 0
+    return resolveHomeCardDuesDisplayInr(dashboard.summary, dashboard.stats)
+  }, [dashboard])
 
   const txDelete = useDeleteTransactionFlow()
 
@@ -285,7 +221,7 @@ export default function HomePage() {
                 <MetricCell
                   icon={CreditCard}
                   label="Card dues"
-                  value={formatCurrency(dashboard.summary.cardDues)}
+                  value={formatCurrency(cardDuesDisplay)}
                 />
                 <MetricCell
                   icon={Users}
@@ -295,16 +231,17 @@ export default function HomePage() {
               </div>
               <div className="grid grid-cols-3 gap-2 pt-1">
                 <Link
-                  to="/entries"
+                  to="/entries?add=txns"
                   className="rounded-xl border border-white/25 bg-white/5 px-2 py-2.5 text-center text-[11px] font-semibold text-white transition-colors hover:bg-white/10"
                 >
-                  + Entry
+                  Add Entry
                 </Link>
                 <Link
                   to="/accounts"
+                  state={{ openAddAccount: true }}
                   className="rounded-xl border border-white/25 bg-white/5 px-2 py-2.5 text-center text-[11px] font-semibold text-white transition-colors hover:bg-white/10"
                 >
-                  + Account
+                  Add Bank
                 </Link>
                 <button
                   type="button"
@@ -348,51 +285,48 @@ export default function HomePage() {
 
         {!showSkeleton && dashboard ? (
           <>
-            <MoneyFlowGroupedSection
-              title="To Be Paid by Me"
-              variant="pay"
-              total={dashboard.toBePaid.total}
+            <HomeMoneyFlowOverviewCard
               horizonDays={horizonDays}
               onHorizonDaysChange={setHorizonDays}
-              emptyCopy={`No payments due in the next ${horizonDays} day${horizonDays === 1 ? "" : "s"}.`}
-              subsections={[
-                {
-                  heading: "Borrowed Udhar",
-                  rows: outgoingRows.udhar,
-                  dateHint: "due",
-                  chip: "To pay",
-                },
-                { heading: "Loan EMI", rows: outgoingRows.loan, dateHint: "due", chip: "EMI" },
-                {
-                  heading: "Credit card bills",
-                  rows: outgoingRows.card,
-                  dateHint: "due",
-                  chip: "Bill",
-                },
-              ]}
-            />
-
-            <MoneyFlowGroupedSection
-              title="Incoming Money"
-              variant="receive"
-              total={dashboard.incomingMoney.total}
-              horizonDays={horizonDays}
-              onHorizonDaysChange={setHorizonDays}
-              emptyCopy={`No expected incoming in the next ${horizonDays} day${horizonDays === 1 ? "" : "s"}.`}
-              subsections={[
-                {
-                  heading: "Lent Udhar",
-                  rows: incomingRows.udhar,
-                  dateHint: "expect",
-                  chip: "To receive",
-                },
-                {
-                  heading: "Salary / Income",
-                  rows: incomingRows.income,
-                  dateHint: "expect",
-                  chip: "Income",
-                },
-              ]}
+              paySection={{
+                title: "To Be Paid by Me",
+                total: outgoingRows.total,
+                emptyCopy: `No pending payments in the next ${horizonDays} day${horizonDays === 1 ? "" : "s"}.`,
+                subsections: [
+                  {
+                    heading: "Borrowed Udhar",
+                    rows: outgoingRows.udhar,
+                    dateHint: "due",
+                    chip: "To pay",
+                  },
+                  { heading: "Loan EMI", rows: outgoingRows.loan, dateHint: "due", chip: "EMI" },
+                  {
+                    heading: "Credit card bills",
+                    rows: outgoingRows.card,
+                    dateHint: "due",
+                    chip: "Bill",
+                  },
+                ],
+              }}
+              receiveSection={{
+                title: "Incoming Money",
+                total: incomingRows.total,
+                emptyCopy: `No pending incoming in the next ${horizonDays} day${horizonDays === 1 ? "" : "s"}.`,
+                subsections: [
+                  {
+                    heading: "Lent Udhar",
+                    rows: incomingRows.udhar,
+                    dateHint: "expect",
+                    chip: "To receive",
+                  },
+                  {
+                    heading: "Salary / Income",
+                    rows: incomingRows.income,
+                    dateHint: "expect",
+                    chip: "Income",
+                  },
+                ],
+              }}
             />
 
             <div className="grid grid-cols-3 gap-2">
@@ -571,139 +505,176 @@ function MetricCell({
   )
 }
 
-function MoneyFlowGroupedSection({
-  title,
-  variant,
-  total,
+type MoneyFlowSubsection = {
+  heading: string
+  rows: MoneyFlowRow[]
+  dateHint: "due" | "expect"
+  chip: string
+}
+
+type MoneyFlowSectionConfig = {
+  title: string
+  total: number
+  emptyCopy: string
+  subsections: MoneyFlowSubsection[]
+}
+
+function HomeHorizonDaysFilter({
   horizonDays,
   onHorizonDaysChange,
-  emptyCopy,
-  subsections,
 }: {
-  title: string
-  variant: "pay" | "receive"
-  total: number
   horizonDays: number
   onHorizonDaysChange: (d: number) => void
-  emptyCopy: string
-  subsections: { heading: string; rows: MoneyFlowRow[]; dateHint: "due" | "expect"; chip: string }[]
 }) {
+  return (
+    <div className="flex flex-wrap items-center justify-center gap-2 border-b border-border/60 pb-3">
+      {DAY_PRESETS.map((p) => (
+        <button
+          key={p.days}
+          type="button"
+          onClick={() => onHorizonDaysChange(p.days)}
+          className={cn(
+            "rounded-full px-3 py-1 text-[10px] font-semibold transition-colors",
+            horizonDays === p.days
+              ? "bg-primary text-primary-foreground"
+              : "bg-muted text-muted-foreground hover:bg-muted/80"
+          )}
+        >
+          {p.label}
+        </button>
+      ))}
+      <div className="flex items-center gap-1.5">
+        <Input
+          type="number"
+          min={1}
+          max={365}
+          className="h-8 w-14 rounded-lg border-border bg-background px-2 text-center text-xs tabular-nums text-foreground"
+          value={horizonDays}
+          onChange={(e) => {
+            const raw = e.target.value
+            if (raw === "") return
+            const v = parseInt(raw, 10)
+            if (Number.isFinite(v) && v >= 1 && v <= 365) onHorizonDaysChange(v)
+          }}
+          aria-label="Days ahead for payables and incoming"
+        />
+        <span className="text-[10px] text-muted-foreground">days</span>
+      </div>
+    </div>
+  )
+}
+
+function MoneyFlowInnerSection({
+  variant,
+  title,
+  total,
+  emptyCopy,
+  subsections,
+}: MoneyFlowSectionConfig & { variant: "pay" | "receive" }) {
   const isPay = variant === "pay"
   const accent = isPay ? "text-destructive" : "text-emerald-600 dark:text-emerald-400"
-  const chipActive = isPay
-    ? "bg-destructive text-destructive-foreground"
-    : "bg-emerald-600 text-white dark:bg-emerald-700"
-
   const anyRows = subsections.some((s) => s.rows.length > 0)
 
   return (
-    <Card
-      className={cn(
-        "rounded-2xl border bg-card text-card-foreground shadow-sm",
-        isPay ? "border-destructive/25" : "border-emerald-500/30 dark:border-emerald-800/50"
-      )}
+    <section
+      className="space-y-3"
+      aria-labelledby={isPay ? "home-pay-heading" : "home-receive-heading"}
     >
-      <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0 pb-2">
-        <CardTitle
+      <div className="flex flex-row items-center justify-between gap-2">
+        <h3
+          id={isPay ? "home-pay-heading" : "home-receive-heading"}
           className={cn(
             "text-sm font-bold",
             isPay ? "text-destructive" : "text-emerald-700 dark:text-emerald-400"
           )}
         >
           {title}
-        </CardTitle>
+        </h3>
         <span className={cn("text-sm font-bold tabular-nums", accent)}>
           {formatCurrency(total)}
         </span>
-      </CardHeader>
-      <CardContent className="space-y-3 pt-0">
-        <div className="flex flex-wrap items-center justify-center gap-2">
-          {DAY_PRESETS.map((p) => (
-            <button
-              key={p.days}
-              type="button"
-              onClick={() => onHorizonDaysChange(p.days)}
-              className={cn(
-                "rounded-full px-3 py-1 text-[10px] font-semibold transition-colors",
-                horizonDays === p.days
-                  ? chipActive
-                  : "bg-muted text-muted-foreground hover:bg-muted/80"
-              )}
-            >
-              {p.label}
-            </button>
-          ))}
-          <div className="flex items-center gap-1.5">
-            <Input
-              type="number"
-              min={1}
-              max={365}
-              className="h-8 w-14 rounded-lg border-border bg-background px-2 text-center text-xs tabular-nums text-foreground"
-              value={horizonDays}
-              onChange={(e) => {
-                const raw = e.target.value
-                if (raw === "") return
-                const v = parseInt(raw, 10)
-                if (Number.isFinite(v) && v >= 1 && v <= 365) onHorizonDaysChange(v)
-              }}
-              aria-label="Days ahead"
-            />
-            <span className="text-[10px] text-muted-foreground">days</span>
-          </div>
-        </div>
-        {!anyRows ? (
-          <p className="py-4 text-center text-sm text-muted-foreground">{emptyCopy}</p>
-        ) : (
-          <div className="space-y-4">
-            {subsections.map((sub) => (
-              <div key={sub.heading} className="space-y-2">
-                <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-                  {sub.heading}
+      </div>
+      {!anyRows ? (
+        <p className="py-4 text-center text-sm text-muted-foreground">{emptyCopy}</p>
+      ) : (
+        <div className="space-y-4">
+          {subsections.map((sub) => (
+            <div key={sub.heading} className="space-y-2">
+              <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                {sub.heading}
+              </p>
+              {sub.rows.length === 0 ? (
+                <p className="rounded-xl border border-dashed border-border/70 bg-muted/30 px-3 py-2 text-center text-[11px] text-muted-foreground dark:bg-muted/20">
+                  None in this window.
                 </p>
-                {sub.rows.length === 0 ? (
-                  <p className="rounded-xl border border-dashed border-border/70 bg-muted/30 px-3 py-2 text-center text-[11px] text-muted-foreground dark:bg-muted/20">
-                    None in this window.
-                  </p>
-                ) : (
-                  <ul className="space-y-1.5">
-                    {sub.rows.map((row) => (
-                      <li
-                        key={row.id}
-                        className="rounded-xl border border-border/60 bg-muted/20 px-3 py-2.5 dark:bg-muted/10"
-                      >
-                        <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1 text-xs">
-                          <span className="min-w-0 flex-1 font-semibold text-foreground">
-                            {row.title}
-                          </span>
-                          <span className="shrink-0 text-muted-foreground" aria-hidden>
-                            →
-                          </span>
-                          <span className={cn("shrink-0 font-bold tabular-nums", accent)}>
-                            {formatCurrency(row.amount)}
-                          </span>
-                          <span className="shrink-0 text-muted-foreground" aria-hidden>
-                            →
-                          </span>
-                          <span className="shrink-0 text-muted-foreground">
-                            {sub.dateHint === "due"
-                              ? "Due "
-                              : sub.chip === "Income"
-                                ? "Expected "
-                                : ""}
-                            {formatDayMonthShort(row.date)}
-                          </span>
-                          <span className="ml-auto shrink-0 rounded-full bg-muted px-2 py-0.5 text-[10px] font-semibold text-muted-foreground">
-                            {sub.chip}
-                          </span>
-                        </div>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </div>
-            ))}
-          </div>
-        )}
+              ) : (
+                <ul className="space-y-1.5">
+                  {sub.rows.map((row) => (
+                    <li
+                      key={row.id}
+                      className="rounded-xl border border-border/60 bg-muted/20 px-3 py-2.5 dark:bg-muted/10"
+                    >
+                      <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1 text-xs">
+                        <span className="min-w-0 flex-1 font-semibold text-foreground">
+                          {row.title}
+                        </span>
+                        <span className="shrink-0 text-muted-foreground" aria-hidden>
+                          →
+                        </span>
+                        <span className={cn("shrink-0 font-bold tabular-nums", accent)}>
+                          {formatCurrency(row.amount)}
+                        </span>
+                        <span className="shrink-0 text-muted-foreground" aria-hidden>
+                          →
+                        </span>
+                        <span className="shrink-0 text-muted-foreground">
+                          {sub.dateHint === "due"
+                            ? "Due "
+                            : sub.chip === "Income"
+                              ? "Expected "
+                              : ""}
+                          {formatDayMonthShort(row.date)}
+                        </span>
+                        <span className="ml-auto shrink-0 rounded-full bg-muted px-2 py-0.5 text-[10px] font-semibold text-muted-foreground">
+                          {sub.chip}
+                        </span>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+    </section>
+  )
+}
+
+function HomeMoneyFlowOverviewCard({
+  horizonDays,
+  onHorizonDaysChange,
+  paySection,
+  receiveSection,
+}: {
+  horizonDays: number
+  onHorizonDaysChange: (d: number) => void
+  paySection: MoneyFlowSectionConfig
+  receiveSection: MoneyFlowSectionConfig
+}) {
+  return (
+    <Card className="rounded-2xl border border-border bg-card text-card-foreground shadow-sm">
+      <CardHeader className="pb-2">
+        <CardTitle className="text-sm font-bold text-foreground">Money overview</CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-4 pt-0">
+        <HomeHorizonDaysFilter
+          horizonDays={horizonDays}
+          onHorizonDaysChange={onHorizonDaysChange}
+        />
+        <MoneyFlowInnerSection variant="pay" {...paySection} />
+        <div className="border-t border-border/60" role="separator" />
+        <MoneyFlowInnerSection variant="receive" {...receiveSection} />
       </CardContent>
     </Card>
   )
@@ -779,7 +750,7 @@ function HomeSkeleton() {
   return (
     <div className="space-y-6">
       <Skeleton className="h-40 w-full rounded-2xl" />
-      <Skeleton className="h-40 w-full rounded-2xl" />
+      <Skeleton className="h-56 w-full rounded-2xl" />
       <div className="grid grid-cols-3 gap-2">
         <Skeleton className="h-24 rounded-2xl" />
         <Skeleton className="h-24 rounded-2xl" />

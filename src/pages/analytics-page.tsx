@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import { useLocation, useNavigate } from "react-router-dom"
 import { TrendingUp, TrendingDown, Search, Wallet, CreditCard } from "lucide-react"
 import {
@@ -17,7 +17,6 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Skeleton } from "@/components/ui/skeleton"
-import { AddCommitmentModal } from "@/features/analytics/add-commitment-modal"
 import { getErrorMessage } from "@/lib/api/errors"
 import { handleAuthApiErrorIfNeeded } from "@/lib/auth/handle-auth-api-error"
 import { CommitmentsSection } from "@/features/analytics/commitments-section"
@@ -68,7 +67,6 @@ export default function AnalyticsFullPage() {
   const user = useAppSelector((s) => s.auth.user)
   const [activeTab, setActiveTab] = useState<(typeof RANGE_TABS)[number]>("Month")
   const [searchInput, setSearchInput] = useState("")
-  const [commitmentOpen, setCommitmentOpen] = useState(false)
 
   const days = RANGE_TO_DAYS[activeTab] ?? 30
   const debouncedSearch = useDebouncedValue(searchInput, ANALYTICS_SEARCH_DEBOUNCE_MS)
@@ -128,10 +126,6 @@ export default function AnalyticsFullPage() {
     scrollToCommitmentsSection()
   }, [commitmentsLoading, commitments.length])
 
-  const handleCommitmentCreated = useCallback(() => {
-    scrollToCommitmentsSection()
-  }, [])
-
   useEffect(() => {
     if (!isError || !error) return
     handleAuthApiErrorIfNeeded(error, dispatch)
@@ -147,38 +141,22 @@ export default function AnalyticsFullPage() {
         analyticsUpdating && dashboardData && "opacity-95"
       )}
     >
-      <AddCommitmentModal
-        open={commitmentOpen}
-        onOpenChange={setCommitmentOpen}
-        onCreatedSuccess={handleCommitmentCreated}
-      />
       <main className="flex-1 max-w-3xl mx-auto w-full p-4 space-y-4">
-        <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
-          <div className="flex flex-wrap justify-start gap-2">
-            {RANGE_TABS.map((tab) => (
-              <button
-                key={tab}
-                type="button"
-                onClick={() => setActiveTab(tab)}
-                className={`px-4 py-1.5 rounded-full text-xs font-medium transition-colors ${
-                  activeTab === tab
-                    ? "bg-primary text-primary-foreground shadow-sm"
-                    : "bg-card text-muted-foreground border border-border hover:bg-muted/60"
-                }`}
-              >
-                {tab}
-              </button>
-            ))}
-          </div>
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            className="shrink-0 rounded-full border-border bg-card px-3 py-1.5 text-xs font-semibold text-primary hover:bg-muted"
-            onClick={() => setCommitmentOpen(true)}
-          >
-            + Commitment
-          </Button>
+        <div className="mb-2 flex flex-wrap justify-start gap-2">
+          {RANGE_TABS.map((tab) => (
+            <button
+              key={tab}
+              type="button"
+              onClick={() => setActiveTab(tab)}
+              className={`px-4 py-1.5 rounded-full text-xs font-medium transition-colors ${
+                activeTab === tab
+                  ? "bg-primary text-primary-foreground shadow-sm"
+                  : "bg-card text-muted-foreground border border-border hover:bg-muted/60"
+              }`}
+            >
+              {tab}
+            </button>
+          ))}
         </div>
 
         {!user ? (

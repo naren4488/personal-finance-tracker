@@ -1,23 +1,8 @@
-import { TransactionBottomTag } from "@/features/entries/emi-transaction-bottom-tag"
-import { TransactionEntryDeleteButton } from "@/features/entries/transaction-entry-delete-button"
-import {
-  buildTransactionBottomLabel,
-  buildRecentTxPrimaryTitle,
-  buildRecentTxSubtitleParts,
-} from "@/features/entries/transaction-list-utils"
+import { TransactionListRow } from "@/features/entries/transaction-list-row"
 import type { Account } from "@/lib/api/account-schemas"
 import type { PersonUdharTotals } from "@/lib/api/people-schemas"
-import { getUdharLedgerRowHeading } from "@/lib/udhar/udhar-entry-labels"
-import { getUdharEffect, udharEffectTextClassName } from "@/lib/udhar/udhar-effect"
-import {
-  getRecentTransactionCategoryLabel,
-  inferUdharPersonName,
-  parseSignedAmountString,
-  sanitizeUserFacingApiText,
-  type RecentTransaction,
-} from "@/lib/api/transaction-schemas"
-import { ACTION_GROUP_ROW_TX } from "@/lib/ui/action-group-classes"
-import { formatCurrency, formatDate } from "@/lib/format"
+import type { RecentTransaction } from "@/lib/api/transaction-schemas"
+import { formatCurrency } from "@/lib/format"
 import {
   personNetAmountClassName,
   personNetBalanceLine,
@@ -86,98 +71,21 @@ export function PersonUdharLedgerList({
   entries,
   onDeleteEntry,
   listClassName,
-  accounts,
 }: {
   entries: RecentTransaction[]
   onDeleteEntry?: (tx: RecentTransaction) => void
   /** e.g. modal: min-h-0 flex-1 overflow-y-auto overscroll-contain … */
   listClassName?: string
-  /** When provided, subtitle shows person + resolved account names (same as Entries). */
+  /** @deprecated Not used for display; API fields on each transaction row are used instead. */
   accounts?: Account[]
 }) {
   return (
     <ul className={cn("space-y-2 pr-0.5", listClassName)}>
-      {entries.map((tx) => {
-        const effect = getUdharEffect(tx)
-        const absAmt = Math.abs(parseSignedAmountString(tx.signedAmount))
-        const heading = getUdharLedgerRowHeading(tx)
-        const rec = tx as unknown as Record<string, unknown>
-        const personId = typeof rec.personId === "string" ? rec.personId.trim() : ""
-        const paidOnBehalf = rec.paidOnBehalf === true || Boolean(personId)
-        const personName = inferUdharPersonName(tx)
-        const category = getRecentTransactionCategoryLabel(tx)
-        const categoryDisplay =
-          typeof category === "string"
-            ? category
-                .trim()
-                .replace(/[_-]+/g, " ")
-                .replace(/\s+/g, " ")
-                .replace(/\b\w/g, (m) => m.toUpperCase())
-            : ""
-        const onBehalfHeading =
-          tx.type === "expense" && paidOnBehalf && personName && personName !== "Unknown"
-            ? `${categoryDisplay || "Expense"} on behalf of ${personName}`
-            : ""
-        const showCategoryUnderHeading =
-          tx.type === "expense" &&
-          paidOnBehalf &&
-          typeof category === "string" &&
-          category.trim().length > 0
-        const canDelete = Boolean(onDeleteEntry && String(tx.id ?? "").trim())
-        const subParts =
-          accounts && accounts.length > 0
-            ? buildRecentTxSubtitleParts(tx, accounts, { includeDate: false })
-            : null
-        const ledgerFallback = !subParts ? sanitizeUserFacingApiText(tx.subtitle) : ""
-        const bottomLabel = buildTransactionBottomLabel(tx, accounts ?? [])
-        const primaryTitle = onBehalfHeading || buildRecentTxPrimaryTitle(tx)
-        return (
-          <li
-            key={tx.id}
-            className="flex flex-col overflow-hidden rounded-2xl border border-border/80 bg-card"
-          >
-            <div className="p-3.5">
-              <p className="text-xs text-muted-foreground">{formatDate(tx.date)}</p>
-              <div className="mt-1.5 flex items-center justify-between gap-2">
-                <div className="min-w-0">
-                  <p className="text-sm font-semibold text-foreground">
-                    <span className="text-muted-foreground">{heading.arrow} </span>
-                    {primaryTitle}
-                  </p>
-                  {showCategoryUnderHeading && !onBehalfHeading ? (
-                    <p className="mt-0.5 truncate text-xs text-muted-foreground">{category}</p>
-                  ) : null}
-                  {subParts?.line1 ? (
-                    <p className="mt-1 text-xs text-muted-foreground">{subParts.line1}</p>
-                  ) : null}
-                  {subParts?.line2 ? (
-                    <p className="mt-0.5 wrap-break-word text-xs text-muted-foreground">
-                      {subParts.line2}
-                    </p>
-                  ) : null}
-                  {ledgerFallback ? (
-                    <p className="mt-1 text-xs text-muted-foreground">{ledgerFallback}</p>
-                  ) : null}
-                </div>
-                <div className={cn(ACTION_GROUP_ROW_TX, "shrink-0")}>
-                  {canDelete ? (
-                    <TransactionEntryDeleteButton onClick={() => onDeleteEntry?.(tx)} />
-                  ) : null}
-                  <p
-                    className={cn(
-                      "text-right text-base font-bold tabular-nums",
-                      absAmt === 0 ? "text-muted-foreground" : udharEffectTextClassName(effect)
-                    )}
-                  >
-                    {formatCurrency(absAmt)}
-                  </p>
-                </div>
-              </div>
-            </div>
-            <TransactionBottomTag label={bottomLabel} className="px-3.5" />
-          </li>
-        )
-      })}
+      {entries.map((tx) => (
+        <li key={tx.id}>
+          <TransactionListRow tx={tx} onDelete={onDeleteEntry} amountStyle="udhar-ledger" />
+        </li>
+      ))}
     </ul>
   )
 }

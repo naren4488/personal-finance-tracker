@@ -196,6 +196,7 @@ export default function EntriesPage() {
   const [txModalOpen, setTxModalOpen] = useState(false)
   const [txModalInitialType, setTxModalInitialType] = useState<TransactionType>("expense")
   const [expenseModalOpen, setExpenseModalOpen] = useState(false)
+  const [transferModalOpen, setTransferModalOpen] = useState(false)
   const [udharSheetOpen, setUdharSheetOpen] = useState(false)
   const [udharSheetInitialPersonId, setUdharSheetInitialPersonId] = useState<string | undefined>(
     undefined
@@ -297,8 +298,7 @@ export default function EntriesPage() {
       return
     }
     if (segment === "transfer") {
-      setTxModalInitialType("transfer")
-      setTxModalOpen(true)
+      setTransferModalOpen(true)
       return
     }
     if (segment === "udhar") {
@@ -347,8 +347,7 @@ export default function EntriesPage() {
       } else if (seg === "expenses") {
         setExpenseModalOpen(true)
       } else if (seg === "transfer") {
-        setTxModalInitialType("transfer")
-        setTxModalOpen(true)
+        setTransferModalOpen(true)
       } else {
         openUdharSheetFree()
       }
@@ -466,6 +465,15 @@ export default function EntriesPage() {
         expenseFlow
         onOpenAddAccount={() => {
           setExpenseModalOpen(false)
+          setAddAccountSheetOpen(true)
+        }}
+      />
+      <AddTransactionModal
+        open={transferModalOpen}
+        onOpenChange={setTransferModalOpen}
+        transferFlow
+        onOpenAddAccount={() => {
+          setTransferModalOpen(false)
           setAddAccountSheetOpen(true)
         }}
       />
@@ -785,7 +793,7 @@ export default function EntriesPage() {
                   <Button
                     type="button"
                     className="mt-6 h-11 rounded-xl px-8 text-base font-semibold"
-                    onClick={() => openTxModalWithType("transfer")}
+                    onClick={() => setTransferModalOpen(true)}
                   >
                     Add Transfer
                   </Button>

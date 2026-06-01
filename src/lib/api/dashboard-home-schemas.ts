@@ -76,6 +76,19 @@ export type DashboardHomeView = {
   recentTransactions: RecentTransaction[]
 }
 
+/**
+ * Home "Card dues" chip: prefer `summary.cardDues` (pending card bill obligations).
+ * Until the API populates that field, fall back to `stats.cardOutstanding` (total CC liability).
+ */
+export function resolveHomeCardDuesDisplayInr(
+  summary: Pick<DashboardHomeView["summary"], "cardDues">,
+  stats: Pick<DashboardHomeView["stats"], "cardOutstanding">
+): number {
+  if (summary.cardDues > 0) return summary.cardDues
+  if (stats.cardOutstanding > 0) return stats.cardOutstanding
+  return 0
+}
+
 function parseScheduledItem(raw: unknown): DashboardScheduledItem | null {
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null
   const o = raw as Record<string, unknown>
@@ -200,8 +213,20 @@ export function parseDashboardHomeResponse(
     totalBalance: parseMoney(summaryObj.totalBalance),
     income: parseMoney(summaryObj.income),
     expenses: parseMoney(summaryObj.expenses),
-    cardDues: parseMoney(summaryObj.cardDues),
-    personDues: parseMoney(summaryObj.personDues),
+    cardDues:
+      parseOptionalMoneyField(summaryObj, [
+        "cardDues",
+        "card_dues",
+        "creditCardDues",
+        "credit_card_dues",
+      ]) ?? 0,
+    personDues:
+      parseOptionalMoneyField(summaryObj, [
+        "personDues",
+        "person_dues",
+        "udharDues",
+        "udhar_dues",
+      ]) ?? 0,
   }
 
   const toBePaid = parseScheduledBlock(payload.toBePaid, horizon)
@@ -225,9 +250,15 @@ export function parseDashboardHomeResponse(
       ? (statsRaw as Record<string, unknown>)
       : {}
   const stats = {
-    toReceive: parseMoney(st.toReceive),
-    cardOutstanding: parseMoney(st.cardOutstanding),
-    activeLoans: parseIntLoose(st.activeLoans, 0),
+    toReceive: parseOptionalMoneyField(st, ["toReceive", "to_receive"]) ?? 0,
+    cardOutstanding:
+      parseOptionalMoneyField(st, [
+        "cardOutstanding",
+        "card_outstanding",
+        "creditCardOutstanding",
+        "credit_card_outstanding",
+      ]) ?? 0,
+    activeLoans: parseIntLoose(st.activeLoans ?? st.active_loans, 0),
   }
 
   const accounts: DashboardAccountPreview[] = []
