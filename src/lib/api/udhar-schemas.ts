@@ -1,11 +1,7 @@
 import { z } from "zod"
 
-export const udharEntryTypeSchema = z.enum([
-  "money_given",
-  "money_taken",
-  "payment_received",
-  "payment_made",
-])
+/** Entry types exposed in the Udhar form (POST body from the client). */
+export const udharEntryTypeSchema = z.enum(["money_given", "money_taken"])
 
 export type UdharEntryType = z.infer<typeof udharEntryTypeSchema>
 
@@ -21,12 +17,13 @@ export const createUdharEntryRequestSchema = z
     personId: z.string().min(1, "personId is required"),
     amount: z.string().min(1, "amount is required"),
     date: z.string().min(1, "date is required"),
-    dueDate: z.string().min(1, "dueDate is required"),
+    dueDate: z.string().optional(),
     accountId: z.string().optional(),
     creditCardAccountId: z.string().optional(),
     feeAmount: z.string().optional(),
     reason: z.string().optional(),
     note: z.string().optional(),
+    utr: z.string().optional(),
   })
   .superRefine((val, ctx) => {
     const hasAcc = Boolean(val.accountId?.trim())
@@ -50,6 +47,14 @@ export const createUdharEntryRequestSchema = z
         code: z.ZodIssueCode.custom,
         message: "feeAmount is only used with creditCardAccountId",
         path: ["feeAmount"],
+      })
+    }
+    const due = val.dueDate?.trim()
+    if (due && !/^\d{4}-\d{2}-\d{2}$/.test(due)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "dueDate must be YYYY-MM-DD",
+        path: ["dueDate"],
       })
     }
   })
@@ -93,6 +98,7 @@ export const udharCreatedTransactionSchema = z
     date: z.string(),
     note: z.string().optional(),
     tags: z.array(z.string()).optional(),
+    utr: z.string().optional(),
     createdAt: z.string().optional(),
     updatedAt: z.string().optional(),
   })
@@ -139,8 +145,9 @@ export function buildUdharEntryPostBody(input: CreateUdharEntryRequest): Record<
     personId: input.personId,
     amount: input.amount,
     date: input.date,
-    dueDate: input.dueDate,
   }
+  const dueDate = input.dueDate?.trim()
+  if (dueDate) body.dueDate = dueDate
   const acc = input.accountId?.trim()
   if (acc) body.accountId = acc
   const cc = input.creditCardAccountId?.trim()
@@ -151,6 +158,8 @@ export function buildUdharEntryPostBody(input: CreateUdharEntryRequest): Record<
   if (reason) body.reason = reason
   const note = input.note?.trim()
   if (note) body.note = note
+  const utr = input.utr?.trim()
+  if (utr) body.utr = utr
   return body
 }
 

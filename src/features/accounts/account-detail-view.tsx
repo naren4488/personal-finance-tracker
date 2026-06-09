@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom"
 import { Archive, ArrowLeft, Banknote, Pencil, Scale, Trash2 } from "lucide-react"
 import { toast } from "sonner"
 import { ConfirmDeleteDialog } from "@/components/confirm-delete-dialog"
+import { AppFieldError } from "@/components/app-field-error"
 import { EntityDeleteButton } from "@/components/entity-delete-button"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -17,9 +18,10 @@ import {
   accountSubtitleForList,
   openingBalanceInrFromApi,
 } from "@/lib/api/account-schemas"
-import { getErrorMessage } from "@/lib/api/errors"
-import { handleAuthApiErrorIfNeeded } from "@/lib/auth/handle-auth-api-error"
+import { handleFormApiError } from "@/lib/forms/form-api-errors"
+import { fieldWithErrorClass } from "@/lib/forms/field-error-styles"
 import { RecentTransactionRow } from "@/features/entries/recent-transaction-row"
+import { useTransactionEntityCatalog } from "@/hooks/use-transaction-entity-catalog"
 import { useDeleteTransactionFlow } from "@/features/entries/use-delete-transaction-flow"
 import { formatCurrency } from "@/lib/format"
 import { parseSignedAmountString, type RecentTransaction } from "@/lib/api/transaction-schemas"
@@ -129,10 +131,13 @@ export function AccountDetailView({
   const [draft, setDraft] = useState<MinimalAccountEditDraft | null>(() =>
     initialEditing && account ? draftFromAccount(account) : null
   )
+  const [editFieldErrors, setEditFieldErrors] = useState<{ name?: string }>({})
 
   const { data: accountsForRows = [] } = useGetAccountsQuery(undefined, {
     skip: !user || !account,
   })
+
+  const transactionCatalog = useTransactionEntityCatalog({ skip: !user || !account })
 
   const { data: accountLedgerEntries = [], isFetching: accountLedgerFetching } =
     useGetAccountLedgerQuery(
@@ -155,6 +160,7 @@ export function AccountDetailView({
   const cancelEdit = useCallback(() => {
     setIsEditing(false)
     setDraft(null)
+    setEditFieldErrors({})
   }, [])
 
   const startEdit = useCallback(() => {
@@ -172,9 +178,10 @@ export function AccountDetailView({
     }
     const name = draft.name.trim()
     if (!name) {
-      toast.error("Enter account name")
+      setEditFieldErrors({ name: "Account name is required" })
       return
     }
+    setEditFieldErrors({})
 
     /** Minimal PUT — avoid 400 from strict / unknown fields (no openingBalance, kind, balances). */
     const payload: Record<string, unknown> = {
@@ -199,8 +206,7 @@ export function AccountDetailView({
       setIsEditing(false)
       setDraft(null)
     } catch (error) {
-      if (handleAuthApiErrorIfNeeded(error, dispatch)) return
-      toast.error(getErrorMessage(error) || "Failed to update account")
+      handleFormApiError(error, dispatch)
     }
   }, [account, draft, dispatch, onAccountUpdated, updateAccount])
 
@@ -237,10 +243,9 @@ export function AccountDetailView({
       onBack()
       onAccountDeleted?.()
     } catch (error) {
-      const msg = getErrorMessage(error)
-      toast.error(msg || "Failed to delete")
+      handleFormApiError(error, dispatch)
     }
-  }, [account, deleteAccount, deleteGuard, onAccountDeleted, onBack])
+  }, [account, deleteAccount, deleteGuard, dispatch, onAccountDeleted, onBack])
 
   const { monthIn, monthOut } = useMemo(() => {
     if (!account) return { monthIn: 0, monthOut: 0 }
@@ -395,12 +400,22 @@ export function AccountDetailView({
                   <Input
                     id="account-edit-name"
                     value={draft.name}
-                    onChange={(e) => patchDraft({ name: e.target.value })}
-                    className={TX_FORM_FIELD_CLASS}
+                    onChange={(e) => {
+                      if (editFieldErrors.name) {
+                        setEditFieldErrors({})
+                      }
+                      patchDraft({ name: e.target.value })
+                    }}
+                    className={fieldWithErrorClass(
+                      TX_FORM_FIELD_CLASS,
+                      Boolean(editFieldErrors.name)
+                    )}
                     placeholder="e.g. SBI Savings"
                     autoComplete="off"
+                    aria-invalid={Boolean(editFieldErrors.name)}
                     aria-labelledby="account-detail-name"
                   />
+                  <AppFieldError message={editFieldErrors.name} />
                 </section>
 
                 <section>
@@ -542,6 +557,7 @@ export function AccountDetailView({
                       <RecentTransactionRow
                         tx={tx}
                         accounts={accountsForRows}
+                        catalog={transactionCatalog}
                         onDelete={txDelete.requestDelete}
                         className={
                           isNew

@@ -1,6 +1,7 @@
 import { configureStore } from "@reduxjs/toolkit"
 import { setupListeners } from "@reduxjs/toolkit/query"
 import { baseApi } from "@/store/api/base-api"
+import { apiErrorListenerMiddleware } from "@/store/api-error-listener"
 import { authSlice } from "@/store/auth-slice"
 import { creditCardPaymentUiSlice } from "@/store/credit-card-payment-ui-slice"
 import { loanEmiUiSlice } from "@/store/loan-emi-ui-slice"
@@ -14,7 +15,10 @@ export const store = configureStore({
     people: peopleSlice.reducer,
     [baseApi.reducerPath]: baseApi.reducer,
   },
-  middleware: (getDefaultMiddleware) => getDefaultMiddleware().concat(baseApi.middleware),
+  middleware: (getDefaultMiddleware) =>
+    getDefaultMiddleware()
+      .concat(baseApi.middleware)
+      .prepend(apiErrorListenerMiddleware.middleware),
 })
 
 setupListeners(store.dispatch)

@@ -1,18 +1,21 @@
-/** en-IN, ₹, no decimals — Indian numbering */
-export function formatCurrency(amount: number): string {
+import { parseInrScalar } from "@/lib/money/parse-inr"
+
+/** en-IN, ₹, always 2 decimal places — matches backend monetary precision. */
+export function formatCurrency(amount: number | string): string {
   return new Intl.NumberFormat("en-IN", {
     style: "currency",
     currency: "INR",
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 0,
-  }).format(amount)
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(parseInrScalar(amount))
 }
 
 /** ₹ with explicit +/− for non-zero (Udhar net balance, etc.). */
-export function formatSignedCurrencyInr(amount: number): string {
-  if (amount === 0) return formatCurrency(0)
-  const sign = amount > 0 ? "+" : "−"
-  return `${sign}${formatCurrency(Math.abs(amount))}`
+export function formatSignedCurrencyInr(amount: number | string): string {
+  const n = parseInrScalar(amount)
+  if (n === 0) return formatCurrency(0)
+  const sign = n > 0 ? "+" : "−"
+  return `${sign}${formatCurrency(Math.abs(n))}`
 }
 
 /** e.g. "2 Apr 2026" */

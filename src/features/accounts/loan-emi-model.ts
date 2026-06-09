@@ -1,3 +1,7 @@
+import { todayIsoDate } from "@/lib/date/local-date"
+
+export { todayIsoDate }
+
 export type DueCycle = "fixed" | "rolling"
 
 export type LoanEmiFormModel = {
@@ -15,14 +19,6 @@ export type LoanEmiFormModel = {
   linkedRepaymentAccountId: string
   overdue: boolean
   overdueAmount: string
-}
-
-export function todayIsoDate(): string {
-  const d = new Date()
-  const y = d.getFullYear()
-  const m = String(d.getMonth() + 1).padStart(2, "0")
-  const day = String(d.getDate()).padStart(2, "0")
-  return `${y}-${m}-${day}`
 }
 
 /** Calendar day 1–31 from `YYYY-MM-DD`; null if invalid. */

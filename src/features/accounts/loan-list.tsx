@@ -8,6 +8,12 @@ import {
   type LoanViewModel,
 } from "@/lib/api/loan-account-map"
 import { formatCurrency } from "@/lib/format"
+import {
+  EntityListCardActiveBadge,
+  EntityListCardLetterAvatar,
+  EntityListCardShell,
+} from "@/features/accounts/entity-list-card"
+import { entityListCardAvatarLetter } from "@/features/accounts/entity-list-card-styles"
 import { cn } from "@/lib/utils"
 
 function LoanRowAccounts({
@@ -59,54 +65,29 @@ function LoanTileEntries({
   model: LoanViewModel
   onSelect?: (account: Account) => void
 }) {
-  return (
-    <div className="overflow-hidden rounded-2xl border border-border/80 bg-card shadow-sm">
-      <button
-        type="button"
-        className="w-full bg-card px-3 py-3 text-left transition-colors hover:bg-muted/30 sm:px-4 sm:py-3.5"
-        onClick={() => onSelect?.(account)}
-      >
-        <div className="flex items-center justify-between gap-2">
-          <div className="min-w-0 flex-1">
-            <div className="flex flex-wrap items-center gap-2">
-              <p className="truncate text-base font-bold text-foreground sm:text-lg">
-                {model.name}
-              </p>
-              <span
-                className={cn(
-                  "shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold sm:text-xs",
-                  model.isActive
-                    ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-950/50 dark:text-emerald-200"
-                    : "bg-muted text-muted-foreground"
-                )}
-              >
-                {model.statusLabel}
-              </span>
-            </div>
-            {model.subtitleLine ? (
-              <p className="mt-1 truncate text-xs text-muted-foreground sm:text-sm">
-                {model.subtitleLine}
-              </p>
-            ) : null}
-          </div>
-          <Landmark
-            className="size-6 shrink-0 text-primary sm:size-7"
-            strokeWidth={2}
-            aria-hidden
-          />
-        </div>
+  const name = model.name?.trim() || "Loan"
 
-        <div className="mt-3 flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 text-sm">
-          {model.emiAmount != null ? (
-            <p className="font-semibold text-foreground">
-              EMI:{" "}
-              <span className="tabular-nums text-foreground">
-                {formatCurrency(model.emiAmount)}
-              </span>
+  return (
+    <EntityListCardShell
+      onOpen={() => onSelect?.(account)}
+      openAriaLabel={`Open ${name}`}
+      avatar={<EntityListCardLetterAvatar letter={entityListCardAvatarLetter(name)} />}
+      title={name}
+      subtitle={model.subtitleLine || null}
+      metric={
+        model.emiAmount != null ? (
+          <>
+            <p className="text-2xl font-bold tabular-nums tracking-tight text-foreground sm:text-[1.75rem]">
+              {formatCurrency(model.emiAmount)}
             </p>
-          ) : null}
+            <p className="mt-0.5 text-sm font-semibold text-foreground">EMI</p>
+          </>
+        ) : null
+      }
+      headerExtra={
+        <>
           {model.tenure > 0 || model.paid > 0 ? (
-            <p className="text-muted-foreground">
+            <p className="text-sm text-muted-foreground">
               <span className="font-semibold tabular-nums text-foreground">
                 {loanPaidEmiListLabel(
                   model.paid,
@@ -115,18 +96,18 @@ function LoanTileEntries({
               </span>
             </p>
           ) : null}
-        </div>
-
-        {model.emiDueDateLabel ? (
-          <div className="mt-3 flex items-center gap-2 rounded-xl bg-amber-100/90 px-3 py-2 text-sm text-amber-950 dark:bg-amber-950/35 dark:text-amber-100">
-            <CalendarDays className="size-4 shrink-0 text-amber-700 dark:text-amber-400" />
-            <span>
-              Upcoming EMI due: <span className="font-semibold">{model.emiDueDateLabel}</span>
-            </span>
-          </div>
-        ) : null}
-      </button>
-    </div>
+          {model.emiDueDateLabel ? (
+            <div className="mt-3 flex items-center gap-2 rounded-xl bg-amber-100/90 px-3 py-2 text-sm text-amber-950 dark:bg-amber-950/35 dark:text-amber-100">
+              <CalendarDays className="size-4 shrink-0 text-amber-700 dark:text-amber-400" />
+              <span>
+                Upcoming EMI due: <span className="font-semibold">{model.emiDueDateLabel}</span>
+              </span>
+            </div>
+          ) : null}
+        </>
+      }
+      footer={<EntityListCardActiveBadge active={model.isActive} label={model.statusLabel} />}
+    />
   )
 }
 

@@ -6,13 +6,7 @@ import {
   nextDueDateFromDay,
 } from "@/lib/api/credit-card-map"
 import { formatCurrency, formatDate } from "@/lib/format"
-
-function parseMoney(v: unknown): number {
-  if (v === undefined || v === null) return 0
-  if (typeof v === "number") return Number.isFinite(v) ? v : 0
-  const n = Number(String(v).replace(/,/g, "").trim())
-  return Number.isFinite(n) ? n : 0
-}
+import { parseInrFromUnknown } from "@/lib/money/parse-inr"
 
 function asRec(a: Account): Record<string, unknown> {
   return a as unknown as Record<string, unknown>
@@ -33,16 +27,16 @@ export function isLoanAccount(a: Account): boolean {
 export function loanOutstandingInr(a: Account): number {
   const r = asRec(a)
   const o = r.currentOutstanding ?? r.currentBalance ?? r.outstanding ?? r.outstandingBalance
-  if (o !== undefined && o !== null) return parseMoney(o)
+  if (o !== undefined && o !== null) return parseInrFromUnknown(o)
   const cop = r.currentOutstandingPrincipal
-  if (cop !== undefined && cop !== null) return parseMoney(cop)
+  if (cop !== undefined && cop !== null) return parseInrFromUnknown(cop)
   return accountBalanceInrFromApi(a)
 }
 
 export function loanPrincipalInr(a: Account): number {
   const r = asRec(a)
   const p = r.principalAmount ?? r.principal
-  if (p !== undefined && p !== null) return parseMoney(p)
+  if (p !== undefined && p !== null) return parseInrFromUnknown(p)
   return 0
 }
 
@@ -195,7 +189,7 @@ function parseOptionalEmiAmount(a: Account): number | null {
   for (const k of keys) {
     const v = r[k]
     if (v === undefined || v === null) continue
-    const n = parseMoney(v)
+    const n = parseInrFromUnknown(v)
     if (n > 0) return n
   }
   return null
@@ -208,7 +202,7 @@ function principalForEmiCalculation(a: Account): number {
   const r = asRec(a)
   const cop = r.currentOutstandingPrincipal
   if (cop !== undefined && cop !== null) {
-    const n = parseMoney(cop)
+    const n = parseInrFromUnknown(cop)
     if (n > 0) return n
   }
   const out = loanOutstandingInr(a)
@@ -256,7 +250,7 @@ function parseOptionalMoneyField(a: Account, keys: readonly string[]): number | 
   for (const k of keys) {
     const v = r[k]
     if (v === undefined || v === null) continue
-    const n = parseMoney(v)
+    const n = parseInrFromUnknown(v)
     if (Number.isFinite(n) && n > 0) return Math.round(n * 100) / 100
   }
   return null
@@ -411,7 +405,7 @@ export function loanTotalPaidInr(a: Account): number | null {
   for (const k of keys) {
     const v = r[k]
     if (v === undefined || v === null) continue
-    const n = parseMoney(v)
+    const n = parseInrFromUnknown(v)
     if (Number.isFinite(n) && n >= 0) return n
   }
   const paid = paidInstallmentsFromAccount(a)

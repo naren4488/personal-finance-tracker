@@ -1,29 +1,10 @@
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
-import { Skeleton } from "@/components/ui/skeleton"
 import type { Person } from "@/lib/api/people-schemas"
 import { getErrorMessage } from "@/lib/api/errors"
-import { ACTION_GROUP_ROW } from "@/lib/ui/action-group-classes"
-import { cn } from "@/lib/utils"
+import { AccountCardSkeleton } from "@/features/accounts/account-card"
 import { PersonListItem } from "@/features/accounts/person-list-item"
 import { Users } from "lucide-react"
-
-function PersonCardSkeleton() {
-  return (
-    <div className="flex w-full items-center justify-between gap-3 rounded-xl border border-border bg-card px-4 py-3 shadow-sm">
-      <div className="min-w-0 flex-1 space-y-2">
-        <Skeleton className="h-4 w-32" />
-        <Skeleton className="h-3 w-24" />
-        <Skeleton className="h-4 w-44" />
-        <Skeleton className="h-3 w-56" />
-      </div>
-      <div className={cn(ACTION_GROUP_ROW, "shrink-0")}>
-        <Skeleton className="h-7 w-16 rounded-full" />
-        <Skeleton className="h-7 w-14 rounded-full" />
-      </div>
-    </div>
-  )
-}
 
 export type PeopleListProps = {
   people: Person[]
@@ -51,9 +32,9 @@ export function PeopleList({
   if (loading) {
     return (
       <div className="flex flex-col gap-2.5" aria-busy aria-label="Loading people">
-        <PersonCardSkeleton />
-        <PersonCardSkeleton />
-        <PersonCardSkeleton />
+        <AccountCardSkeleton />
+        <AccountCardSkeleton />
+        <AccountCardSkeleton />
       </div>
     )
   }

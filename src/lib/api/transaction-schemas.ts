@@ -5,6 +5,7 @@ import { accountSelectLabel } from "@/lib/api/account-schemas"
 import type { CreateTransactionPayload, Transaction } from "@/lib/api/schemas"
 import { transactionTypeSchema } from "@/lib/api/schemas"
 import { mapUdharTitleSlugToLabel } from "@/lib/transactions/transaction-udhar-title-labels"
+import { optionalUtrWireField } from "@/lib/transactions/utr-account"
 
 /** POST /transactions — income (2-decimal `amount`, `date` = YYYY-MM-DD; `note` / `tags` optional if absent). */
 export const createTransactionIncomeBodySchema = z
@@ -16,6 +17,7 @@ export const createTransactionIncomeBodySchema = z
     date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
     note: z.string().optional(),
     tags: z.array(z.string()).optional(),
+    utr: z.string().optional(),
   })
   .strict()
 
@@ -93,6 +95,7 @@ export const createTransactionExpenseFromCardBodySchema = z
     dueDate: expenseDateOnlySchema.optional(),
     note: z.string().optional(),
     tags: z.array(z.string()).optional(),
+    utr: z.string().optional(),
   })
   .strict()
   .refine((o) => !o.paidOnBehalfPersonId || Boolean(o.dueDate?.trim()), {
@@ -112,6 +115,7 @@ export const createTransactionExpenseFromAccountBodySchema = z
     dueDate: expenseDateOnlySchema.optional(),
     note: z.string().optional(),
     tags: z.array(z.string()).optional(),
+    utr: z.string().optional(),
   })
   .strict()
   .refine((o) => !o.paidOnBehalfPersonId || Boolean(o.dueDate?.trim()), {
@@ -137,6 +141,7 @@ export const createTransactionTransferToAccountSchema = z
     date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
     note: z.string().optional(),
     tags: z.array(z.string()).optional(),
+    utr: z.string().optional(),
   })
   .strict()
 
@@ -153,6 +158,7 @@ export const createTransactionTransferCreditCardBillSchema = z
     date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
     note: z.string().optional(),
     tags: z.array(z.string()).optional(),
+    utr: z.string().optional(),
   })
   .strict()
 
@@ -169,6 +175,7 @@ export const createTransactionTransferLoanPaymentSchema = z
     date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
     note: z.string().optional(),
     tags: z.array(z.string()).optional(),
+    utr: z.string().optional(),
   })
   .strict()
 
@@ -225,6 +232,7 @@ const looseTransactionFields = z.object({
   fromAccountId: z.string().optional(),
   toAccountId: z.string().optional(),
   incomeSource: z.string().optional(),
+  utr: z.string().optional(),
 })
 
 function parseAmount(v: unknown): number {
@@ -302,6 +310,9 @@ export function mapApiTransactionToClient(
         ? t.fromAccountId
         : fallback.accountId
 
+  const utrFromApi =
+    typeof apiTx.utr === "string" && apiTx.utr.trim() ? apiTx.utr.trim() : undefined
+
   return {
     id,
     title: title.trim() || "Transaction",
@@ -311,6 +322,7 @@ export function mapApiTransactionToClient(
     category: category || undefined,
     accountId: accountIdFromApi,
     accountName: sourceName || fallback.accountName,
+    ...(utrFromApi ? { utr: utrFromApi } : {}),
   }
 }
 
@@ -466,6 +478,10 @@ function transferAmountToApiString(amount: number): string {
   return (Math.round(amount * 100) / 100).toFixed(2)
 }
 
+function optionalUtrFromPayload(body: CreateTransactionPayload): { utr?: string } {
+  return optionalUtrWireField(body.utr, body.payFromAccountType)
+}
+
 /**
  * Maps client payload → exact POST /transactions JSON per `type`.
  * Only fields the backend expects are included.
@@ -495,6 +511,7 @@ export function buildTransactionPostBody(body: CreateTransactionPayload): Create
       date: dateIso,
       ...(noteTrim ? { note: noteTrim } : {}),
       ...(tagsOut ? { tags: tagsOut } : {}),
+      ...optionalUtrFromPayload(body),
     }
   }
 
@@ -532,7 +549,7 @@ export function buildTransactionPostBody(body: CreateTransactionPayload): Create
       if (personTrim) o.dueDate = normalizeApiDateOnly(dueRaw)
       if (noteTrim) o.note = noteTrim
       if (tagsOut && tagsOut.length > 0) o.tags = tagsOut
-      return o
+      return { ...o, ...optionalUtrFromPayload(body) }
     }
 
     const o: CreateTransactionExpenseApiBody = {
@@ -546,7 +563,7 @@ export function buildTransactionPostBody(body: CreateTransactionPayload): Create
     if (personTrim) o.dueDate = normalizeApiDateOnly(dueRaw)
     if (noteTrim) o.note = noteTrim
     if (tagsOut && tagsOut.length > 0) o.tags = tagsOut
-    return o
+    return { ...o, ...optionalUtrFromPayload(body) }
   }
 
   if (body.type !== "transfer") {
@@ -591,6 +608,7 @@ export function buildTransactionPostBody(body: CreateTransactionPayload): Create
       date: dateIso,
       ...(noteT ? { note: noteT } : {}),
       ...(tagOut ? { tags: tagOut } : {}),
+      ...optionalUtrFromPayload(body),
     }
   }
 
@@ -624,6 +642,7 @@ export function buildTransactionPostBody(body: CreateTransactionPayload): Create
       date: dateIso,
       ...(noteT2 ? { note: noteT2 } : {}),
       ...(tagOut2 ? { tags: tagOut2 } : {}),
+      ...optionalUtrFromPayload(body),
     }
   }
 
@@ -643,6 +662,7 @@ export function buildTransactionPostBody(body: CreateTransactionPayload): Create
     date: dateIso,
     ...(noteT3 ? { note: noteT3 } : {}),
     ...(tagOut3 ? { tags: tagOut3 } : {}),
+    ...optionalUtrFromPayload(body),
   }
 }
 
@@ -684,6 +704,7 @@ export const recentTransactionItemSchema = z
     destinationType: z.string().optional(),
     entryType: z.string().optional(),
     dueDate: z.string().optional(),
+    utr: z.string().optional(),
   })
   .passthrough()
 
@@ -770,28 +791,77 @@ function humanizeBackendTitleSlug(value: string): string {
   return mapUdharTitleSlugToLabel(value) ?? value.trim()
 }
 
-function inferUdharEntryTypeFromRecord(
-  rec: Record<string, unknown>
-): "money_given" | "money_taken" | "payment_received" | "payment_made" | null {
-  const raw = (
-    firstStringFromRecord(rec, [
-      "entryType",
-      "entry_type",
-      "destinationType",
-      "destination_type",
-      "incomeSource",
-      "kind",
-      "title",
-    ]) ?? ""
-  )
+export type UdharRecentEntryType =
+  | "money_given"
+  | "money_taken"
+  | "payment_received"
+  | "payment_made"
+
+function inferUdharEntryTypeFromRecord(rec: Record<string, unknown>): UdharRecentEntryType | null {
+  const keys = [
+    "entryType",
+    "entry_type",
+    "destinationType",
+    "destination_type",
+    "transactionType",
+    "transaction_type",
+    "sourceType",
+    "source_type",
+    "incomeSource",
+    "income_source",
+    "kind",
+    "category",
+    "categoryName",
+    "category_name",
+    "title",
+  ] as const
+
+  for (const key of keys) {
+    const raw = (firstStringFromRecord(rec, [key]) ?? "").toLowerCase().replace(/\s+/g, "_")
+    if (!raw) continue
+    if (raw === "money_given" || raw === "person_lend") return "money_given"
+    if (raw === "money_taken" || raw === "person_borrow") return "money_taken"
+    if (raw === "payment_received" || raw === "person_repayment" || raw === "person_repayment_in") {
+      return "payment_received"
+    }
+    if (raw === "payment_made" || raw === "person_payment" || raw === "person_repayment_out") {
+      return "payment_made"
+    }
+  }
+
+  const tags = rec.tags
+  if (Array.isArray(tags)) {
+    for (const tag of tags) {
+      if (typeof tag !== "string" || !tag.trim()) continue
+      const raw = tag.trim().toLowerCase().replace(/\s+/g, "_")
+      if (raw === "payment_made" || raw === "person_payment" || raw === "person_repayment_out") {
+        return "payment_made"
+      }
+      if (
+        raw === "payment_received" ||
+        raw === "person_repayment" ||
+        raw === "person_repayment_in"
+      ) {
+        return "payment_received"
+      }
+    }
+  }
+
+  const txType = String(rec.type ?? "")
+    .trim()
     .toLowerCase()
-    .replace(/\s+/g, "_")
-  if (!raw) return null
-  if (raw === "money_given" || raw === "person_lend") return "money_given"
-  if (raw === "money_taken" || raw === "person_borrow") return "money_taken"
-  if (raw === "payment_received" || raw === "person_repayment_in") return "payment_received"
-  if (raw === "payment_made" || raw === "person_repayment_out") return "payment_made"
+  const personId = firstStringFromRecord(rec, ["personId", "person_id"])
+  // `money_taken` often posts as `income` with only `personId` after title normalization.
+  if (txType === "income" && personId) return "money_taken"
+
   return null
+}
+
+/** Udhar entry kind from API slug fields on a recent / ledger transaction row. */
+export function getUdharEntryTypeFromRecentTransaction(
+  tx: RecentTransaction
+): UdharRecentEntryType | null {
+  return inferUdharEntryTypeFromRecord(tx as unknown as Record<string, unknown>)
 }
 
 /**
@@ -1067,10 +1137,10 @@ export function getRecentTransactionNote(tx: RecentTransaction): string {
 /** Prefer a human name when the primary title is a backend kind slug. */
 function pickDisplayTitleForRecentRow(rec: Record<string, unknown>): string {
   const entryType = inferUdharEntryTypeFromRecord(rec)
-  if (entryType === "money_given") return "Money Given"
-  if (entryType === "money_taken") return "Money Taken"
-  if (entryType === "payment_received") return "Payment Received"
-  if (entryType === "payment_made") return "Payment Made"
+  if (entryType) {
+    const fromPerson = firstStringFromRecord(rec, PERSON_NAME_KEYS)
+    if (fromPerson) return fromPerson
+  }
   const primary = normalizeRecentTitle(rec)
   if (!isTransactionKindSlugTitle(primary)) return primary
   const fromPerson = firstStringFromRecord(rec, PERSON_NAME_KEYS)
@@ -1187,8 +1257,10 @@ function normalizeRawToRecentTransaction(rec: Record<string, unknown>): RecentTr
   const entryType = firstStringFromRecord(rec, ["entryType", "entry_type", "kind"])
   const dueDateRaw = firstStringFromRecord(rec, ["dueDate", "due_date"])
   const dueDate = dueDateRaw ? dueDateRaw.slice(0, 10) : undefined
+  const utr = firstStringFromRecord(rec, ["utr"])
 
-  return {
+  const normalized = {
+    ...rec,
     id,
     title,
     subtitle,
@@ -1197,10 +1269,10 @@ function normalizeRawToRecentTransaction(rec: Record<string, unknown>): RecentTr
     amount: amountStr,
     signedAmount,
     date,
-    paymentMethod,
-    sourceName,
-    accountId,
-    toAccountId,
+    ...(paymentMethod !== undefined ? { paymentMethod } : {}),
+    ...(sourceName !== undefined ? { sourceName } : {}),
+    ...(accountId !== undefined ? { accountId } : {}),
+    ...(toAccountId !== undefined ? { toAccountId } : {}),
     ...(personId ? { personId } : {}),
     ...(commitmentId ? { commitmentId } : {}),
     ...(personName ? { personName } : {}),
@@ -1208,7 +1280,10 @@ function normalizeRawToRecentTransaction(rec: Record<string, unknown>): RecentTr
     ...(destinationType ? { destinationType } : {}),
     ...(entryType ? { entryType } : {}),
     ...(dueDate ? { dueDate } : {}),
+    ...(utr ? { utr } : {}),
   } as RecentTransaction
+
+  return normalized
 }
 
 export function parseGetRecentTransactionsSuccess(

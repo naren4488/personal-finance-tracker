@@ -1,36 +1,28 @@
-import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp } from "lucide-react"
+import { ArrowDown, ArrowUp } from "lucide-react"
 import type { UdharEntryType } from "@/lib/api/udhar-schemas"
+import { todayIsoDate } from "@/lib/date/local-date"
+import {
+  getUdharEntryTypeDisplayLabel,
+  UDHAR_DISPLAY_YOU_PAID,
+  UDHAR_DISPLAY_YOU_RECEIVED,
+} from "@/lib/transactions/transaction-udhar-title-labels"
+
+export { todayIsoDate }
 
 /** Limits which entry types appear in the shared Udhar form (People list vs Person view actions). */
-export type UdharEntryTypeScope =
-  | "all"
-  | "lend_take"
-  /** Person view: one-tap "Given" — form opens as money_given with no type toggle. */
-  | "given_only"
-  | "taken_only"
-  | "payments"
-  | "payment_received_only"
-  | "payment_made_only"
+export type UdharEntryTypeScope = "all" | "lend_take" | "given_only" | "taken_only"
 
 export function udharEntryTypesForScope(scope: UdharEntryTypeScope | undefined): UdharEntryType[] {
   if (scope === "lend_take") return ["money_given", "money_taken"]
   if (scope === "given_only") return ["money_given"]
   if (scope === "taken_only") return ["money_taken"]
-  if (scope === "payments") return ["payment_received", "payment_made"]
-  if (scope === "payment_received_only") return ["payment_received"]
-  if (scope === "payment_made_only") return ["payment_made"]
-  return ["money_given", "money_taken", "payment_received", "payment_made"]
+  return ["money_given", "money_taken"]
 }
 
 export function defaultUdharEntryTypeForScope(
   scope: UdharEntryTypeScope | undefined
 ): UdharEntryType {
-  if (scope === "lend_take") return "money_given"
-  if (scope === "given_only") return "money_given"
   if (scope === "taken_only") return "money_taken"
-  if (scope === "payments") return "payment_received"
-  if (scope === "payment_received_only") return "payment_received"
-  if (scope === "payment_made_only") return "payment_made"
   return "money_given"
 }
 
@@ -39,10 +31,16 @@ export const UDHAR_ENTRY_TYPE_OPTIONS: {
   label: string
   Icon: typeof ArrowUp
 }[] = [
-  { id: "money_given", label: "Money Given (Lent)", Icon: ArrowUp },
-  { id: "money_taken", label: "Money Taken (Borrowed)", Icon: ArrowDown },
-  { id: "payment_received", label: "Payment Received", Icon: ArrowLeft },
-  { id: "payment_made", label: "Payment Made", Icon: ArrowRight },
+  {
+    id: "money_given",
+    label: getUdharEntryTypeDisplayLabel("money_given") ?? UDHAR_DISPLAY_YOU_PAID,
+    Icon: ArrowUp,
+  },
+  {
+    id: "money_taken",
+    label: getUdharEntryTypeDisplayLabel("money_taken") ?? UDHAR_DISPLAY_YOU_RECEIVED,
+    Icon: ArrowDown,
+  },
 ]
 
 export type UdharFundingSource = "account" | "credit_card"
@@ -59,19 +57,13 @@ export type UdharFormState = {
   /** Digits only; optional. Sent as API `feeAmount` when paying from a credit card. */
   feeAmount: string
   date: string
-  /** Shown for `money_given` only; sent as API `dueDate`. */
+  /** Shown for `money_given` only; sent as API `dueDate` when set. */
   askRepayBy: string
-  /** Shown for `money_taken` only; sent as API `dueDate`. */
+  /** Shown for `money_taken` only; sent as API `dueDate` when set. */
   payBackBy: string
+  /** Optional bank / UPI / wallet transfer reference. */
+  utr: string
   note: string
-}
-
-export function todayIsoDate(): string {
-  const d = new Date()
-  const y = d.getFullYear()
-  const m = String(d.getMonth() + 1).padStart(2, "0")
-  const day = String(d.getDate()).padStart(2, "0")
-  return `${y}-${m}-${day}`
 }
 
 export function initialUdharFormState(): UdharFormState {
@@ -89,6 +81,7 @@ export function initialUdharFormState(): UdharFormState {
     date: d,
     askRepayBy: "",
     payBackBy: "",
+    utr: "",
     note: "",
   }
 }

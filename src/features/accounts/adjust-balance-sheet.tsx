@@ -27,16 +27,9 @@ import {
 } from "@/lib/ui/app-form-styles"
 import { cn } from "@/lib/utils"
 import { useCreateAccountBalanceAdjustmentMutation } from "@/store/api/base-api"
+import { todayIsoDate } from "@/lib/date/local-date"
 import { selectIsAuthenticated } from "@/store/auth-selectors"
 import { useAppDispatch, useAppSelector } from "@/store/hooks"
-
-function todayIsoDate(): string {
-  const d = new Date()
-  const y = d.getFullYear()
-  const m = String(d.getMonth() + 1).padStart(2, "0")
-  const day = String(d.getDate()).padStart(2, "0")
-  return `${y}-${m}-${day}`
-}
 
 function parseAmountToNumber(s: string): number | null {
   const t = s.replace(/,/g, "").trim()

@@ -18,6 +18,7 @@ import {
 import { handleFormApiError } from "@/lib/forms/form-api-errors"
 import type { CreateTransactionPayload } from "@/lib/api/schemas"
 import { EXPENSE_CATEGORY_API_VALUES } from "@/lib/api/transaction-schemas"
+import { todayIsoDate } from "@/lib/date/local-date"
 import { formatCurrency } from "@/lib/format"
 import {
   APP_FORM_AMOUNT_PRIMARY_CLASS,
@@ -38,14 +39,6 @@ import {
   parsePositiveAmount,
   type CardExpenseFormValues,
 } from "@/lib/forms/credit-card-expense-schema"
-
-function todayIsoDate(): string {
-  const d = new Date()
-  const y = d.getFullYear()
-  const m = String(d.getMonth() + 1).padStart(2, "0")
-  const day = String(d.getDate()).padStart(2, "0")
-  return `${y}-${m}-${day}`
-}
 
 function cardSpendSelectLabel(account: Account): string {
   const rec = account as unknown as Record<string, unknown>

@@ -22,8 +22,8 @@ import {
   APP_FORM_TWO_COL_GRID_CLASS,
 } from "@/lib/ui/app-form-styles"
 import { cn } from "@/lib/utils"
-import { validateUdharPaymentAgainstBalances } from "@/lib/udhar/udhar-payment-validation"
 import { UdharEntryForm } from "@/features/accounts/udhar-entry-form"
+import { utrPayloadField } from "@/lib/transactions/utr-account"
 import {
   buildUdharFormInitialState,
   initialUdharFormState,
@@ -35,7 +35,6 @@ import {
   useCreateUdharEntryMutation,
   useGetAccountsQuery,
   useGetPeopleQuery,
-  useGetUdharAccountBalancesQuery,
 } from "@/store/api/base-api"
 import { useAppDispatch, useAppSelector } from "@/store/hooks"
 
@@ -73,14 +72,16 @@ type MountedProps = {
   entryTypeScope?: UdharEntryTypeScope
 }
 
-function resolveDueDateForSubmit(form: UdharFormState): string {
+function resolveDueDateForSubmit(form: UdharFormState): string | undefined {
   if (form.entryType === "money_given") {
-    return form.askRepayBy.trim()
+    const due = form.askRepayBy.trim()
+    return due || undefined
   }
   if (form.entryType === "money_taken") {
-    return form.payBackBy.trim()
+    const due = form.payBackBy.trim()
+    return due || undefined
   }
-  return form.date.trim()
+  return undefined
 }
 
 /** Optional `feeAmount` for card-funded udhar; omit when empty or zero. */
@@ -150,11 +151,6 @@ function AddUdharEntrySheetMounted({
       ? "locked_from_people"
       : "free"
 
-  const { data: udharBalancesCached = [] } = useGetUdharAccountBalancesQuery(
-    { accountId: form.accountId },
-    { skip: true }
-  )
-
   const dismiss = useCallback(() => {
     onOpenChange(false)
   }, [onOpenChange])
@@ -219,7 +215,7 @@ function AddUdharEntrySheetMounted({
       effectivePersonId = form.selectedPersonId
     }
 
-    const entryParsed = udharEntrySubmitSchema(form.entryType).safeParse({
+    const entryParsed = udharEntrySubmitSchema().safeParse({
       personMode: form.personMode,
       personName: form.personName,
       selectedPersonId: effectivePersonId,
@@ -242,17 +238,6 @@ function AddUdharEntrySheetMounted({
     const amountInr = Number(n)
     const dueDate = resolveDueDateForSubmit(form)
 
-    const balanceRows = udharBalancesCached
-
-    if (form.entryType === "payment_received" || form.entryType === "payment_made") {
-      const row = balanceRows.find((b) => b.personId === effectivePersonId)
-      const check = validateUdharPaymentAgainstBalances(form.entryType, amountInr, row)
-      if (!check.ok) {
-        setFieldErrors({ amount: check.message })
-        return
-      }
-    }
-
     let feeStr: string | undefined
     if (form.fundingSource === "credit_card") {
       const feeParsed = parseUdharFeeAmount(form.feeAmount)
@@ -260,18 +245,21 @@ function AddUdharEntrySheetMounted({
       feeStr = feeParsed.value
     }
 
+    const selectedAccount = accounts.find((a) => a.id === form.accountId)
+
     const payload: CreateUdharEntryRequest = {
       entryType: form.entryType,
       personId: effectivePersonId,
       amount: String(Math.round(amountInr)),
       date: form.date,
-      dueDate,
+      ...(dueDate ? { dueDate } : {}),
       ...(form.fundingSource === "credit_card"
         ? {
             creditCardAccountId: form.accountId,
             ...(feeStr ? { feeAmount: feeStr } : {}),
           }
         : { accountId: form.accountId }),
+      ...utrPayloadField(form.utr, selectedAccount),
       ...(form.note.trim() ? { note: form.note.trim() } : {}),
     }
 

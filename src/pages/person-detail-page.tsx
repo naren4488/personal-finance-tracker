@@ -12,6 +12,7 @@ import {
   PersonUdharNetAndQuadrants,
 } from "@/features/accounts/person-udhar-panels"
 import { useDeleteTransactionFlow } from "@/features/entries/use-delete-transaction-flow"
+import { useTransactionEntityCatalog } from "@/hooks/use-transaction-entity-catalog"
 import type { AccountsSegmentId } from "@/features/accounts/accounts-segments"
 import type { UdharEntryType } from "@/lib/api/udhar-schemas"
 import { getPersonUdharTotals, type PersonUdharTotals } from "@/lib/api/people-schemas"
@@ -56,6 +57,10 @@ export default function PersonDetailPage() {
   } = useGetPersonLedgerQuery({ personId: pid, limit: 500 }, { skip: !user || !pid })
 
   const { data: accounts = [] } = useGetAccountsQuery(undefined, { skip: !user })
+
+  const transactionCatalog = useTransactionEntityCatalog({
+    transactions: entries.map((tx) => ({ id: tx.id })),
+  })
 
   const txDelete = useDeleteTransactionFlow()
 
@@ -163,6 +168,7 @@ export default function PersonDetailPage() {
                   <PersonUdharLedgerList
                     entries={entries}
                     accounts={accounts}
+                    catalog={transactionCatalog}
                     onDeleteEntry={txDelete.requestDelete}
                   />
                 </section>

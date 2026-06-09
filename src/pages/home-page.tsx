@@ -21,23 +21,22 @@ import { RecentTransactionRow } from "@/features/entries/recent-transaction-row"
 import { useDeleteTransactionFlow } from "@/features/entries/use-delete-transaction-flow"
 import { handleAuthApiErrorIfNeeded } from "@/lib/auth/handle-auth-api-error"
 import { getErrorMessage } from "@/lib/api/errors"
-import { getDashboardAccountDisplay } from "@/lib/api/dashboard-account-display"
+import { getHomeAccountCardDisplay } from "@/lib/api/dashboard-account-display"
 import type { Account } from "@/lib/api/account-schemas"
 import {
   accountAvailableBalanceInrFromApi,
   sortAccountsNewestFirst,
 } from "@/lib/api/account-schemas"
-import {
-  resolveHomeCardDuesDisplayInr,
-  type DashboardAccountPreview,
-} from "@/lib/api/dashboard-home-schemas"
+import type { DashboardAccountPreview } from "@/lib/api/dashboard-home-schemas"
 import { buildHomeIncomingGroups, buildHomeOutgoingGroups } from "@/lib/home-money-flow-filters"
 import type { MoneyFlowRow } from "@/lib/home-money-overview"
 import { formatCurrency, formatDayMonthShort } from "@/lib/format"
+import { useTransactionEntityCatalog } from "@/hooks/use-transaction-entity-catalog"
 import { useGetAccountsQuery, useGetDashboardQuery } from "@/store/api/base-api"
 import { buildAccountsDetailPath } from "@/features/accounts/accounts-route"
 import { GettingStartedCard } from "@/features/home/getting-started-card"
 import { useAppDispatch, useAppSelector } from "@/store/hooks"
+import { isAccountCreateApiDisabled } from "@/lib/feature-flags"
 import { cn } from "@/lib/utils"
 
 const DEFAULT_RECENT_LIMIT = 5
@@ -71,6 +70,7 @@ function accountKindBadgeLabel(kind: string): string {
 }
 
 export default function HomePage() {
+  const accountCreateDisabled = isAccountCreateApiDisabled()
   const navigate = useNavigate()
   const dispatch = useAppDispatch()
   const user = useAppSelector((s) => s.auth.user)
@@ -99,22 +99,16 @@ export default function HomePage() {
         udhar: [] as MoneyFlowRow[],
         loan: [] as MoneyFlowRow[],
         card: [] as MoneyFlowRow[],
-        total: 0,
       }
     }
-    return buildHomeOutgoingGroups(dashboard.toBePaid.items, horizonDays)
-  }, [dashboard, horizonDays])
+    return buildHomeOutgoingGroups(dashboard.toBePaid.items)
+  }, [dashboard])
 
   const incomingRows = useMemo(() => {
     if (!dashboard) {
-      return { udhar: [] as MoneyFlowRow[], income: [] as MoneyFlowRow[], total: 0 }
+      return { udhar: [] as MoneyFlowRow[], income: [] as MoneyFlowRow[] }
     }
-    return buildHomeIncomingGroups(dashboard.incomingMoney.items, horizonDays)
-  }, [dashboard, horizonDays])
-
-  const cardDuesDisplay = useMemo(() => {
-    if (!dashboard) return 0
-    return resolveHomeCardDuesDisplayInr(dashboard.summary, dashboard.stats)
+    return buildHomeIncomingGroups(dashboard.incomingMoney.items)
   }, [dashboard])
 
   const txDelete = useDeleteTransactionFlow()
@@ -125,6 +119,10 @@ export default function HomePage() {
   }, [isError, error, dispatch])
 
   const homeRecentRows = dashboard?.recentTransactions ?? []
+
+  const transactionCatalog = useTransactionEntityCatalog({
+    transactions: homeRecentRows.map((tx) => ({ id: tx.id })),
+  })
 
   const showSkeleton = isLoading && !dashboard
   const updating = isFetching && dashboard
@@ -138,8 +136,8 @@ export default function HomePage() {
     homeRecentRows.length === 0
 
   const handleGettingStartedAddAccount = useCallback(() => {
-    navigate("/accounts", { state: { openAddAccount: true } })
-  }, [navigate])
+    navigate("/accounts", accountCreateDisabled ? undefined : { state: { openAddAccount: true } })
+  }, [navigate, accountCreateDisabled])
 
   const handleGettingStartedAddExpense = useCallback(() => {
     navigate("/entries?add=expenses")
@@ -221,7 +219,7 @@ export default function HomePage() {
                 <MetricCell
                   icon={CreditCard}
                   label="Card dues"
-                  value={formatCurrency(cardDuesDisplay)}
+                  value={formatCurrency(dashboard.summary.cardDues)}
                 />
                 <MetricCell
                   icon={Users}
@@ -229,20 +227,27 @@ export default function HomePage() {
                   value={formatCurrency(dashboard.summary.personDues)}
                 />
               </div>
-              <div className="grid grid-cols-3 gap-2 pt-1">
+              <div
+                className={cn(
+                  "grid gap-2 pt-1",
+                  accountCreateDisabled ? "grid-cols-2" : "grid-cols-3"
+                )}
+              >
                 <Link
                   to="/entries?add=txns"
                   className="rounded-xl border border-white/25 bg-white/5 px-2 py-2.5 text-center text-[11px] font-semibold text-white transition-colors hover:bg-white/10"
                 >
                   Add Entry
                 </Link>
-                <Link
-                  to="/accounts"
-                  state={{ openAddAccount: true }}
-                  className="rounded-xl border border-white/25 bg-white/5 px-2 py-2.5 text-center text-[11px] font-semibold text-white transition-colors hover:bg-white/10"
-                >
-                  Add Bank
-                </Link>
+                {!accountCreateDisabled ? (
+                  <Link
+                    to="/accounts"
+                    state={{ openAddAccount: true }}
+                    className="rounded-xl border border-white/25 bg-white/5 px-2 py-2.5 text-center text-[11px] font-semibold text-white transition-colors hover:bg-white/10"
+                  >
+                    Add Bank
+                  </Link>
+                ) : null}
                 <button
                   type="button"
                   onClick={() => setCommitmentOpen(true)}
@@ -259,6 +264,7 @@ export default function HomePage() {
 
         {showGettingStarted ? (
           <GettingStartedCard
+            showAddAccountStep={!accountCreateDisabled}
             onAddAccount={handleGettingStartedAddAccount}
             onAddExpense={handleGettingStartedAddExpense}
             onAddIncome={handleGettingStartedAddIncome}
@@ -290,14 +296,14 @@ export default function HomePage() {
               onHorizonDaysChange={setHorizonDays}
               paySection={{
                 title: "To Be Paid by Me",
-                total: outgoingRows.total,
+                total: dashboard.toBePaid.total,
                 emptyCopy: `No pending payments in the next ${horizonDays} day${horizonDays === 1 ? "" : "s"}.`,
                 subsections: [
                   {
-                    heading: "Borrowed Udhar",
+                    heading: "You Received",
                     rows: outgoingRows.udhar,
                     dateHint: "due",
-                    chip: "To pay",
+                    chip: "Paid To",
                   },
                   { heading: "Loan EMI", rows: outgoingRows.loan, dateHint: "due", chip: "EMI" },
                   {
@@ -310,14 +316,14 @@ export default function HomePage() {
               }}
               receiveSection={{
                 title: "Incoming Money",
-                total: incomingRows.total,
+                total: dashboard.incomingMoney.total,
                 emptyCopy: `No pending incoming in the next ${horizonDays} day${horizonDays === 1 ? "" : "s"}.`,
                 subsections: [
                   {
-                    heading: "Lent Udhar",
+                    heading: "You Paid",
                     rows: incomingRows.udhar,
                     dateHint: "expect",
-                    chip: "To receive",
+                    chip: "Receivable",
                   },
                   {
                     heading: "Salary / Income",
@@ -375,7 +381,19 @@ export default function HomePage() {
             </div>
 
             <Card className="rounded-2xl border-border/50 bg-muted/30 py-3">
-              <CardContent className="grid grid-cols-2 gap-2 px-4 text-[11px]">
+              <CardContent className="grid grid-cols-2 gap-3 px-4 text-[11px]">
+                <div>
+                  <p className="text-muted-foreground">Upcoming payments</p>
+                  <p className="font-semibold tabular-nums text-foreground">
+                    {formatCurrency(dashboard.coverage.upcomingPayments)}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-muted-foreground">Expected incoming</p>
+                  <p className="font-semibold tabular-nums text-foreground">
+                    {formatCurrency(dashboard.coverage.expectedIncoming)}
+                  </p>
+                </div>
                 <div>
                   <p className="text-muted-foreground">Surplus</p>
                   <p className="font-semibold tabular-nums text-foreground">
@@ -412,7 +430,7 @@ export default function HomePage() {
                     const preview =
                       dashboardAccountById.get(String(a.id)) ??
                       minimalDashboardPreviewFromAccount(a)
-                    return <AccountPreviewCard key={a.id} account={preview} fullAccount={a} />
+                    return <AccountPreviewCard key={a.id} preview={preview} account={a} />
                   })}
                 </div>
               )}
@@ -471,6 +489,7 @@ export default function HomePage() {
                     key={tx.id}
                     tx={tx}
                     accounts={accounts}
+                    catalog={transactionCatalog}
                     onDelete={txDelete.requestDelete}
                   />
                 ))
@@ -703,27 +722,34 @@ function minimalDashboardPreviewFromAccount(account: Account): DashboardAccountP
 }
 
 function AccountPreviewCard({
+  preview,
   account,
-  fullAccount,
 }: {
-  account: DashboardAccountPreview
-  fullAccount?: Account
+  preview: DashboardAccountPreview
+  account: Account
 }) {
   const navigate = useNavigate()
-  const KindIcon = accountKindIcon(account.kind)
-  const label = accountKindBadgeLabel(account.kind)
-  const { amount, label: amountContext } = getDashboardAccountDisplay(account, fullAccount)
+  const KindIcon = accountKindIcon(preview.kind)
+  const label = accountKindBadgeLabel(preview.kind)
+  const display = getHomeAccountCardDisplay(preview, account)
   const detailPath = buildAccountsDetailPath({
-    kind: accountDetailKind(account.kind),
-    id: String(account.id),
+    kind: accountDetailKind(preview.kind),
+    id: String(preview.id),
   })
+
+  const primaryValue =
+    display.mode === "currency"
+      ? formatCurrency(display.amount)
+      : display.mode === "count"
+        ? String(display.count)
+        : "—"
 
   return (
     <button
       type="button"
       onClick={() => navigate(detailPath)}
       className="flex flex-col rounded-2xl border border-border/60 bg-card p-3 shadow-sm hover:shadow-md hover:border-primary/50 transition-all cursor-pointer text-left"
-      aria-label={`View ${account.name} account`}
+      aria-label={`View ${preview.name} account`}
     >
       <div className="mb-2 flex items-start justify-between gap-1">
         <div className="flex size-9 items-center justify-center rounded-full bg-muted">
@@ -734,13 +760,16 @@ function AccountPreviewCard({
         </span>
       </div>
       <p className="truncate text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
-        {account.name}
+        {preview.name}
       </p>
-      {amountContext ? (
-        <p className="mt-1 text-[9px] font-medium text-muted-foreground">{amountContext}</p>
-      ) : null}
-      <p className={cn("text-base font-bold tabular-nums", amountContext ? "mt-0.5" : "mt-1")}>
-        {formatCurrency(amount)}
+      <p className="mt-1 text-[9px] font-medium text-muted-foreground">{display.contextLabel}</p>
+      <p
+        className={cn(
+          "mt-0.5 text-base font-bold tabular-nums",
+          display.mode === "unavailable" && "text-muted-foreground"
+        )}
+      >
+        {primaryValue}
       </p>
     </button>
   )

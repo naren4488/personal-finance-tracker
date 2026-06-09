@@ -5,15 +5,7 @@ import {
   coerceUnknownToRecentTransaction,
   type RecentTransaction,
 } from "@/lib/api/transaction-schemas"
-
-function parseMoney(v: unknown): number {
-  if (typeof v === "number" && Number.isFinite(v)) return v
-  if (typeof v === "string") {
-    const n = Number(String(v).replace(/,/g, "").replace(/\s/g, "").trim())
-    return Number.isFinite(n) ? n : 0
-  }
-  return 0
-}
+import { parseInrFromUnknownStripSpaces } from "@/lib/money/parse-inr"
 
 function parseIntLoose(v: unknown, fallback: number): number {
   if (typeof v === "number" && Number.isFinite(v)) return Math.floor(v)
@@ -49,6 +41,8 @@ export type DashboardAccountPreview = {
   outstandingAmount?: number
   remainingAmount?: number
   totalLoanAmount?: number
+  /** Remaining EMI installments when dashboard provides it. */
+  remainingInstallments?: number
 }
 
 export type DashboardHomeView = {
@@ -99,7 +93,7 @@ function parseScheduledItem(raw: unknown): DashboardScheduledItem | null {
   return {
     id,
     title,
-    amount: parseMoney(o.amount),
+    amount: parseInrFromUnknownStripSpaces(o.amount),
     dueDate: dueDate || "—",
     kind: typeof o.kind === "string" ? o.kind : "",
     status: typeof o.status === "string" ? o.status : "",
@@ -115,7 +109,7 @@ function parseScheduledBlock(
   }
   const o = raw as Record<string, unknown>
   const days = parseIntLoose(o.days, fallbackDays)
-  const total = parseMoney(o.total)
+  const total = parseInrFromUnknownStripSpaces(o.total)
   const itemsRaw = o.items
   const items: DashboardScheduledItem[] = []
   if (Array.isArray(itemsRaw)) {
@@ -134,7 +128,7 @@ function parseOptionalMoneyField(
   for (const k of keys) {
     const v = o[k]
     if (v === undefined || v === null) continue
-    const n = parseMoney(v)
+    const n = parseInrFromUnknownStripSpaces(v)
     if (Number.isFinite(n)) return n
   }
   return undefined
@@ -152,14 +146,25 @@ function parseAccountPreview(raw: unknown): DashboardAccountPreview | null {
   const outstandingAmount = parseOptionalMoneyField(o, ["outstandingAmount", "outstanding_amount"])
   const remainingAmount = parseOptionalMoneyField(o, ["remainingAmount", "remaining_amount"])
   const totalLoanAmount = parseOptionalMoneyField(o, ["totalLoanAmount", "total_loan_amount"])
+  const remainingInstallmentsRaw = o.remainingInstallments ?? o.remaining_installments
+  const remainingInstallments =
+    remainingInstallmentsRaw !== undefined && remainingInstallmentsRaw !== null
+      ? (() => {
+          const n =
+            typeof remainingInstallmentsRaw === "number"
+              ? remainingInstallmentsRaw
+              : Number(String(remainingInstallmentsRaw).replace(/\D/g, ""))
+          return Number.isFinite(n) ? Math.max(0, Math.trunc(n)) : undefined
+        })()
+      : undefined
 
   return {
     id,
     name,
     kind: typeof o.kind === "string" ? o.kind.trim().toLowerCase() : "other",
-    currentBalance: parseMoney(o.currentBalance),
-    creditLimit: parseMoney(o.creditLimit),
-    currentOutstanding: parseMoney(o.currentOutstanding),
+    currentBalance: parseInrFromUnknownStripSpaces(o.currentBalance),
+    creditLimit: parseInrFromUnknownStripSpaces(o.creditLimit),
+    currentOutstanding: parseInrFromUnknownStripSpaces(o.currentOutstanding),
     status: typeof o.status === "string" ? o.status.trim() : "",
     ...(availableLimit !== undefined ? { availableLimit } : {}),
     ...(remainingLimit !== undefined ? { remainingLimit } : {}),
@@ -167,6 +172,7 @@ function parseAccountPreview(raw: unknown): DashboardAccountPreview | null {
     ...(outstandingAmount !== undefined ? { outstandingAmount } : {}),
     ...(remainingAmount !== undefined ? { remainingAmount } : {}),
     ...(totalLoanAmount !== undefined ? { totalLoanAmount } : {}),
+    ...(remainingInstallments !== undefined ? { remainingInstallments } : {}),
   }
 }
 
@@ -210,9 +216,9 @@ export function parseDashboardHomeResponse(
       : {}
 
   const summary = {
-    totalBalance: parseMoney(summaryObj.totalBalance),
-    income: parseMoney(summaryObj.income),
-    expenses: parseMoney(summaryObj.expenses),
+    totalBalance: parseInrFromUnknownStripSpaces(summaryObj.totalBalance),
+    income: parseInrFromUnknownStripSpaces(summaryObj.income),
+    expenses: parseInrFromUnknownStripSpaces(summaryObj.expenses),
     cardDues:
       parseOptionalMoneyField(summaryObj, [
         "cardDues",
@@ -238,10 +244,10 @@ export function parseDashboardHomeResponse(
       ? (coverageRaw as Record<string, unknown>)
       : {}
   const coverage = {
-    upcomingPayments: parseMoney(cov.upcomingPayments),
-    expectedIncoming: parseMoney(cov.expectedIncoming),
-    availableBalance: parseMoney(cov.availableBalance),
-    surplus: parseMoney(cov.surplus),
+    upcomingPayments: parseInrFromUnknownStripSpaces(cov.upcomingPayments),
+    expectedIncoming: parseInrFromUnknownStripSpaces(cov.expectedIncoming),
+    availableBalance: parseInrFromUnknownStripSpaces(cov.availableBalance),
+    surplus: parseInrFromUnknownStripSpaces(cov.surplus),
   }
 
   const statsRaw = payload.stats

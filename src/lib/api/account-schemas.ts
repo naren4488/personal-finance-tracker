@@ -117,6 +117,21 @@ export function accountSelectLabel(account: Account): string {
   return sub ? `${account.name} (${sub})` : account.name
 }
 
+/** Normalized account kind/type token (lowercase). */
+export function accountKindNormalized(account: Pick<Account, "kind" | "type">): string {
+  return String(account.kind ?? account.type ?? "")
+    .trim()
+    .toLowerCase()
+}
+
+export {
+  isDigitalUtrAccount,
+  isDigitalUtrAccountKind,
+  optionalUtrWireField,
+  utrFieldVisibleForAccount,
+  utrPayloadField,
+} from "@/lib/transactions/utr-account"
+
 /** Prefer `type`, then `kind` — for mapping expense `sourceType` and `payFromAccountType`. */
 export function accountApiTypeOrKind(account: Pick<Account, "type" | "kind">): string {
   const t = String(account.type ?? "")

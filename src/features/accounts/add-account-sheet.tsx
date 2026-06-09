@@ -1,5 +1,5 @@
 import { zodResolver } from "@hookform/resolvers/zod"
-import { useCallback, useId, useMemo } from "react"
+import { useCallback, useEffect, useId, useMemo } from "react"
 import { useForm, useWatch } from "react-hook-form"
 import { Banknote, Building2, Landmark, type LucideIcon, Smartphone, Wallet, X } from "lucide-react"
 import { toast } from "sonner"
@@ -210,28 +210,6 @@ function AddAccountSheetMounted({ open, onOpenChange }: MountedProps) {
     >
       <Form {...form}>
         <div className={APP_FORM_STACK_CLASS}>
-          {accountCreateDisabled ? (
-            <div
-              role="status"
-              className="rounded-2xl border border-amber-500/40 bg-amber-500/12 px-4 py-3.5 text-sm text-foreground sm:px-4 sm:py-4"
-            >
-              <p className="font-semibold text-amber-950 dark:text-amber-100">
-                Account creation is turned off
-              </p>
-              <p className="mt-2 text-xs leading-relaxed text-muted-foreground sm:text-sm">
-                Nothing is sent to the server while this mode is on. Delete{" "}
-                <code className="rounded-md bg-background/80 px-1.5 py-0.5 font-mono text-[11px]">
-                  VITE_DISABLE_ACCOUNT_CREATE
-                </code>{" "}
-                from{" "}
-                <code className="rounded-md bg-background/80 px-1.5 py-0.5 font-mono text-[11px]">
-                  .env.local
-                </code>{" "}
-                (or set it to false) after the add-account API is deployed.
-              </p>
-            </div>
-          ) : null}
-
           <section className="space-y-3 sm:space-y-3.5" aria-labelledby="account-type-heading">
             <p id="account-type-heading" className={APP_FORM_SECTION_HEADING_CLASS}>
               Account type
@@ -389,6 +367,12 @@ function AddAccountSheetMounted({ open, onOpenChange }: MountedProps) {
 }
 
 export function AddAccountSheet({ open, onOpenChange }: AddAccountSheetProps) {
-  if (!open) return null
+  const accountCreateDisabled = isAccountCreateApiDisabled()
+
+  useEffect(() => {
+    if (accountCreateDisabled && open) onOpenChange(false)
+  }, [accountCreateDisabled, open, onOpenChange])
+
+  if (!open || accountCreateDisabled) return null
   return <AddAccountSheetMounted open={open} onOpenChange={onOpenChange} />
 }

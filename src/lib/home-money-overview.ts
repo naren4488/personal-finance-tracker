@@ -2,6 +2,8 @@ import type { Commitment } from "@/lib/api/commitment-schemas"
 import type { DashboardScheduledItem } from "@/lib/api/dashboard-home-schemas"
 import { parseSignedAmountString } from "@/lib/api/transaction-schemas"
 import type { RecentTransaction } from "@/lib/api/transaction-schemas"
+import { formatYyyyMmDd, startOfLocalDay } from "@/lib/date/local-date"
+import { parseInrScalar } from "@/lib/money/parse-inr"
 
 /** YYYY-MM-DD */
 export type IsoDateString = string
@@ -23,18 +25,7 @@ export type MoneyFlowRow = {
   type: "pay" | "receive"
 }
 
-function startOfLocalDay(d: Date): Date {
-  const x = new Date(d)
-  x.setHours(0, 0, 0, 0)
-  return x
-}
-
-export function formatYyyyMmDd(d: Date): IsoDateString {
-  const y = d.getFullYear()
-  const m = String(d.getMonth() + 1).padStart(2, "0")
-  const day = String(d.getDate()).padStart(2, "0")
-  return `${y}-${m}-${day}`
-}
+export { formatYyyyMmDd } from "@/lib/date/local-date"
 
 function normalizeScheduledDate(dueDate: string): IsoDateString {
   const k = dueDate.trim().slice(0, 10)
@@ -145,12 +136,6 @@ export function filterMoneyFlowByHorizon(
   return rows.filter((r) => isDateInHorizon(r.date, start, endInclusive))
 }
 
-function parseMoneyLoose(v: string | number): number {
-  if (typeof v === "number" && Number.isFinite(v)) return v
-  const n = Number(String(v).replace(/,/g, "").trim())
-  return Number.isFinite(n) ? n : 0
-}
-
 export function outgoingBucket(item: DashboardScheduledItem): PayKind {
   return classifyOutgoingItem(item) ?? "udhar_borrow"
 }
@@ -228,7 +213,7 @@ export function commitmentToScheduled(c: Commitment): DashboardScheduledItem {
   return {
     id: `commitment:${String(c.id)}`,
     title: String(c.title ?? "").trim() || "Commitment",
-    amount: parseMoneyLoose(c.amount),
+    amount: parseInrScalar(c.amount),
     dueDate: due,
     kind: String(c.kind ?? "").trim(),
     status: String(c.status ?? "").trim(),

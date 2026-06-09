@@ -15,7 +15,6 @@ import { Input } from "@/components/ui/input"
 import { Separator } from "@/components/ui/separator"
 import { PasswordInput } from "@/features/auth/password-input"
 import { registerRequestSchema, type RegisterRequest } from "@/lib/api/auth-schemas"
-import { getAuthErrorMessage } from "@/lib/api/errors"
 import { useRegisterMutation } from "@/store/api/base-api"
 import { safeReturnPath } from "@/features/auth/safe-return-path"
 import { APP_FORM_FIELD_CLASS, APP_FORM_SUBMIT_CLASS } from "@/lib/ui/app-form-styles"
@@ -41,8 +40,8 @@ export function RegisterForm() {
       toast.success(data.user.name ? `Welcome, ${data.user.name}!` : "Account created")
       const next = safeReturnPath((location.state as { from?: string } | null)?.from) ?? "/"
       navigate(next, { replace: true })
-    } catch (err) {
-      toast.error(getAuthErrorMessage(err))
+    } catch {
+      // Global mutation listener shows API error toast
     }
   })
 

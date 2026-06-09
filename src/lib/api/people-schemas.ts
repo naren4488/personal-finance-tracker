@@ -1,4 +1,5 @@
 import { z } from "zod"
+import { parseInrFromUnknownStripSpaces } from "@/lib/money/parse-inr"
 
 export const createPersonRequestSchema = z.object({
   name: z.string().min(1, "Name is required"),
@@ -25,19 +26,48 @@ export const personSchema = z
 
 export type Person = z.infer<typeof personSchema>
 
+const PERSON_NESTED_TOTALS_KEYS = [
+  "udhar",
+  "udharTotals",
+  "udhar_totals",
+  "balances",
+  "balance",
+  "summary",
+  "totals",
+] as const
+
+function personAmountSources(person: Person): Record<string, unknown>[] {
+  const raw = person as Record<string, unknown>
+  const sources: Record<string, unknown>[] = [raw]
+  for (const key of PERSON_NESTED_TOTALS_KEYS) {
+    const nested = raw[key]
+    if (nested && typeof nested === "object" && !Array.isArray(nested)) {
+      sources.push(nested as Record<string, unknown>)
+    }
+  }
+  return sources
+}
+
 /** Parse numeric person fields from GET /people (signed or magnitude). */
 export function parsePersonAmountField(value: unknown): number {
-  if (typeof value === "number" && Number.isFinite(value)) return value
-  if (typeof value === "string") {
-    const parsed = Number(value.replace(/,/g, "").replace(/\s/g, ""))
-    if (Number.isFinite(parsed)) return parsed
-  }
-  return 0
+  return parseInrFromUnknownStripSpaces(value)
 }
 
 /** Signed INR from `person.totalBalance` (People list, detail). */
 export function parsePersonTotalBalance(value: unknown): number {
   return parsePersonAmountField(value)
+}
+
+function readPersonApiAmount(person: Person, keys: readonly string[]): number {
+  for (const src of personAmountSources(person)) {
+    for (const key of keys) {
+      const value = src[key]
+      if (value !== undefined && value !== null) {
+        return parsePersonAmountField(value)
+      }
+    }
+  }
+  return 0
 }
 
 export type PersonUdharTotals = {
@@ -48,14 +78,57 @@ export type PersonUdharTotals = {
   totalPaid: number
 }
 
-/** Udhar summary fields from GET /people — single source of truth for display. */
+/**
+ * Udhar summary fields from GET /people — backend is the source of truth.
+ * Reads camelCase, snake_case, and nested balance objects; never derives from ledger.
+ */
 export function getPersonUdharTotals(person: Person): PersonUdharTotals {
   return {
-    totalBalance: parsePersonTotalBalance(person.totalBalance),
-    totalGiven: parsePersonAmountField(person.totalGiven),
-    totalTaken: parsePersonAmountField(person.totalTaken),
-    totalReceived: parsePersonAmountField(person.totalReceived),
-    totalPaid: parsePersonAmountField(person.totalPaid),
+    totalBalance: readPersonApiAmount(person, [
+      "totalBalance",
+      "total_balance",
+      "netBalance",
+      "net_balance",
+      "net",
+      "balance",
+    ]),
+    totalGiven: readPersonApiAmount(person, [
+      "totalGiven",
+      "total_given",
+      "givenTotal",
+      "given_total",
+    ]),
+    totalTaken: readPersonApiAmount(person, [
+      "totalTaken",
+      "total_taken",
+      "takenTotal",
+      "taken_total",
+    ]),
+    totalReceived: readPersonApiAmount(person, [
+      "totalReceived",
+      "total_received",
+      "paymentsReceived",
+      "payments_received",
+    ]),
+    totalPaid: readPersonApiAmount(person, [
+      "totalPaid",
+      "total_paid",
+      "paymentsMade",
+      "payments_made",
+    ]),
+  }
+}
+
+/** Flatten API totals onto canonical Person fields after parse. */
+export function normalizePersonRecord(person: Person): Person {
+  const totals = getPersonUdharTotals(person)
+  return {
+    ...person,
+    totalBalance: totals.totalBalance,
+    totalGiven: totals.totalGiven,
+    totalTaken: totals.totalTaken,
+    totalReceived: totals.totalReceived,
+    totalPaid: totals.totalPaid,
   }
 }
 
@@ -84,7 +157,7 @@ export function parseCreatePersonSuccess(
   if (!parsed.success) {
     return { ok: false, error: "Invalid response from server." }
   }
-  return { ok: true, person: parsed.data.data.person }
+  return { ok: true, person: normalizePersonRecord(parsed.data.data.person) }
 }
 
 export const getPeopleSuccessResponseSchema = z.object({
@@ -104,5 +177,10 @@ export function parseGetPeopleSuccess(
   if (!parsed.success) {
     return { ok: false, error: "Invalid response from server." }
   }
-  return { ok: true, data: parsed.data.data }
+  return {
+    ok: true,
+    data: {
+      people: parsed.data.data.people.map(normalizePersonRecord),
+    },
+  }
 }

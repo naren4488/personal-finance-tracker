@@ -1,4 +1,5 @@
 import type { DashboardScheduledItem } from "@/lib/api/dashboard-home-schemas"
+import { startOfLocalDay } from "@/lib/date/local-date"
 import {
   buildHorizonBounds,
   classifyIncomingItem,
@@ -23,12 +24,6 @@ const TERMINAL_SCHEDULED_STATUSES = new Set([
 ])
 
 const PENDING_SCHEDULED_STATUSES = new Set(["pending", "active", "open"])
-
-function startOfLocalDay(d: Date): Date {
-  const x = new Date(d)
-  x.setHours(0, 0, 0, 0)
-  return x
-}
 
 function parseDueDateMs(dueDate: string): number | null {
   const k = dueDate.trim().slice(0, 10)
@@ -73,33 +68,24 @@ export function filterPendingScheduledForHomeWindow(
   return items.filter((it) => isScheduledDueVisibleInHomeWindow(it, horizonDays, now))
 }
 
-export function sumMoneyFlowAmount(rows: MoneyFlowRow[]): number {
-  return rows.reduce((sum, r) => sum + (Number.isFinite(r.amount) ? r.amount : 0), 0)
-}
-
 export type HomeOutgoingGroups = {
   udhar: MoneyFlowRow[]
   loan: MoneyFlowRow[]
   card: MoneyFlowRow[]
-  total: number
 }
 
 export type HomeIncomingGroups = {
   udhar: MoneyFlowRow[]
   income: MoneyFlowRow[]
-  total: number
 }
 
-export function buildHomeOutgoingGroups(
-  items: DashboardScheduledItem[],
-  horizonDays: number
-): HomeOutgoingGroups {
-  const pending = filterPendingScheduledForHomeWindow(items, horizonDays)
+/** Group dashboard `toBePaid.items` for display only — totals come from API `toBePaid.total`. */
+export function buildHomeOutgoingGroups(items: DashboardScheduledItem[]): HomeOutgoingGroups {
   const udhar: MoneyFlowRow[] = []
   const loan: MoneyFlowRow[] = []
   const card: MoneyFlowRow[] = []
 
-  for (const item of pending) {
+  for (const item of items) {
     const row = scheduledToPayRow(item)
     const bucket = classifyOutgoingItem(item)
     if (bucket === "credit_card") card.push(row)
@@ -107,39 +93,27 @@ export function buildHomeOutgoingGroups(
     else udhar.push(row)
   }
 
-  const udharSorted = sortMoneyFlowRows(udhar)
-  const loanSorted = sortMoneyFlowRows(loan)
-  const cardSorted = sortMoneyFlowRows(card)
-
   return {
-    udhar: udharSorted,
-    loan: loanSorted,
-    card: cardSorted,
-    total: sumMoneyFlowAmount([...udharSorted, ...loanSorted, ...cardSorted]),
+    udhar: sortMoneyFlowRows(udhar),
+    loan: sortMoneyFlowRows(loan),
+    card: sortMoneyFlowRows(card),
   }
 }
 
-export function buildHomeIncomingGroups(
-  items: DashboardScheduledItem[],
-  horizonDays: number
-): HomeIncomingGroups {
-  const pending = filterPendingScheduledForHomeWindow(items, horizonDays)
+/** Group dashboard `incomingMoney.items` for display only — totals come from API `incomingMoney.total`. */
+export function buildHomeIncomingGroups(items: DashboardScheduledItem[]): HomeIncomingGroups {
   const udhar: MoneyFlowRow[] = []
   const income: MoneyFlowRow[] = []
 
-  for (const item of pending) {
+  for (const item of items) {
     const row = scheduledToReceiveRow(item)
     const bucket = classifyIncomingItem(item)
     if (bucket === "income") income.push(row)
     else udhar.push(row)
   }
 
-  const udharSorted = sortMoneyFlowRows(udhar)
-  const incomeSorted = sortMoneyFlowRows(income)
-
   return {
-    udhar: udharSorted,
-    income: incomeSorted,
-    total: sumMoneyFlowAmount([...udharSorted, ...incomeSorted]),
+    udhar: sortMoneyFlowRows(udhar),
+    income: sortMoneyFlowRows(income),
   }
 }

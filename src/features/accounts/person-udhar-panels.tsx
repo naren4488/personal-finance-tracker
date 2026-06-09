@@ -1,4 +1,5 @@
 import { TransactionListRow } from "@/features/entries/transaction-list-row"
+import type { EntityCatalog } from "@/lib/commitments/commitment-kind-config"
 import type { Account } from "@/lib/api/account-schemas"
 import type { PersonUdharTotals } from "@/lib/api/people-schemas"
 import type { RecentTransaction } from "@/lib/api/transaction-schemas"
@@ -9,6 +10,10 @@ import {
   personNetListCaption,
   personNetTextClassName,
 } from "@/lib/people/person-balance-display"
+import {
+  UDHAR_DISPLAY_YOU_PAID,
+  UDHAR_DISPLAY_YOU_RECEIVED,
+} from "@/lib/transactions/transaction-udhar-title-labels"
 import { cn } from "@/lib/utils"
 
 const summaryTile = "rounded-2xl border border-border bg-card p-3 shadow-sm"
@@ -16,6 +21,8 @@ const summaryTile = "rounded-2xl border border-border bg-card p-3 shadow-sm"
 export function PersonUdharNetAndQuadrants({ apiTotals }: { apiTotals: PersonUdharTotals }) {
   const signed = apiTotals.totalBalance
   const netDisplay = formatCurrency(Math.abs(signed))
+  const youPaidTotal = apiTotals.totalGiven + apiTotals.totalPaid
+  const youReceivedTotal = apiTotals.totalTaken + apiTotals.totalReceived
 
   return (
     <>
@@ -38,27 +45,15 @@ export function PersonUdharNetAndQuadrants({ apiTotals }: { apiTotals: PersonUdh
         <p className="text-xs font-medium text-muted-foreground">Summary</p>
         <div className="grid grid-cols-2 gap-2 sm:gap-2.5">
           <div className={summaryTile}>
-            <p className="text-xs text-muted-foreground">Total Given</p>
+            <p className="text-xs text-muted-foreground">{UDHAR_DISPLAY_YOU_PAID}</p>
             <p className="mt-1 text-base font-bold tabular-nums text-income">
-              {formatCurrency(apiTotals.totalGiven)}
+              {formatCurrency(youPaidTotal)}
             </p>
           </div>
           <div className={summaryTile}>
-            <p className="text-xs text-muted-foreground">Total Taken</p>
+            <p className="text-xs text-muted-foreground">{UDHAR_DISPLAY_YOU_RECEIVED}</p>
             <p className="mt-1 text-base font-bold tabular-nums text-destructive">
-              {formatCurrency(apiTotals.totalTaken)}
-            </p>
-          </div>
-          <div className={summaryTile}>
-            <p className="text-xs text-muted-foreground">Total Received</p>
-            <p className="mt-1 text-base font-bold tabular-nums text-foreground">
-              {formatCurrency(apiTotals.totalReceived)}
-            </p>
-          </div>
-          <div className={summaryTile}>
-            <p className="text-xs text-muted-foreground">Total Paid</p>
-            <p className="mt-1 text-base font-bold tabular-nums text-foreground">
-              {formatCurrency(apiTotals.totalPaid)}
+              {formatCurrency(youReceivedTotal)}
             </p>
           </div>
         </div>
@@ -71,6 +66,7 @@ export function PersonUdharLedgerList({
   entries,
   onDeleteEntry,
   listClassName,
+  catalog,
 }: {
   entries: RecentTransaction[]
   onDeleteEntry?: (tx: RecentTransaction) => void
@@ -78,12 +74,18 @@ export function PersonUdharLedgerList({
   listClassName?: string
   /** @deprecated Not used for display; API fields on each transaction row are used instead. */
   accounts?: Account[]
+  catalog?: EntityCatalog
 }) {
   return (
     <ul className={cn("space-y-2 pr-0.5", listClassName)}>
       {entries.map((tx) => (
         <li key={tx.id}>
-          <TransactionListRow tx={tx} onDelete={onDeleteEntry} amountStyle="udhar-ledger" />
+          <TransactionListRow
+            tx={tx}
+            onDelete={onDeleteEntry}
+            amountStyle="udhar-ledger"
+            catalog={catalog}
+          />
         </li>
       ))}
     </ul>

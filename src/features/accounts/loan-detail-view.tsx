@@ -12,6 +12,7 @@ import {
 } from "lucide-react"
 import { toast } from "sonner"
 import { ConfirmDeleteDialog } from "@/components/confirm-delete-dialog"
+import { AppFieldError } from "@/components/app-field-error"
 import { EntityDeleteButton } from "@/components/entity-delete-button"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -35,10 +36,11 @@ import {
   resolveLoanEmiAmount,
 } from "@/lib/api/loan-account-map"
 import { RecentTransactionRow } from "@/features/entries/recent-transaction-row"
+import { useTransactionEntityCatalog } from "@/hooks/use-transaction-entity-catalog"
 import { getAccountDeleteWarning } from "@/lib/accounts/account-delete"
 import { useAccountDeleteGuard } from "@/hooks/use-account-delete-guard"
-import { getErrorMessage } from "@/lib/api/errors"
-import { handleAuthApiErrorIfNeeded } from "@/lib/auth/handle-auth-api-error"
+import { handleFormApiError } from "@/lib/forms/form-api-errors"
+import { fieldWithErrorClass } from "@/lib/forms/field-error-styles"
 import { formatCurrency } from "@/lib/format"
 import {
   useGetAccountLedgerQuery,
@@ -99,6 +101,7 @@ export function LoanDetailView({
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false)
   const [isEditing, setIsEditing] = useState(false)
   const [draft, setDraft] = useState<Account | null>(null)
+  const [editFieldErrors, setEditFieldErrors] = useState<Record<string, string>>({})
   const { data: allAccounts = [] } = useGetAccountsQuery(undefined, { skip: !account })
   const repaymentAccounts = useMemo(() => filterRepaymentSourceAccounts(allAccounts), [allAccounts])
   const {
@@ -125,6 +128,7 @@ export function LoanDetailView({
   const cancelEdit = useCallback(() => {
     setIsEditing(false)
     setDraft(null)
+    setEditFieldErrors({})
   }, [])
 
   const startEdit = useCallback(() => {
@@ -145,49 +149,47 @@ export function LoanDetailView({
   const saveEdit = useCallback(async () => {
     if (!draft) return
     const accountId = String(account?.id ?? "").trim()
+    const errors: Record<string, string> = {}
     if (!accountId) {
-      toast.error("Unable to update loan: missing account id")
-      return
+      errors._form = "Unable to update loan: missing account id"
     }
     const name = draft.name?.trim() ?? ""
     if (!name) {
-      toast.error("Enter loan name")
-      return
+      errors.name = "Loan name is required"
     }
     const rec = asRec(draft)
     const lender = typeof rec.lenderName === "string" ? rec.lenderName.trim() : ""
     if (!lender) {
-      toast.error("Enter lender name")
-      return
+      errors.lenderName = "Lender name is required"
     }
     const tenure = parseDigitsInt(String(rec.tenureMonths ?? ""))
     if (tenure < 1) {
-      toast.error("Enter tenure in months")
-      return
+      errors._form = errors._form ?? "Tenure is required"
+    } else {
+      rec.tenureMonths = tenure
     }
-    rec.tenureMonths = tenure
 
     const emiDay = parseDigitsInt(String(rec.emiDueDay ?? ""))
     if (emiDay < 1 || emiDay > 31) {
-      toast.error("EMI due day must be 1–31")
-      return
+      errors.emiDueDay = "EMI due day must be 1–31"
+    } else {
+      rec.emiDueDay = String(emiDay)
     }
-    rec.emiDueDay = String(emiDay)
 
     const principalDigits = String(rec.principalAmount ?? "").replace(/\D/g, "")
     if (!principalDigits || Number(principalDigits) <= 0) {
-      toast.error("Enter valid principal amount")
-      return
+      errors._form = errors._form ?? "Principal amount is required"
+    } else {
+      rec.principalAmount = principalDigits
     }
-    rec.principalAmount = principalDigits
 
     const rateStr = String(rec.interestRate ?? "").trim()
     const rateNum = Number(rateStr.replace(/,/g, ""))
     if (!rateStr || !Number.isFinite(rateNum) || rateNum < 0) {
-      toast.error("Enter interest rate")
-      return
+      errors.interestRate = "Interest rate is required"
+    } else {
+      rec.interestRate = rateStr.replace(/,/g, "")
     }
-    rec.interestRate = rateStr.replace(/,/g, "")
 
     const emiStr = String(rec.emiAmount ?? "")
       .replace(/[^\d.]/g, "")
@@ -195,10 +197,10 @@ export function LoanDetailView({
     if (emiStr) {
       const emiNum = Number(emiStr)
       if (!Number.isFinite(emiNum) || emiNum <= 0) {
-        toast.error("Enter valid EMI amount")
-        return
+        errors.emiAmount = "Enter a valid EMI amount"
+      } else {
+        rec.emiAmount = (Math.round(emiNum * 100) / 100).toFixed(2)
       }
-      rec.emiAmount = (Math.round(emiNum * 100) / 100).toFixed(2)
     } else {
       delete rec.emiAmount
       delete rec.monthlyEmi
@@ -211,12 +213,18 @@ export function LoanDetailView({
       rec.loanAccountNo = rec.loanAccountNumber.trim()
     }
 
-    const next = { ...draft, ...rec } as Account
     const startDate = String(rec.startDate ?? "").trim()
     if (!/^\d{4}-\d{2}-\d{2}$/.test(startDate)) {
-      toast.error("Loan start date is missing or invalid")
+      errors._form = errors._form ?? "Loan start date is missing or invalid"
+    }
+
+    if (Object.keys(errors).length > 0) {
+      setEditFieldErrors(errors)
       return
     }
+    setEditFieldErrors({})
+
+    const next = { ...draft, ...rec } as Account
     const dueDateCycle = normalizeLoanDueDateCycleForApi(String(rec.dueDateCycle ?? ""))
     const loanType =
       String(rec.loanType ?? "personal")
@@ -255,8 +263,7 @@ export function LoanDetailView({
       setIsEditing(false)
       setDraft(null)
     } catch (error) {
-      if (handleAuthApiErrorIfNeeded(error, dispatch)) return
-      toast.error(getErrorMessage(error) || "Failed to update loan")
+      handleFormApiError(error, dispatch)
     }
   }, [account?.id, draft, dispatch, onLoanUpdated, updateAccount])
 
@@ -282,9 +289,9 @@ export function LoanDetailView({
       onBack()
       onLoanDeleted?.()
     } catch (e) {
-      toast.error(getErrorMessage(e) || "Failed to delete")
+      handleFormApiError(e, dispatch)
     }
-  }, [account, deleteAccount, deleteGuard, onLoanDeleted, onBack])
+  }, [account, deleteAccount, deleteGuard, dispatch, onLoanDeleted, onBack])
 
   useEffect(() => {
     if (!account) return
@@ -305,6 +312,11 @@ export function LoanDetailView({
     () => [...ledgerTransactions].sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0)),
     [ledgerTransactions]
   )
+
+  const transactionCatalog = useTransactionEntityCatalog({
+    skip: !account,
+    transactions: loanLedgerForUi.map((tx) => ({ id: tx.id })),
+  })
 
   if (!account) return null
 
@@ -330,6 +342,14 @@ export function LoanDetailView({
   const showUpcomingBanner = Boolean(model.emiDueDateLabel || emi != null)
 
   function patchDraft(patch: Record<string, unknown>) {
+    const key = Object.keys(patch)[0]
+    if (key && editFieldErrors[key]) {
+      setEditFieldErrors((prev) => {
+        const next = { ...prev }
+        delete next[key]
+        return next
+      })
+    }
     setDraft((d) => (d ? ({ ...d, ...patch } as Account) : d))
   }
 
@@ -415,6 +435,7 @@ export function LoanDetailView({
           {isEditing && draft ? (
             <div className="mt-4 rounded-2xl border border-border bg-card p-4 shadow-sm">
               <h2 className="mb-3 text-base font-bold text-foreground">Edit Loan</h2>
+              <AppFieldError message={editFieldErrors._form} />
               <div className="space-y-3">
                 <div>
                   <Label htmlFor="loan-edit-name" className={labelSm}>
@@ -424,9 +445,14 @@ export function LoanDetailView({
                     id="loan-edit-name"
                     value={draft.name}
                     onChange={(e) => patchDraft({ name: e.target.value })}
-                    className={cn(fieldIn, "mt-1 h-10 text-left text-sm font-semibold")}
+                    className={fieldWithErrorClass(
+                      cn(fieldIn, "mt-1 h-10 text-left text-sm font-semibold"),
+                      Boolean(editFieldErrors.name)
+                    )}
+                    aria-invalid={Boolean(editFieldErrors.name)}
                     aria-labelledby="loan-detail-name"
                   />
+                  <AppFieldError message={editFieldErrors.name} />
                 </div>
                 <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                   <div>
@@ -447,9 +473,14 @@ export function LoanDetailView({
                         }
                         patchDraft({ emiAmount: v })
                       }}
-                      className={cn(fieldIn, "mt-1 h-10 text-left text-sm")}
+                      className={fieldWithErrorClass(
+                        cn(fieldIn, "mt-1 h-10 text-left text-sm"),
+                        Boolean(editFieldErrors.emiAmount)
+                      )}
+                      aria-invalid={Boolean(editFieldErrors.emiAmount)}
                       placeholder="EMI"
                     />
+                    <AppFieldError message={editFieldErrors.emiAmount} />
                   </div>
                   <div>
                     <Label className={labelSm}>Interest Rate (%)</Label>
@@ -469,8 +500,13 @@ export function LoanDetailView({
                         }
                         patchDraft({ interestRate: v })
                       }}
-                      className={cn(fieldIn, "mt-1 h-10 text-left text-sm")}
+                      className={fieldWithErrorClass(
+                        cn(fieldIn, "mt-1 h-10 text-left text-sm"),
+                        Boolean(editFieldErrors.interestRate)
+                      )}
+                      aria-invalid={Boolean(editFieldErrors.interestRate)}
                     />
+                    <AppFieldError message={editFieldErrors.interestRate} />
                   </div>
                 </div>
                 <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
@@ -479,8 +515,13 @@ export function LoanDetailView({
                     <Input
                       value={String(asRec(draft).lenderName ?? draft.bankName ?? "")}
                       onChange={(e) => patchDraft({ lenderName: e.target.value })}
-                      className={cn(fieldIn, "mt-1 h-10 text-left text-sm")}
+                      className={fieldWithErrorClass(
+                        cn(fieldIn, "mt-1 h-10 text-left text-sm"),
+                        Boolean(editFieldErrors.lenderName)
+                      )}
+                      aria-invalid={Boolean(editFieldErrors.lenderName)}
                     />
+                    <AppFieldError message={editFieldErrors.lenderName} />
                   </div>
                   <div>
                     <Label htmlFor="loan-edit-emi-due-day" className={labelSm}>
@@ -495,10 +536,14 @@ export function LoanDetailView({
                           return n >= 1 && n <= 31 ? String(n) : ""
                         })()}
                         onChange={(e) => patchDraft({ emiDueDay: e.target.value })}
-                        className={cn(
-                          fieldIn,
-                          "h-10 w-full appearance-none bg-background pl-2 pr-9 text-left text-sm font-semibold"
+                        className={fieldWithErrorClass(
+                          cn(
+                            fieldIn,
+                            "h-10 w-full appearance-none bg-background pl-2 pr-9 text-left text-sm font-semibold"
+                          ),
+                          Boolean(editFieldErrors.emiDueDay)
                         )}
+                        aria-invalid={Boolean(editFieldErrors.emiDueDay)}
                       >
                         <option value="">Select day</option>
                         {EMI_DUE_DAY_OPTIONS.map((o) => (
@@ -513,6 +558,7 @@ export function LoanDetailView({
                         aria-hidden
                       />
                     </div>
+                    <AppFieldError message={editFieldErrors.emiDueDay} />
                   </div>
                 </div>
                 <div>
@@ -800,7 +846,11 @@ export function LoanDetailView({
               <ul className="mt-4 flex list-none flex-col gap-2.5" aria-label="Loan EMI history">
                 {loanLedgerForUi.map((tx) => (
                   <li key={tx.id}>
-                    <RecentTransactionRow tx={tx} accounts={allAccounts} />
+                    <RecentTransactionRow
+                      tx={tx}
+                      accounts={allAccounts}
+                      catalog={transactionCatalog}
+                    />
                   </li>
                 ))}
               </ul>

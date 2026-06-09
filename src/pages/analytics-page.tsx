@@ -28,7 +28,8 @@ import {
   monthlyTrendHasExtendedSeries,
   type DashboardAnalyticsView,
 } from "@/lib/api/dashboard-analytics-schemas"
-import { formatDate } from "@/lib/format"
+import { ANALYTICS_CHART_COLORS } from "@/lib/analytics/chart-colors"
+import { formatCurrency, formatDate, formatSignedCurrencyInr } from "@/lib/format"
 import { useDebouncedValue } from "@/hooks/use-debounced-value"
 import {
   useGetAccountsQuery,
@@ -332,7 +333,7 @@ function AnalyticsContent({
           </div>
           <p className="mb-1 text-[10px] font-medium text-muted-foreground">Income</p>
           <p className="text-sm font-bold text-emerald-600">
-            ₹{dashboardData.summary.income.toLocaleString("en-IN")}
+            {formatCurrency(dashboardData.summary.income)}
           </p>
         </Card>
         <Card className="rounded-2xl border-border py-4 text-center shadow-sm">
@@ -341,7 +342,7 @@ function AnalyticsContent({
           </div>
           <p className="mb-1 text-[10px] font-medium text-muted-foreground">Expenses</p>
           <p className="text-sm font-bold text-red-600">
-            ₹{dashboardData.summary.expenses.toLocaleString("en-IN")}
+            {formatCurrency(dashboardData.summary.expenses)}
           </p>
         </Card>
         <Card className="rounded-2xl border-border py-4 text-center shadow-sm">
@@ -350,7 +351,7 @@ function AnalyticsContent({
           </div>
           <p className="mb-1 text-[10px] font-medium text-muted-foreground">Net Savings</p>
           <p className={cn("text-sm font-bold", netPositive ? "text-emerald-600" : "text-red-600")}>
-            ₹{dashboardData.summary.netSavings.toLocaleString("en-IN")}
+            {formatCurrency(dashboardData.summary.netSavings)}
           </p>
         </Card>
       </div>
@@ -363,7 +364,7 @@ function AnalyticsContent({
         <Card className="rounded-2xl border-border p-4 shadow-sm">
           <p className="mb-1 text-[10px] text-muted-foreground">Avg Daily Spend</p>
           <p className="text-lg font-bold text-red-600">
-            ₹{dashboardData.summary.avgDailySpend.toLocaleString("en-IN")}
+            {formatCurrency(dashboardData.summary.avgDailySpend)}
           </p>
         </Card>
       </div>
@@ -413,7 +414,7 @@ function AnalyticsContent({
                       </span>
                     </div>
                     <span className="font-bold text-foreground tabular-nums">
-                      ₹{item.value.toLocaleString("en-IN")}
+                      {formatCurrency(item.value)}
                     </span>
                   </div>
                 ))}
@@ -436,13 +437,16 @@ function AnalyticsContent({
                 <div className="flex justify-between text-xs gap-2">
                   <span className="truncate text-muted-foreground">{method.name}</span>
                   <span className="font-bold shrink-0">
-                    ₹{method.amount.toLocaleString("en-IN")} ({method.percentage}%)
+                    {formatCurrency(method.amount)} ({method.percentage}%)
                   </span>
                 </div>
                 <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted">
                   <div
-                    className={cn("h-full rounded-full", method.color)}
-                    style={{ width: `${Math.min(100, method.percentage)}%` }}
+                    className="h-full rounded-full"
+                    style={{
+                      width: `${Math.min(100, method.percentage)}%`,
+                      backgroundColor: method.color,
+                    }}
                   />
                 </div>
               </div>
@@ -478,7 +482,7 @@ function AnalyticsContent({
                   </div>
                 </div>
                 <span className="text-xs font-bold text-red-500 shrink-0">
-                  ₹{expense.amount.toLocaleString("en-IN")}
+                  {formatCurrency(expense.amount)}
                 </span>
               </div>
             ))
@@ -507,7 +511,7 @@ function AnalyticsContent({
                   >
                     <CartesianGrid
                       vertical={false}
-                      stroke="hsl(var(--border))"
+                      stroke="var(--border)"
                       strokeDasharray="3 3"
                       opacity={0.4}
                     />
@@ -516,43 +520,56 @@ function AnalyticsContent({
                       fontSize={10}
                       tickLine={true}
                       axisLine={true}
-                      tick={{ fill: "hsl(var(--muted-foreground))" }}
+                      tick={{ fill: "var(--muted-foreground)" }}
                       dy={10}
                     />
                     <YAxis
                       fontSize={10}
                       tickLine={true}
                       axisLine={true}
-                      tick={{ fill: "hsl(var(--muted-foreground))" }}
-                      tickFormatter={(val) => `₹${val >= 1000 ? `${val / 1000}k` : val}`}
+                      tick={{ fill: "var(--muted-foreground)" }}
+                      tickFormatter={(val) => formatCurrency(Number(val))}
                     />
-                    <Tooltip cursor={{ fill: "transparent" }} />
+                    <Tooltip
+                      cursor={{ fill: "transparent" }}
+                      formatter={(value) => formatCurrency(Number(value))}
+                    />
                     <Legend
                       verticalAlign="bottom"
                       height={showExtendedMonthly ? 48 : 36}
                       iconType="rect"
                       iconSize={12}
                     />
-                    <Bar dataKey="income" name="Income" fill="#22c55e" radius={[4, 4, 0, 0]} />
-                    <Bar dataKey="expense" name="Expense" fill="#ef4444" radius={[4, 4, 0, 0]} />
+                    <Bar
+                      dataKey="income"
+                      name="Income"
+                      fill={ANALYTICS_CHART_COLORS.income}
+                      radius={[4, 4, 0, 0]}
+                    />
+                    <Bar
+                      dataKey="expense"
+                      name="Expense"
+                      fill={ANALYTICS_CHART_COLORS.expense}
+                      radius={[4, 4, 0, 0]}
+                    />
                     {showExtendedMonthly ? (
                       <>
                         <Bar
                           dataKey="loanPayment"
                           name="Loan payment"
-                          fill="#8b5cf6"
+                          fill={ANALYTICS_CHART_COLORS.loanPayment}
                           radius={[4, 4, 0, 0]}
                         />
                         <Bar
                           dataKey="creditCardBillPayment"
                           name="CC bill pay"
-                          fill="#6366f1"
+                          fill={ANALYTICS_CHART_COLORS.ccBillPayment}
                           radius={[4, 4, 0, 0]}
                         />
                         <Bar
                           dataKey="creditCardSpend"
                           name="CC spend"
-                          fill="#f59e0b"
+                          fill={ANALYTICS_CHART_COLORS.ccSpend}
                           radius={[4, 4, 0, 0]}
                         />
                       </>
@@ -586,7 +603,7 @@ function AnalyticsContent({
                   >
                     <CartesianGrid
                       vertical={false}
-                      stroke="hsl(var(--border))"
+                      stroke="var(--border)"
                       strokeDasharray="3 3"
                       opacity={0.4}
                     />
@@ -595,17 +612,23 @@ function AnalyticsContent({
                       fontSize={10}
                       tickLine={true}
                       axisLine={true}
-                      tick={{ fill: "hsl(var(--muted-foreground))" }}
+                      tick={{ fill: "var(--muted-foreground)" }}
                       dy={10}
                     />
                     <YAxis
                       fontSize={10}
                       tickLine={true}
                       axisLine={true}
-                      tick={{ fill: "hsl(var(--muted-foreground))" }}
-                      tickFormatter={(val) => `₹${val >= 1000 ? `${val / 1000}k` : val}`}
+                      tick={{ fill: "var(--muted-foreground)" }}
+                      tickFormatter={(val) => formatCurrency(Number(val))}
                     />
-                    <Bar dataKey="amount" fill="#f59e0b" radius={[4, 4, 0, 0]} barSize={30} />
+                    <Tooltip formatter={(value) => formatCurrency(Number(value))} />
+                    <Bar
+                      dataKey="amount"
+                      fill={ANALYTICS_CHART_COLORS.daySpend}
+                      radius={[4, 4, 0, 0]}
+                      barSize={30}
+                    />
                   </BarChart>
                 )}
               </MeasuredChart>
@@ -618,7 +641,7 @@ function AnalyticsContent({
         <Card className="rounded-2xl border-border p-4 shadow-sm">
           <p className="mb-1 text-[10px] text-muted-foreground">Total Fees Paid</p>
           <p className="text-lg font-bold text-red-500">
-            ₹{dashboardData.summary.totalFees.toLocaleString("en-IN")}
+            {formatCurrency(dashboardData.summary.totalFees)}
           </p>
         </Card>
         <Card className="rounded-2xl border-border p-4 shadow-sm">
@@ -643,7 +666,7 @@ function AnalyticsContent({
                 className="flex items-center justify-between border-b border-border/40 py-3 last:border-0"
               >
                 <div className="flex items-center gap-2">
-                  <div className={cn("w-1.5 h-1.5 rounded-full", type.color)} />
+                  <div className="size-1.5 rounded-full" style={{ backgroundColor: type.color }} />
                   <span className="text-xs font-bold text-foreground">{type.name}</span>
                 </div>
                 <span className="text-xs font-bold text-foreground">{type.count}</span>
@@ -668,8 +691,7 @@ function AnalyticsContent({
                 <div className="flex justify-between text-xs gap-2">
                   <span className="truncate font-bold text-foreground">{card.name}</span>
                   <span className="shrink-0 text-right text-muted-foreground">
-                    ₹{card.used.toLocaleString("en-IN")} / ₹{card.total.toLocaleString("en-IN")} (
-                    {card.percentage}%)
+                    {formatCurrency(card.used)} / {formatCurrency(card.total)} ({card.percentage}%)
                   </span>
                 </div>
                 <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted">
@@ -701,13 +723,13 @@ function AnalyticsContent({
             <div className="w-[30%] rounded-sm bg-muted py-3 text-center">
               <p className="mb-1 text-[10px] text-muted-foreground">Monthly EMI</p>
               <p className="text-sm font-bold text-red-500">
-                ₹{dashboardData.loanOverview.monthlyEmi.toLocaleString("en-IN")}
+                {formatCurrency(dashboardData.loanOverview.monthlyEmi)}
               </p>
             </div>
             <div className="w-[30%] rounded-sm bg-muted py-3 text-center">
               <p className="mb-1 text-[10px] text-muted-foreground">Total Principal</p>
               <p className="text-sm font-bold text-foreground">
-                ₹{dashboardData.loanOverview.principal.toLocaleString("en-IN")}
+                {formatCurrency(dashboardData.loanOverview.principal)}
               </p>
             </div>
           </CardContent>
@@ -725,13 +747,13 @@ function AnalyticsContent({
             <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-4">
               <p className="text-[10px] text-emerald-700 mb-1">To Receive</p>
               <p className="text-base font-bold text-emerald-600">
-                ₹{dashboardData.udhar.receive.toLocaleString("en-IN")}
+                {formatCurrency(dashboardData.udhar.receive)}
               </p>
             </div>
             <div className="rounded-xl border border-destructive/30 bg-destructive/10 p-4">
               <p className="text-[10px] text-red-700 mb-1">To Pay</p>
               <p className="text-base font-bold text-red-500">
-                ₹{dashboardData.udhar.pay.toLocaleString("en-IN")}
+                {formatCurrency(dashboardData.udhar.pay)}
               </p>
             </div>
           </div>
@@ -743,7 +765,7 @@ function AnalyticsContent({
                 udharNetPositive ? "text-emerald-600" : "text-red-500"
               )}
             >
-              {udharNet < 0 ? "-" : ""}₹{Math.abs(udharNet).toLocaleString("en-IN")}
+              {formatSignedCurrencyInr(udharNet)}
             </span>
           </div>
         </CardContent>

@@ -1,12 +1,22 @@
 import { z } from "zod"
-import type { UdharEntryType } from "@/lib/api/udhar-schemas"
+
+const optionalIsoDateField = z.string().superRefine((value, ctx) => {
+  const trimmed = value.trim()
+  if (!trimmed) return
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "Enter a valid date",
+    })
+  }
+})
 
 export const udharPersonOnlySchema = z.object({
   personName: z.string().min(1, "Enter the person's name"),
   personPhone: z.string(),
 })
 
-export function udharEntrySubmitSchema(entryType: UdharEntryType) {
+export function udharEntrySubmitSchema() {
   return z
     .object({
       personMode: z.enum(["new", "existing"]),
@@ -17,9 +27,9 @@ export function udharEntrySubmitSchema(entryType: UdharEntryType) {
         return Boolean(n) && Number(n) > 0
       }, "Enter a valid amount"),
       accountId: z.string().min(1, "Select an account"),
-      date: z.string(),
-      askRepayBy: z.string(),
-      payBackBy: z.string(),
+      date: z.string().min(1, "Select date"),
+      askRepayBy: optionalIsoDateField,
+      payBackBy: optionalIsoDateField,
       entryType: z.string(),
       fundingSource: z.enum(["account", "credit_card"]),
       feeAmount: z.string(),
@@ -37,27 +47,6 @@ export function udharEntrySubmitSchema(entryType: UdharEntryType) {
           code: z.ZodIssueCode.custom,
           path: ["personName"],
           message: "Enter the person's name",
-        })
-      }
-      if (entryType === "money_given" && !data.askRepayBy.trim()) {
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          path: ["askRepayBy"],
-          message: "Select due date",
-        })
-      }
-      if (entryType === "money_taken" && !data.payBackBy.trim()) {
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          path: ["payBackBy"],
-          message: "Select pay back date",
-        })
-      }
-      if (entryType !== "money_given" && entryType !== "money_taken" && !data.date.trim()) {
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          path: ["date"],
-          message: "Select date",
         })
       }
       if (data.fundingSource === "credit_card" && data.feeAmount.trim()) {

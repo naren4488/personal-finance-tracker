@@ -5,6 +5,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { cn } from "@/lib/utils"
 
 type GettingStartedCardProps = {
+  showAddAccountStep?: boolean
   onAddAccount: () => void
   onAddExpense: () => void
   onAddIncome: () => void
@@ -21,22 +22,27 @@ type StepConfig = {
 }
 
 export function GettingStartedCard({
+  showAddAccountStep = true,
   onAddAccount,
   onAddExpense,
   onAddIncome,
   className,
 }: GettingStartedCardProps) {
   const steps: StepConfig[] = [
+    ...(showAddAccountStep
+      ? [
+          {
+            step: 1,
+            title: "Add your first account",
+            description: "Cash, bank, wallet, UPI, and more.",
+            actionLabel: "Add account",
+            icon: Landmark,
+            onAction: onAddAccount,
+          } satisfies StepConfig,
+        ]
+      : []),
     {
-      step: 1,
-      title: "Add your first account",
-      description: "Cash, bank, wallet, UPI, and more.",
-      actionLabel: "Add account",
-      icon: Landmark,
-      onAction: onAddAccount,
-    },
-    {
-      step: 2,
+      step: showAddAccountStep ? 2 : 1,
       title: "Record your first expense",
       description: "Start tracking where your money goes.",
       actionLabel: "Add expense",
@@ -44,7 +50,7 @@ export function GettingStartedCard({
       onAction: onAddExpense,
     },
     {
-      step: 3,
+      step: showAddAccountStep ? 3 : 2,
       title: "Add your first income entry",
       description: "Log salary and other income in Entries.",
       actionLabel: "Add income",

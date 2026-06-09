@@ -1,4 +1,3 @@
-import { toast } from "sonner"
 import { getBackendToastMessage, isFetchBaseQueryError } from "@/lib/api/errors"
 import { signOutAndRedirectToLogin } from "@/lib/auth/sign-out-and-redirect"
 import type { AppDispatch } from "@/store"
@@ -47,18 +46,15 @@ export function handleAuthApiErrorIfNeeded(
 }
 
 /**
- * API error handler: forced logout on auth failure, otherwise toast the backend message.
- * Use in forms, pages, and sheets for consistent session teardown.
+ * API error handler: forced logout on auth failure.
+ * Server/API toasts are handled by global mutation listener (`api-error-listener.ts`).
  */
 export function handleAuthApiError(
   err: unknown,
   dispatch: AppDispatch,
   options?: HandleAuthApiErrorOptions
 ): void {
-  if (handleAuthApiErrorIfNeeded(err, dispatch, options)) {
-    return
-  }
-  toast.error(getBackendToastMessage(err))
+  handleAuthApiErrorIfNeeded(err, dispatch, options)
 }
 
 /** @deprecated Prefer `isAuthFailureMessage` */

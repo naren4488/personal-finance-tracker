@@ -49,10 +49,13 @@ export function getAuthErrorMessage(error: unknown): string {
 export function getBackendToastMessage(error: unknown): string {
   if (isFetchBaseQueryError(error)) {
     if (error.status === "FETCH_ERROR") {
-      return "Network error — check your connection."
+      return "Unable to connect to server"
     }
     if (error.status === "PARSING_ERROR") {
       return "Invalid response from server."
+    }
+    if (error.status === "TIMEOUT_ERROR") {
+      return "Server unavailable. Please try again later."
     }
 
     const fromFields = flattenValidationErrors(error.data)
@@ -65,14 +68,20 @@ export function getBackendToastMessage(error: unknown): string {
     if (fromFields) return fromFields
 
     if (typeof error.status === "number") {
+      if (error.status === 500) {
+        return "Internal server error"
+      }
+      if (error.status === 502 || error.status === 503) {
+        return "Server unavailable. Please try again later."
+      }
       return `Request failed (${String(error.status)})`
     }
-    return "Something went wrong."
+    return "Something went wrong. Please try again."
   }
   if (error instanceof Error && error.message.trim()) {
     return error.message.trim()
   }
-  return "Something went wrong."
+  return "Something went wrong. Please try again."
 }
 
 /** Human-readable message for toasts or error UI. */
@@ -104,16 +113,16 @@ export function getErrorMessage(error: unknown): string {
 
     if (typeof error.status === "number") {
       if (error.status === 500) {
-        return "Server error (500). Check the API — see terminal/logs on the backend."
+        return "Internal server error"
       }
       if (error.status === 502 || error.status === 503) {
-        return "Service temporarily unavailable. Try again in a moment."
+        return "Server unavailable. Please try again later."
       }
     }
-    return `Request failed (${String(error.status)})`
+    return getBackendToastMessage(error)
   }
   if (error instanceof Error) {
     return error.message
   }
-  return "Something went wrong."
+  return "Something went wrong. Please try again."
 }

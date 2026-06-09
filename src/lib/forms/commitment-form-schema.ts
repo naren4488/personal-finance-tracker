@@ -8,6 +8,7 @@ import {
   type CommitmentKindValue,
   type PayableCommitmentStatus,
 } from "@/lib/commitments/commitment-kind-config"
+import { todayIsoDate } from "@/lib/date/local-date"
 import { parsePositiveDecimal } from "@/lib/forms/zod-helpers"
 
 export const commitmentFormSchema = z
@@ -68,12 +69,4 @@ export function commitmentFormDefaultValues(): CommitmentFormValues {
     entityId: "",
     note: "",
   }
-}
-
-function todayIsoDate(): string {
-  const d = new Date()
-  const y = d.getFullYear()
-  const m = String(d.getMonth() + 1).padStart(2, "0")
-  const day = String(d.getDate()).padStart(2, "0")
-  return `${y}-${m}-${day}`
 }

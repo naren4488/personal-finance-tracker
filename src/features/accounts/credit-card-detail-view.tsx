@@ -11,14 +11,15 @@ import {
 } from "lucide-react"
 import { toast } from "sonner"
 import { ConfirmDeleteDialog } from "@/components/confirm-delete-dialog"
+import { AppFieldError } from "@/components/app-field-error"
 import { EntityDeleteButton } from "@/components/entity-delete-button"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import type { Account } from "@/lib/api/account-schemas"
 import { formatOpeningBalanceForApi } from "@/lib/api/account-schemas"
-import { getErrorMessage } from "@/lib/api/errors"
-import { handleAuthApiErrorIfNeeded } from "@/lib/auth/handle-auth-api-error"
+import { handleFormApiError } from "@/lib/forms/form-api-errors"
+import { fieldWithErrorClass } from "@/lib/forms/field-error-styles"
 import {
   billCycleLabelFromDay,
   billGenerationDayNumber,
@@ -33,6 +34,7 @@ import {
 import { getAccountDeleteWarning } from "@/lib/accounts/account-delete"
 import { useAccountDeleteGuard } from "@/hooks/use-account-delete-guard"
 import { RecentTransactionRow } from "@/features/entries/recent-transaction-row"
+import { useTransactionEntityCatalog } from "@/hooks/use-transaction-entity-catalog"
 import { useDeleteTransactionFlow } from "@/features/entries/use-delete-transaction-flow"
 import { type RecentTransaction } from "@/lib/api/transaction-schemas"
 import { formatCurrency } from "@/lib/format"
@@ -124,6 +126,10 @@ function CreditCardRecentTransactionsSection({
     setVisibleTxCount((c) => Math.max(CARD_TX_PAGE_SIZE, c - CARD_TX_PAGE_SIZE))
   }, [])
 
+  const transactionCatalog = useTransactionEntityCatalog({
+    transactions: visibleCardTransactions.map((tx) => ({ id: tx.id })),
+  })
+
   return (
     <div className="mt-4 rounded-2xl bg-inherit p-4 sm:mt-5 sm:p-5">
       <h2 className="text-base font-bold text-foreground">Recent Transactions</h2>
@@ -146,7 +152,12 @@ function CreditCardRecentTransactionsSection({
             >
               {visibleCardTransactions.map((tx) => (
                 <li key={tx.id}>
-                  <RecentTransactionRow tx={tx} accounts={accounts} onDelete={onDelete} />
+                  <RecentTransactionRow
+                    tx={tx}
+                    accounts={accounts}
+                    catalog={transactionCatalog}
+                    onDelete={onDelete}
+                  />
                 </li>
               ))}
             </ul>
@@ -206,6 +217,7 @@ export function CreditCardDetailView({
   const { data: allAccounts = [] } = useGetAccountsQuery(undefined, { skip: !account })
   const [isEditing, setIsEditing] = useState(false)
   const [draft, setDraft] = useState<Account | null>(null)
+  const [editFieldErrors, setEditFieldErrors] = useState<Record<string, string>>({})
   const {
     data: ledgerTransactions = [],
     isFetching: txsFetching,
@@ -230,6 +242,7 @@ export function CreditCardDetailView({
   const cancelEdit = useCallback(() => {
     setIsEditing(false)
     setDraft(null)
+    setEditFieldErrors({})
   }, [])
 
   const startEdit = useCallback(() => {
@@ -259,48 +272,47 @@ export function CreditCardDetailView({
   const saveEdit = useCallback(async () => {
     if (!draft || !account) return
     const accountId = String(account.id ?? "").trim()
+    const errors: Record<string, string> = {}
     if (!accountId) {
-      toast.error("Unable to update card: missing account id")
-      return
+      errors._form = "Unable to update card: missing account id"
     }
     const name = draft.name?.trim() ?? ""
     if (!name) {
-      toast.error("Enter card name")
-      return
+      errors.name = "Card name is required"
     }
     const rec = asRec(draft)
     const bankName = typeof rec.bankName === "string" ? rec.bankName.trim() : ""
     if (!bankName) {
-      toast.error("Enter bank name")
-      return
+      errors.bankName = "Bank name is required"
     }
     const network = String(rec.cardNetwork ?? "")
       .trim()
       .toLowerCase()
     if (!network) {
-      toast.error("Select card network")
-      return
+      errors.cardNetwork = "Please select a card network"
     }
     const l4 = String(rec.last4Digits ?? "").replace(/\D/g, "")
     if (l4.length !== 4) {
-      toast.error("Enter last 4 digits")
-      return
+      errors.last4Digits = "Enter last 4 digits"
     }
     const limitDigits = String(rec.creditLimit ?? "").replace(/\D/g, "")
     if (!limitDigits || Number(limitDigits) <= 0) {
-      toast.error("Enter valid credit limit")
-      return
+      errors.creditLimit = "Credit limit is required"
     }
     const billDay = parseDigitsInt(String(rec.billGenerationDay ?? ""))
     if (billDay < 1 || billDay > 31) {
-      toast.error("Bill generation day must be 1–31")
-      return
+      errors.billGenerationDay = "Bill generation day must be 1–31"
     }
     const payDay = parseDigitsInt(String(rec.paymentDueDay ?? ""))
     if (payDay < 1 || payDay > 31) {
-      toast.error("Payment due day must be 1–31")
+      errors.paymentDueDay = "Payment due day must be 1–31"
+    }
+
+    if (Object.keys(errors).length > 0) {
+      setEditFieldErrors(errors)
       return
     }
+    setEditFieldErrors({})
 
     const isActive = typeof rec.isActive === "boolean" ? rec.isActive : true
 
@@ -334,8 +346,7 @@ export function CreditCardDetailView({
       setIsEditing(false)
       setDraft(null)
     } catch (error) {
-      if (handleAuthApiErrorIfNeeded(error, dispatch)) return
-      toast.error(getErrorMessage(error) || "Failed to update card")
+      handleFormApiError(error, dispatch)
     }
   }, [account, draft, dispatch, onCardUpdated, updateAccount])
 
@@ -361,9 +372,9 @@ export function CreditCardDetailView({
       onBack()
       onCardDeleted?.()
     } catch (e) {
-      toast.error(getErrorMessage(e) || "Failed to delete")
+      handleFormApiError(e, dispatch)
     }
-  }, [account, deleteAccount, deleteGuard, onCardDeleted, onBack])
+  }, [account, deleteAccount, deleteGuard, dispatch, onCardDeleted, onBack])
 
   useEffect(() => {
     if (!account) return
@@ -414,6 +425,14 @@ export function CreditCardDetailView({
   const rate = interestRatePercentFromAccount(working)
 
   function patchDraft(patch: Record<string, unknown>) {
+    const key = Object.keys(patch)[0]
+    if (key && editFieldErrors[key]) {
+      setEditFieldErrors((prev) => {
+        const next = { ...prev }
+        delete next[key]
+        return next
+      })
+    }
     setDraft((d) => (d ? ({ ...d, ...patch } as Account) : d))
   }
 
@@ -543,6 +562,7 @@ export function CreditCardDetailView({
           {isEditing && draft ? (
             <div className="mt-4 rounded-2xl border border-border bg-card p-4 shadow-sm sm:mt-5">
               <h2 className="mb-3 text-base font-bold text-foreground">Edit Card</h2>
+              <AppFieldError message={editFieldErrors._form} />
               <div className="space-y-3">
                 <div>
                   <Label htmlFor="cc-edit-name" className={labelSm}>
@@ -552,8 +572,13 @@ export function CreditCardDetailView({
                     id="cc-edit-name"
                     value={draft.name}
                     onChange={(e) => patchDraft({ name: e.target.value })}
-                    className={cn(fieldIn, "h-10 text-left")}
+                    className={fieldWithErrorClass(
+                      cn(fieldIn, "h-10 text-left"),
+                      Boolean(editFieldErrors.name)
+                    )}
+                    aria-invalid={Boolean(editFieldErrors.name)}
                   />
+                  <AppFieldError message={editFieldErrors.name} />
                 </div>
                 <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                   <div>
@@ -564,16 +589,26 @@ export function CreditCardDetailView({
                       onChange={(e) =>
                         patchDraft({ creditLimit: e.target.value.replace(/\D/g, "") })
                       }
-                      className={cn(fieldIn, "h-10 text-left tabular-nums")}
+                      className={fieldWithErrorClass(
+                        cn(fieldIn, "h-10 text-left tabular-nums"),
+                        Boolean(editFieldErrors.creditLimit)
+                      )}
+                      aria-invalid={Boolean(editFieldErrors.creditLimit)}
                     />
+                    <AppFieldError message={editFieldErrors.creditLimit} />
                   </div>
                   <div>
                     <Label className={labelSm}>Bank Name</Label>
                     <Input
                       value={String(asRec(draft).bankName ?? "")}
                       onChange={(e) => patchDraft({ bankName: e.target.value })}
-                      className={cn(fieldIn, "h-10 text-left")}
+                      className={fieldWithErrorClass(
+                        cn(fieldIn, "h-10 text-left"),
+                        Boolean(editFieldErrors.bankName)
+                      )}
+                      aria-invalid={Boolean(editFieldErrors.bankName)}
                     />
+                    <AppFieldError message={editFieldErrors.bankName} />
                   </div>
                 </div>
                 <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
@@ -586,10 +621,14 @@ export function CreditCardDetailView({
                         id="cc-edit-network"
                         value={String(asRec(draft).cardNetwork ?? "").toLowerCase()}
                         onChange={(e) => patchDraft({ cardNetwork: e.target.value })}
-                        className={cn(
-                          fieldIn,
-                          "h-10 w-full appearance-none bg-background pl-2 pr-9 text-left capitalize"
+                        className={fieldWithErrorClass(
+                          cn(
+                            fieldIn,
+                            "h-10 w-full appearance-none bg-background pl-2 pr-9 text-left capitalize"
+                          ),
+                          Boolean(editFieldErrors.cardNetwork)
                         )}
+                        aria-invalid={Boolean(editFieldErrors.cardNetwork)}
                       >
                         <option value="">Select network</option>
                         {networkOptions.map((o) => (
@@ -604,6 +643,7 @@ export function CreditCardDetailView({
                         aria-hidden
                       />
                     </div>
+                    <AppFieldError message={editFieldErrors.cardNetwork} />
                   </div>
                   <div>
                     <Label className={labelSm}>Last 4 digits</Label>
@@ -616,8 +656,13 @@ export function CreditCardDetailView({
                       onChange={(e) =>
                         patchDraft({ last4Digits: e.target.value.replace(/\D/g, "").slice(0, 4) })
                       }
-                      className={cn(fieldIn, "h-10 text-left tabular-nums tracking-widest")}
+                      className={fieldWithErrorClass(
+                        cn(fieldIn, "h-10 text-left tabular-nums tracking-widest"),
+                        Boolean(editFieldErrors.last4Digits)
+                      )}
+                      aria-invalid={Boolean(editFieldErrors.last4Digits)}
                     />
+                    <AppFieldError message={editFieldErrors.last4Digits} />
                   </div>
                 </div>
                 <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
@@ -633,10 +678,14 @@ export function CreditCardDetailView({
                           return n >= 1 && n <= 31 ? String(n) : ""
                         })()}
                         onChange={(e) => patchDraft({ billGenerationDay: e.target.value })}
-                        className={cn(
-                          fieldIn,
-                          "h-10 w-full appearance-none bg-background pl-2 pr-9 text-left"
+                        className={fieldWithErrorClass(
+                          cn(
+                            fieldIn,
+                            "h-10 w-full appearance-none bg-background pl-2 pr-9 text-left"
+                          ),
+                          Boolean(editFieldErrors.billGenerationDay)
                         )}
+                        aria-invalid={Boolean(editFieldErrors.billGenerationDay)}
                       >
                         <option value="">Select day</option>
                         {BILL_DAY_OPTIONS.map((o) => (
@@ -651,6 +700,7 @@ export function CreditCardDetailView({
                         aria-hidden
                       />
                     </div>
+                    <AppFieldError message={editFieldErrors.billGenerationDay} />
                   </div>
                   <div>
                     <Label htmlFor="cc-edit-pay-day" className={labelSm}>
@@ -664,10 +714,14 @@ export function CreditCardDetailView({
                           return n >= 1 && n <= 31 ? String(n) : ""
                         })()}
                         onChange={(e) => patchDraft({ paymentDueDay: e.target.value })}
-                        className={cn(
-                          fieldIn,
-                          "h-10 w-full appearance-none bg-background pl-2 pr-9 text-left"
+                        className={fieldWithErrorClass(
+                          cn(
+                            fieldIn,
+                            "h-10 w-full appearance-none bg-background pl-2 pr-9 text-left"
+                          ),
+                          Boolean(editFieldErrors.paymentDueDay)
                         )}
+                        aria-invalid={Boolean(editFieldErrors.paymentDueDay)}
                       >
                         <option value="">Select day</option>
                         {BILL_DAY_OPTIONS.map((o) => (
@@ -682,6 +736,7 @@ export function CreditCardDetailView({
                         aria-hidden
                       />
                     </div>
+                    <AppFieldError message={editFieldErrors.paymentDueDay} />
                   </div>
                 </div>
               </div>

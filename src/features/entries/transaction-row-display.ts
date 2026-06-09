@@ -2,14 +2,18 @@ import type { Account } from "@/lib/api/account-schemas"
 import { accountSelectLabel } from "@/lib/api/account-schemas"
 import {
   getRecentTransactionCategoryLabel,
+  getUdharEntryTypeFromRecentTransaction,
+  isUdharRecentTransaction,
   type RecentTransaction,
 } from "@/lib/api/transaction-schemas"
 import { formatDate } from "@/lib/format"
 import {
+  getUdharEntryTypeDisplayLabel,
   isKnownUdharTitleSlug,
   isUdharActionDisplayLabel,
   mapUdharTitleSlugToLabel,
 } from "@/lib/transactions/transaction-udhar-title-labels"
+import { readTransactionUtr } from "@/lib/transactions/utr-account"
 
 export type TransactionRowFieldLabel =
   | "Date"
@@ -18,6 +22,7 @@ export type TransactionRowFieldLabel =
   | "Expense On"
   | "Person"
   | "Type"
+  | "UTR No."
 
 export type TransactionRowLabeledLine = {
   label: TransactionRowFieldLabel
@@ -50,15 +55,26 @@ function labeledLine(
   return { label, value: v }
 }
 
+const UDhar_SLUG_FIELD_KEYS = [
+  "entryType",
+  "entry_type",
+  "destinationType",
+  "destination_type",
+  "transactionType",
+  "transaction_type",
+  "sourceType",
+  "source_type",
+  "incomeSource",
+  "income_source",
+  "kind",
+  "category",
+  "categoryName",
+  "category_name",
+  "title",
+] as const
+
 function mappedUdharActionFromSlugFields(rec: Record<string, unknown>): string | null {
-  for (const key of [
-    "entryType",
-    "entry_type",
-    "destinationType",
-    "destination_type",
-    "kind",
-    "title",
-  ] as const) {
+  for (const key of UDhar_SLUG_FIELD_KEYS) {
     const raw = readApiString(rec, [key])
     const label = mapUdharTitleSlugToLabel(raw)
     if (label) return label
@@ -74,13 +90,66 @@ function resolveUdharActionLabel(rec: Record<string, unknown>, title: string): s
   return null
 }
 
-function isUdharTransactionRow(rec: Record<string, unknown>, title: string): boolean {
+function isUdharTransactionRow(
+  tx: RecentTransaction,
+  rec: Record<string, unknown>,
+  title: string
+): boolean {
+  if (getUdharEntryTypeFromRecentTransaction(tx)) return true
   if (mappedUdharActionFromSlugFields(rec)) return true
   if (title && isUdharActionDisplayLabel(title)) return true
   if (title && isKnownUdharTitleSlug(title)) return true
   const dest = readApiString(rec, ["destinationType", "destination_type"]).toLowerCase()
   if (dest.includes("person")) return true
+  const txType = String(tx.type ?? "")
+    .trim()
+    .toLowerCase()
+  // `money_taken` often arrives as `income` with `personId` only after title normalization.
+  if (txType !== "expense" && isUdharRecentTransaction(tx)) return true
   return false
+}
+
+function resolveUdharTypeLabel(
+  tx: RecentTransaction,
+  rec: Record<string, unknown>,
+  title: string
+): string | null {
+  const fromSlug = resolveUdharActionLabel(rec, title)
+  if (fromSlug) return fromSlug
+  const entryType = getUdharEntryTypeFromRecentTransaction(tx)
+  return getUdharEntryTypeDisplayLabel(entryType)
+}
+
+function buildUdharTransactionRowDisplay(
+  tx: RecentTransaction,
+  rec: Record<string, unknown>,
+  title: string,
+  dateValue: string
+): TransactionRowDisplay {
+  const personName = readApiString(rec, ["personName", "person_name", "counterpartyName"])
+  const destinationName = readApiString(rec, ["destinationName", "destination_name"])
+  const personForAccountDedupe = personName || destinationName || ""
+  const account = readUdharAccountLine(tx, personForAccountDedupe)
+  const name =
+    personName ||
+    (destinationName && !isSameDisplayLabel(destinationName, account) ? destinationName : "") ||
+    (title &&
+    !isUdharActionDisplayLabel(title) &&
+    !isKnownUdharTitleSlug(title) &&
+    !isSameDisplayLabel(title, account)
+      ? title
+      : "")
+  const actionLabel = resolveUdharTypeLabel(tx, rec, title)
+
+  return finalizeRowDisplay(
+    [
+      labeledLine("Date", dateValue),
+      labeledLine("Name", name),
+      labeledLine("Account", account),
+      labeledLine("Type", actionLabel),
+    ],
+    tx
+  )
 }
 
 const UDhar_ACCOUNT_SOURCE_KEYS = [
@@ -136,6 +205,16 @@ function readUdharAccountLine(tx: RecentTransaction, personLine: string): string
 
 function compactLines(lines: Array<TransactionRowLabeledLine | null>): TransactionRowLabeledLine[] {
   return lines.filter((row): row is TransactionRowLabeledLine => row != null)
+}
+
+/** Appends UTR after existing fields when the API provides it — does not alter other lines. */
+function finalizeRowDisplay(
+  lines: Array<TransactionRowLabeledLine | null>,
+  tx: RecentTransaction
+): TransactionRowDisplay {
+  const base = compactLines(lines)
+  const utrLine = labeledLine("UTR No.", readTransactionUtr(tx))
+  return { lines: utrLine ? [...base, utrLine] : base }
 }
 
 function toDisplayWords(raw: string): string {
@@ -224,68 +303,51 @@ export function getTransactionRowDisplayFields(
 
   const dateValue = formatDate(tx.date)
 
+  if (isUdharTransactionRow(tx, rec, title)) {
+    return buildUdharTransactionRowDisplay(tx, rec, title, dateValue)
+  }
+
   if (txType === "expense") {
     const expenseOn = title || getRecentTransactionCategoryLabel(tx)
     const showPerson = Boolean(personId.trim() || personName.trim())
 
-    return {
-      lines: compactLines([
+    return finalizeRowDisplay(
+      [
         labeledLine("Date", dateValue),
         labeledLine("Expense On", expenseOn),
         labeledLine("Account", sourceName),
         showPerson ? labeledLine("Person", personName) : null,
-      ]),
-    }
-  }
-
-  if (isUdharTransactionRow(rec, title)) {
-    const personForAccountDedupe = personName || destinationName || ""
-    const account = readUdharAccountLine(tx, personForAccountDedupe)
-    const name =
-      personName ||
-      (destinationName && !isSameDisplayLabel(destinationName, account) ? destinationName : "") ||
-      (title &&
-      !isUdharActionDisplayLabel(title) &&
-      !isKnownUdharTitleSlug(title) &&
-      !isSameDisplayLabel(title, account)
-        ? title
-        : "")
-    const actionLabel = resolveUdharActionLabel(rec, title)
-
-    return {
-      lines: compactLines([
-        labeledLine("Date", dateValue),
-        labeledLine("Name", name),
-        labeledLine("Account", account),
-        labeledLine("Type", actionLabel),
-      ]),
-    }
+      ],
+      tx
+    )
   }
 
   if (txType === "income") {
     const nameValue = readIncomeNameLine(title, incomeSource, category)
     const accountValue = readIncomeAccountLine(rec, personName, options?.accounts)
 
-    return {
-      lines: compactLines([
+    return finalizeRowDisplay(
+      [
         labeledLine("Date", dateValue),
         labeledLine("Name", nameValue),
         labeledLine("Account", accountValue),
-      ]),
-    }
+      ],
+      tx
+    )
   }
 
   if (txType === "transfer") {
     const typeValue = isKnownUdharTitleSlug(title) ? "" : title
     const accountValue = subtitle || sourceName
 
-    return {
-      lines: compactLines([
+    return finalizeRowDisplay(
+      [
         labeledLine("Date", dateValue),
         labeledLine("Type", typeValue),
         labeledLine("Account", accountValue),
-      ]),
-    }
+      ],
+      tx
+    )
   }
 
   const nameValue = personName || destinationName
@@ -296,12 +358,13 @@ export function getTransactionRowDisplayFields(
     mappedUdharActionFromSlugFields(rec) ||
     ""
 
-  return {
-    lines: compactLines([
+  return finalizeRowDisplay(
+    [
       labeledLine("Date", dateValue),
       labeledLine("Name", nameValue),
       labeledLine("Account", accountValue),
       labeledLine("Type", typeValue),
-    ]),
-  }
+    ],
+    tx
+  )
 }

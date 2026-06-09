@@ -2,7 +2,10 @@ import type { RecentTransaction } from "@/lib/api/transaction-schemas"
 
 export type UdharBalanceEffect = "receivable" | "payable" | "unknown"
 
-type UdharEntryTypeNorm = "money_given" | "money_taken" | "payment_received" | "payment_made"
+/** Entry kinds the API may return (includes legacy repayment rows; not form choices). */
+export type UdharApiEntryType = "money_given" | "money_taken" | "payment_received" | "payment_made"
+
+type UdharEntryTypeNorm = UdharApiEntryType
 
 function asRec(tx: RecentTransaction): Record<string, unknown> {
   return tx as unknown as Record<string, unknown>

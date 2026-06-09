@@ -1,13 +1,7 @@
 import type { Account } from "@/lib/api/account-schemas"
 import { accountBalanceInrFromApi } from "@/lib/api/account-schemas"
 import { formatDate } from "@/lib/format"
-
-function parseMoney(v: unknown): number {
-  if (v === undefined || v === null) return 0
-  if (typeof v === "number") return Number.isFinite(v) ? v : 0
-  const n = Number(String(v).replace(/,/g, "").trim())
-  return Number.isFinite(n) ? n : 0
-}
+import { parseInrFromUnknown } from "@/lib/money/parse-inr"
 
 function asRec(a: Account): Record<string, unknown> {
   return a as unknown as Record<string, unknown>
@@ -17,12 +11,12 @@ function asRec(a: Account): Record<string, unknown> {
 export function creditCardOutstandingInr(a: Account): number {
   const r = asRec(a)
   const o = r.currentOutstanding ?? r.outstanding ?? r.outstandingBalance
-  if (o !== undefined && o !== null) return parseMoney(o)
+  if (o !== undefined && o !== null) return parseInrFromUnknown(o)
   return accountBalanceInrFromApi(a)
 }
 
 export function creditCardLimitInr(a: Account): number {
-  return parseMoney(asRec(a).creditLimit)
+  return parseInrFromUnknown(asRec(a).creditLimit)
 }
 
 /**
@@ -54,7 +48,7 @@ export function creditCardMinimumPaymentInr(a: Account): number | null {
   for (const k of explicitKeys) {
     const v = r[k]
     if (v === undefined || v === null) continue
-    const n = parseMoney(v)
+    const n = parseInrFromUnknown(v)
     if (Number.isFinite(n) && n > 0) return Math.round(n * 100) / 100
   }
   const pctRaw = r.minDuePercent ?? r.minimumDuePercent ?? r.minimumDuePercentage ?? r.minDuePct
@@ -227,6 +221,6 @@ export function currentOutstandingPrincipalInr(a: Account): number | null {
   const r = asRec(a)
   const v = r.currentOutstandingPrincipal
   if (v === undefined || v === null) return null
-  const n = parseMoney(v)
+  const n = parseInrFromUnknown(v)
   return Number.isFinite(n) ? n : null
 }

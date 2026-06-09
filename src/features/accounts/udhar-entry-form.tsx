@@ -19,7 +19,7 @@ import {
   type UdharEntryTypeScope,
   type UdharFormState,
 } from "@/features/accounts/udhar-entry-form-model"
-import type { UdharEntryType } from "@/lib/api/udhar-schemas"
+import { UtrNumberField } from "@/features/transactions/utr-number-field"
 import {
   APP_FORM_AMOUNT_PRIMARY_CLASS,
   APP_FORM_FIELD_CLASS,
@@ -43,18 +43,6 @@ function SelectChevron() {
 }
 
 export type UdharPersonUiMode = "locked_from_people" | "free"
-
-function entryTypeTileLabel(id: UdharEntryType, scope: UdharEntryTypeScope | undefined): string {
-  if (scope === "lend_take" || scope === "given_only" || scope === "taken_only") {
-    if (id === "money_given") return "Money Given"
-    if (id === "money_taken") return "Money Taken"
-  }
-  if (scope === "payments" || scope === "payment_received_only" || scope === "payment_made_only") {
-    if (id === "payment_received") return "Received Back"
-    if (id === "payment_made") return "Paid Back"
-  }
-  return UDHAR_ENTRY_TYPE_OPTIONS.find((o) => o.id === id)?.label ?? id
-}
 
 export type UdharEntryFormProps = {
   form: UdharFormState
@@ -102,6 +90,10 @@ export function UdharEntryForm({
   const showAskRepayBy = outflow && form.entryType === "money_given"
   const showPayBackBy = form.entryType === "money_taken"
   const showTypeSection = entryTypeTiles.length > 1
+  const selectedAccountForUtr = useMemo(
+    () => accountOptions.find((a) => a.id === form.accountId),
+    [accountOptions, form.accountId]
+  )
 
   return (
     <div className={APP_FORM_STACK_CLASS}>
@@ -109,7 +101,7 @@ export function UdharEntryForm({
         <section>
           <Label className={APP_FORM_LABEL_CLASS}>Type</Label>
           <div className="grid grid-cols-2 gap-1.5">
-            {entryTypeTiles.map(({ id, Icon }) => (
+            {entryTypeTiles.map(({ id, label, Icon }) => (
               <ToggleTile
                 key={id}
                 selected={form.entryType === id}
@@ -119,15 +111,14 @@ export function UdharEntryForm({
                     entryType: id,
                     accountId: "",
                     feeAmount: "",
+                    utr: "",
                     ...(id === "money_given" ? { askRepayBy: "" } : {}),
                     ...(id === "money_taken" ? { payBackBy: "" } : {}),
                   }))
                 }
               >
                 <Icon className="size-4 shrink-0" strokeWidth={2.25} aria-hidden />
-                <span className="text-left leading-snug">
-                  {entryTypeTileLabel(id, entryTypeScope)}
-                </span>
+                <span className="text-left leading-snug">{label}</span>
               </ToggleTile>
             ))}
           </div>
@@ -256,6 +247,7 @@ export function UdharEntryForm({
                 fundingSource: "account",
                 accountId: "",
                 feeAmount: "",
+                utr: "",
               }))
             }
           >
@@ -270,6 +262,7 @@ export function UdharEntryForm({
                 fundingSource: "credit_card",
                 accountId: "",
                 feeAmount: "",
+                utr: "",
               }))
             }
           >
@@ -297,7 +290,7 @@ export function UdharEntryForm({
             id="udhar-account"
             value={form.accountId}
             disabled={accountsListLoading || accountOptions.length === 0}
-            onChange={(e) => setForm((f) => ({ ...f, accountId: e.target.value }))}
+            onChange={(e) => setForm((f) => ({ ...f, accountId: e.target.value, utr: "" }))}
             className={cn(
               APP_FORM_SELECT_CLASS,
               "w-full",
@@ -316,6 +309,13 @@ export function UdharEntryForm({
         </div>
         <AppFieldError message={fieldErrors.accountId} />
       </section>
+
+      <UtrNumberField
+        selectedAccount={selectedAccountForUtr}
+        value={form.utr}
+        onChange={(v) => setForm((f) => ({ ...f, utr: v }))}
+        id="udhar-utr"
+      />
 
       {form.fundingSource === "credit_card" ? (
         <section>
@@ -363,7 +363,7 @@ export function UdharEntryForm({
                 htmlFor={showAskRepayBy ? "udhar-ask-repay" : "udhar-pay-back-by"}
                 className={APP_FORM_LABEL_CLASS}
               >
-                {showAskRepayBy ? "Money Back Date" : "Pay Back Date"}
+                Due Date <span className="font-normal text-muted-foreground">(optional)</span>
               </Label>
               <Input
                 id={showAskRepayBy ? "udhar-ask-repay" : "udhar-pay-back-by"}
@@ -386,8 +386,8 @@ export function UdharEntryForm({
           </div>
           <p className="mt-1 text-xs text-muted-foreground">
             {showAskRepayBy
-              ? "When should this person return the money?"
-              : "When will you pay this amount back?"}
+              ? "Optional: when should this person return the money?"
+              : "Optional: when will you pay this amount back?"}
           </p>
         </section>
       ) : (
@@ -404,14 +404,6 @@ export function UdharEntryForm({
           />
         </section>
       )}
-
-      {form.entryType === "payment_received" || form.entryType === "payment_made" ? (
-        <p className="text-[11px] leading-relaxed text-muted-foreground sm:text-xs">
-          {form.entryType === "payment_received"
-            ? "Due date for this entry matches the transaction date above."
-            : "Repayment due date matches the transaction date above."}
-        </p>
-      ) : null}
 
       <section>
         <Label htmlFor="udhar-note" className={APP_FORM_LABEL_CLASS}>

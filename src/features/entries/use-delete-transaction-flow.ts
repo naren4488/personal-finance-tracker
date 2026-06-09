@@ -1,6 +1,5 @@
 import { useCallback, useState } from "react"
 import { toast } from "sonner"
-import { getErrorMessage } from "@/lib/api/errors"
 import type { RecentTransaction } from "@/lib/api/transaction-schemas"
 import { useDeleteTransactionMutation } from "@/store/api/base-api"
 
@@ -39,8 +38,8 @@ export function useDeleteTransactionFlow() {
       const res = await deleteTransaction(id).unwrap()
       toast.success(res.message ?? "Deleted")
       setPending(null)
-    } catch (e) {
-      toast.error(getErrorMessage(e) || "Failed to delete")
+    } catch {
+      // Global mutation listener shows API error toast
     }
   }, [deleteTransaction, pending])
 

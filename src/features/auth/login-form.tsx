@@ -15,7 +15,6 @@ import { Input } from "@/components/ui/input"
 import { Separator } from "@/components/ui/separator"
 import { PasswordInput } from "@/features/auth/password-input"
 import { loginRequestSchema, type LoginRequest } from "@/lib/api/auth-schemas"
-import { getAuthErrorMessage } from "@/lib/api/errors"
 import { useLoginMutation } from "@/store/api/base-api"
 import { safeReturnPath } from "@/features/auth/safe-return-path"
 import { APP_FORM_FIELD_CLASS, APP_FORM_SUBMIT_CLASS } from "@/lib/ui/app-form-styles"
@@ -40,8 +39,8 @@ export function LoginForm() {
       toast.success("Welcome back")
       const next = safeReturnPath((location.state as { from?: string } | null)?.from) ?? "/"
       navigate(next, { replace: true })
-    } catch (err) {
-      toast.error(getAuthErrorMessage(err))
+    } catch {
+      // Global mutation listener shows API error toast
     }
   })
 

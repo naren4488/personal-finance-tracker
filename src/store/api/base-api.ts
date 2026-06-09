@@ -52,6 +52,7 @@ import { isCreditCardAccount } from "@/lib/api/credit-card-map"
 import { isLoanAccount } from "@/lib/api/loan-account-map"
 import {
   parseCreatePersonSuccess,
+  normalizePersonRecord,
   parseGetPeopleSuccess,
   personSchema,
   type CreatePersonRequest,
@@ -437,12 +438,6 @@ export const baseApi = createApi({
           return { error: { status: 422, data: parsed.error } }
         }
         const onlyCards = parsed.accounts.filter(isCreditCardAccount)
-        if (import.meta.env.DEV && onlyCards.length === 0 && parsed.accounts.length > 0) {
-          console.warn(
-            "[getCreditCards] No accounts matched kind=credit_card in the API response; returning an empty list.",
-            { returnedCount: parsed.accounts.length }
-          )
-        }
         return { data: onlyCards }
       },
       providesTags: ["Accounts", { type: "Account", id: "LIST" }],
@@ -482,12 +477,6 @@ export const baseApi = createApi({
           return { error: { status: 422, data: parsed.error } }
         }
         const onlyLoans = parsed.accounts.filter(isLoanAccount)
-        if (import.meta.env.DEV && onlyLoans.length === 0 && parsed.accounts.length > 0) {
-          console.warn(
-            "[getLoans] No accounts matched kind=loan in the API response; returning an empty list.",
-            { returnedCount: parsed.accounts.length }
-          )
-        }
         return { data: onlyLoans }
       },
       providesTags: ["Accounts", { type: "Account", id: "LIST" }],
@@ -1299,6 +1288,7 @@ export const baseApi = createApi({
         { type: "Transaction", id: "LIST" },
         { type: "Transaction", id: "RECENT" },
         { type: "Account", id: "LIST" },
+        { type: "People", id: "LIST" },
         { type: "UdharSummary" },
         { type: "DashboardAnalytics", id: "LIST" },
       ],
@@ -1331,7 +1321,7 @@ export const baseApi = createApi({
         if (parsed.entry?.person) {
           const personOk = personSchema.safeParse(parsed.entry.person)
           if (personOk.success) {
-            api.dispatch(addPerson(personOk.data))
+            api.dispatch(addPerson(normalizePersonRecord(personOk.data)))
           }
         }
         const message =

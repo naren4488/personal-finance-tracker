@@ -29,6 +29,9 @@ import {
 import { getErrorMessage } from "@/lib/api/errors"
 import { isLoanAccount } from "@/lib/api/loan-account-map"
 import { INCOME_SOURCE_OPTIONS } from "@/lib/api/transaction-schemas"
+import { UtrNumberField } from "@/features/transactions/utr-number-field"
+import { utrPayloadField } from "@/lib/transactions/utr-account"
+import { todayIsoDate } from "@/lib/date/local-date"
 import { FORM_OVERLAY_FILL_BODY } from "@/lib/form-overlay-scroll"
 import {
   TX_FORM_DESCRIPTION_CLASS,
@@ -100,14 +103,6 @@ const TX_CATEGORIES = [
 ] as const
 
 type PaymentMethod = "account" | "card"
-
-function todayIsoDate(): string {
-  const d = new Date()
-  const y = d.getFullYear()
-  const m = String(d.getMonth() + 1).padStart(2, "0")
-  const day = String(d.getDate()).padStart(2, "0")
-  return `${y}-${m}-${day}`
-}
 
 function sanitizeDecimalInput(raw: string): string {
   const t = raw.replace(/[^\d.]/g, "")
@@ -407,7 +402,13 @@ function CreditCardExpenseFields({
   )
 }
 
-function NoAccountsEmptyState({ onAddAccount }: { onAddAccount: () => void }) {
+function NoAccountsEmptyState({
+  onAddAccount,
+  accountCreateDisabled = false,
+}: {
+  onAddAccount?: () => void
+  accountCreateDisabled?: boolean
+}) {
   return (
     <div className="flex flex-1 flex-col items-center justify-center px-6 py-10 text-center">
       <div className="mb-4 flex size-16 items-center justify-center rounded-full bg-muted/80">
@@ -415,15 +416,19 @@ function NoAccountsEmptyState({ onAddAccount }: { onAddAccount: () => void }) {
       </div>
       <p className="text-base font-bold text-primary">No account found</p>
       <p className="mt-2 max-w-[18rem] text-sm text-muted-foreground">
-        Add a bank account, cash, or wallet to start tracking
+        {accountCreateDisabled
+          ? "Account creation is currently disabled."
+          : "Add a bank account, cash, or wallet to start tracking"}
       </p>
-      <Button
-        type="button"
-        className="mt-6 h-11 w-full max-w-56 rounded-xl bg-primary text-base font-semibold text-primary-foreground hover:bg-primary/90"
-        onClick={onAddAccount}
-      >
-        Add Account
-      </Button>
+      {!accountCreateDisabled && onAddAccount ? (
+        <Button
+          type="button"
+          className="mt-6 h-11 w-full max-w-56 rounded-xl bg-primary text-base font-semibold text-primary-foreground hover:bg-primary/90"
+          onClick={onAddAccount}
+        >
+          Add Account
+        </Button>
+      ) : null}
     </div>
   )
 }
@@ -441,6 +446,7 @@ export type AddTransactionModalProps = {
   expenseOnBehalfPreset?: { personId: string; personName?: string; lock?: boolean } | null
   initialType?: TransactionType
   onOpenAddAccount?: () => void
+  accountCreateDisabled?: boolean
   transferPaymentPreset?: TransferPaymentPreset | null
   accountsReturnPath?: string
   /** Prefill Pay From / card when opening from account context (`?accountId=`). */
@@ -459,6 +465,7 @@ type MountedProps = {
   expenseOnBehalfPreset: { personId: string; personName?: string; lock?: boolean } | null
   initialType: TransactionType
   onOpenAddAccount?: () => void
+  accountCreateDisabled: boolean
   transferPaymentPreset: TransferPaymentPreset | null
   accountsReturnPath?: string
   prefillAccountId: string | null
@@ -474,6 +481,7 @@ function AddTransactionModalMounted({
   expenseOnBehalfPreset,
   initialType,
   onOpenAddAccount,
+  accountCreateDisabled,
   transferPaymentPreset,
   accountsReturnPath,
   prefillAccountId = null,
@@ -560,6 +568,7 @@ function AddTransactionModalMounted({
   const [onBehalfPersonUiMode, setOnBehalfPersonUiMode] = useState<"pick" | "add">("pick")
   const [inlineNewPersonName, setInlineNewPersonName] = useState("")
   const [inlineNewPersonPhone, setInlineNewPersonPhone] = useState("")
+  const [inlineNewPersonNameError, setInlineNewPersonNameError] = useState<string | undefined>()
   const [createPerson, { isLoading: isCreatingInlinePerson }] = useCreatePersonMutation()
   const [expectedReturnDate, setExpectedReturnDate] = useState("")
   const [note, setNote] = useState("")
@@ -582,6 +591,7 @@ function AddTransactionModalMounted({
   const [fieldErrors, setFieldErrors] = useState<Partial<Record<TransactionSubmitField, string>>>(
     {}
   )
+  const [utr, setUtr] = useState("")
 
   const effectiveType: TransactionType = expenseFlow
     ? "expense"
@@ -605,6 +615,17 @@ function AddTransactionModalMounted({
   const selectedAccount = useMemo(
     () => (accountId ? accounts.find((a) => a.id === accountId) : undefined),
     [accounts, accountId]
+  )
+  const transferFromAccountId = useMemo(() => {
+    if (effectiveType !== "transfer") return accountId
+    if (transferDestinationType === "credit_card_bill") {
+      return accountId || creditCardPayment.fromAccountId || ""
+    }
+    return accountId
+  }, [effectiveType, accountId, transferDestinationType, creditCardPayment.fromAccountId])
+  const selectedSourceAccountForUtr = useMemo(
+    () => accounts.find((a) => a.id === transferFromAccountId),
+    [accounts, transferFromAccountId]
   )
   const isCreditCardExpenseMode =
     effectiveType === "expense" &&
@@ -768,6 +789,7 @@ function AddTransactionModalMounted({
   const completeAfterSuccess = useCallback(
     (toastMsg: string, created?: Transaction | null) => {
       toast.success(toastMsg)
+      setUtr("")
       onTransactionSuccess?.()
       const dest = successNavigateTo?.trim()
       if (dest) {
@@ -1030,6 +1052,7 @@ function AddTransactionModalMounted({
       accountName: acc?.name,
       payFromAccountType:
         effectiveType === "expense" && acc ? accountApiTypeOrKind(acc) : undefined,
+      ...utrPayloadField(utr, acc),
     }
 
     try {
@@ -1141,11 +1164,16 @@ function AddTransactionModalMounted({
       {!isLoading && !isError && accounts.length === 0 && (
         <div className={cn(FORM_OVERLAY_FILL_BODY, "justify-center px-5 py-5")}>
           <NoAccountsEmptyState
-            onAddAccount={() => {
-              dismiss()
-              if (onOpenAddAccount) onOpenAddAccount()
-              else navigate(accountsReturnPath ?? "/accounts")
-            }}
+            accountCreateDisabled={accountCreateDisabled}
+            onAddAccount={
+              accountCreateDisabled
+                ? undefined
+                : () => {
+                    dismiss()
+                    if (onOpenAddAccount) onOpenAddAccount()
+                    else navigate(accountsReturnPath ?? "/accounts")
+                  }
+            }
           />
         </div>
       )}
@@ -1250,6 +1278,15 @@ function AddTransactionModalMounted({
                   </div>
                 </section>
               </div>
+
+              <UtrNumberField
+                selectedAccount={selectedSourceAccountForUtr}
+                value={utr}
+                onChange={setUtr}
+                id="at-transfer-utr"
+                labelClassName={TX_FORM_LABEL_CLASS}
+                fieldClassName={TX_FORM_FIELD_CLASS}
+              />
 
               {transferDestinationType === "account" ? (
                 <section>
@@ -1737,6 +1774,15 @@ function AddTransactionModalMounted({
                 </div>
                 <AppFieldError message={fieldErrors.accountId} />
               </section>
+
+              <UtrNumberField
+                selectedAccount={selectedSourceAccountForUtr}
+                value={utr}
+                onChange={setUtr}
+                id="at-utr"
+                labelClassName={TX_FORM_LABEL_CLASS}
+                fieldClassName={TX_FORM_FIELD_CLASS}
+              />
             </>
           )}
 
@@ -1823,12 +1869,17 @@ function AddTransactionModalMounted({
                     <Input
                       id="at-inline-person-name"
                       value={inlineNewPersonName}
-                      onChange={(e) => setInlineNewPersonName(e.target.value)}
+                      onChange={(e) => {
+                        setInlineNewPersonName(e.target.value)
+                        if (inlineNewPersonNameError) setInlineNewPersonNameError(undefined)
+                      }}
                       placeholder="Person's name"
                       className={TX_FORM_FIELD_CLASS}
                       autoComplete="name"
                       aria-label="New person name"
+                      aria-invalid={Boolean(inlineNewPersonNameError)}
                     />
+                    <AppFieldError message={inlineNewPersonNameError} />
                     <Input
                       id="at-inline-person-phone"
                       type="tel"
@@ -1848,9 +1899,10 @@ function AddTransactionModalMounted({
                         onClick={async () => {
                           const name = inlineNewPersonName.trim()
                           if (!name) {
-                            toast.error("Enter the person's name")
+                            setInlineNewPersonNameError("Person name is required")
                             return
                           }
+                          setInlineNewPersonNameError(undefined)
                           try {
                             const created = await createPerson({
                               name,
@@ -1862,7 +1914,7 @@ function AddTransactionModalMounted({
                             setInlineNewPersonPhone("")
                             toast.success("Person added")
                           } catch (err) {
-                            toast.error(getErrorMessage(err))
+                            handleFormApiError(err, dispatch)
                           }
                         }}
                       >
@@ -2050,6 +2102,7 @@ export function AddTransactionModal({
   expenseOnBehalfPreset = null,
   initialType = "expense",
   onOpenAddAccount,
+  accountCreateDisabled = false,
   transferPaymentPreset = null,
   accountsReturnPath,
   prefillAccountId = null,
@@ -2077,6 +2130,7 @@ export function AddTransactionModal({
       initialType={expenseFlow ? "expense" : transferFlow ? "transfer" : initialType}
       onOpenChange={onOpenChange}
       onOpenAddAccount={onOpenAddAccount}
+      accountCreateDisabled={accountCreateDisabled}
       transferPaymentPreset={transferPaymentPreset}
       accountsReturnPath={accountsReturnPath}
       prefillAccountId={prefillAccountId}

@@ -1,12 +1,17 @@
 import type { Account } from "@/lib/api/account-schemas"
+import { accountAvailableBalanceInrFromApi } from "@/lib/api/account-schemas"
 import { creditCardAvailableCreditInr, isCreditCardAccount } from "@/lib/api/credit-card-map"
-import type { DashboardAccountPreview } from "@/lib/api/dashboard-home-schemas"
 import {
   isLoanAccount,
-  loanOutstandingInr,
-  loanPrincipalInr,
-  loanTotalPaidInr,
+  loanPaidInstallments,
+  loanRemainingInstallments,
 } from "@/lib/api/loan-account-map"
+import type { DashboardAccountPreview } from "@/lib/api/dashboard-home-schemas"
+
+export type HomeAccountCardDisplay =
+  | { mode: "currency"; amount: number; contextLabel: string }
+  | { mode: "count"; count: number; contextLabel: string }
+  | { mode: "unavailable"; contextLabel: string }
 
 function isCreditCardKind(kind: string): boolean {
   return isCreditCardAccount({ kind, type: kind } as unknown as Account)
@@ -16,82 +21,84 @@ function isLoanKind(kind: string): boolean {
   return isLoanAccount({ kind, type: kind } as unknown as Account)
 }
 
-/**
- * Home dashboard account tile: amount + optional label.
- * Credit card → Available (remaining limit). Loan → Remaining (outstanding). Others → currentBalance.
- */
-export function getDashboardAccountDisplay(
+function isAssetKind(kind: string): boolean {
+  const k = kind.trim().toLowerCase()
+  return k === "asset" || k.includes("asset") || k.includes("property")
+}
+
+function loanEmiScheduleKnown(preview: DashboardAccountPreview, fullAccount?: Account): boolean {
+  if (preview.remainingInstallments !== undefined) return true
+  if (!fullAccount) return false
+  const r = fullAccount as unknown as Record<string, unknown>
+  if (r.remainingInstallments != null || r.remaining_installments != null) return true
+  if (r.tenureMonths != null || r.tenure_months != null) return true
+  return loanPaidInstallments(fullAccount) > 0
+}
+
+function resolveLoanRemainingEmiCount(
   preview: DashboardAccountPreview,
-  fullAccount?: Account | null
-): { amount: number; label?: string } {
+  fullAccount?: Account
+): number | null {
+  const fromPreview = preview.remainingInstallments
+  if (fromPreview !== undefined) return fromPreview
+
+  if (!fullAccount || !isLoanAccount(fullAccount)) return null
+  if (!loanEmiScheduleKnown(preview, fullAccount)) return null
+  return loanRemainingInstallments(fullAccount)
+}
+
+function resolveCreditCardAvailableInr(
+  preview: DashboardAccountPreview,
+  fullAccount?: Account
+): number | null {
+  if (preview.availableLimit !== undefined && Number.isFinite(preview.availableLimit)) {
+    return preview.availableLimit
+  }
+  if (preview.remainingLimit !== undefined && Number.isFinite(preview.remainingLimit)) {
+    return preview.remainingLimit
+  }
+  if (fullAccount && isCreditCardAccount(fullAccount)) {
+    return creditCardAvailableCreditInr(fullAccount)
+  }
+  if (preview.creditLimit > 0) {
+    return preview.creditLimit - preview.currentOutstanding
+  }
+  return null
+}
+
+function resolveBalanceInr(preview: DashboardAccountPreview, fullAccount?: Account): number {
+  if (fullAccount) return accountAvailableBalanceInrFromApi(fullAccount)
+  return preview.currentBalance
+}
+
+/**
+ * Home “Your accounts” tile: balance, available credit, or remaining EMI count.
+ * Prefers dashboard preview fields; uses full `Account` from GET /accounts for gaps.
+ */
+export function getHomeAccountCardDisplay(
+  preview: DashboardAccountPreview,
+  fullAccount?: Account
+): HomeAccountCardDisplay {
   if (isCreditCardKind(preview.kind)) {
-    if (
-      preview.availableLimit !== undefined &&
-      Number.isFinite(preview.availableLimit) &&
-      preview.availableLimit >= 0
-    ) {
-      return { amount: Math.max(0, preview.availableLimit), label: "Available" }
+    const available = resolveCreditCardAvailableInr(preview, fullAccount)
+    if (available === null || !Number.isFinite(available)) {
+      return { mode: "unavailable", contextLabel: "Available" }
     }
-    if (
-      preview.remainingLimit !== undefined &&
-      Number.isFinite(preview.remainingLimit) &&
-      preview.remainingLimit >= 0
-    ) {
-      return { amount: Math.max(0, preview.remainingLimit), label: "Available" }
-    }
-
-    if (fullAccount && isCreditCardAccount(fullAccount)) {
-      return {
-        amount: Math.max(0, creditCardAvailableCreditInr(fullAccount)),
-        label: "Available",
-      }
-    }
-
-    const limit = preview.creditLimit
-    const used = preview.currentOutstanding
-    if (limit > 0) {
-      return { amount: Math.max(0, limit - used), label: "Available" }
-    }
-
-    return { amount: 0, label: "Available" }
+    return { mode: "currency", amount: available, contextLabel: "Available" }
   }
 
   if (isLoanKind(preview.kind)) {
-    const fromPreviewExplicit = [
-      preview.remainingBalance,
-      preview.outstandingAmount,
-      preview.remainingAmount,
-    ].find((v) => v !== undefined && Number.isFinite(v) && v >= 0)
-    if (fromPreviewExplicit !== undefined) {
-      return { amount: Math.max(0, fromPreviewExplicit), label: "Remaining" }
+    const count = resolveLoanRemainingEmiCount(preview, fullAccount)
+    if (count === null) {
+      return { mode: "unavailable", contextLabel: "EMIs left" }
     }
-
-    let loanOutFromFull = 0
-    if (fullAccount && isLoanAccount(fullAccount)) {
-      loanOutFromFull = loanOutstandingInr(fullAccount)
-      if (loanOutFromFull > 0) {
-        return { amount: loanOutFromFull, label: "Remaining" }
-      }
-    }
-
-    if (Number.isFinite(preview.currentOutstanding) && preview.currentOutstanding >= 0) {
-      return { amount: Math.max(0, preview.currentOutstanding), label: "Remaining" }
-    }
-
-    if (fullAccount && isLoanAccount(fullAccount)) {
-      const total =
-        preview.totalLoanAmount !== undefined && preview.totalLoanAmount > 0
-          ? preview.totalLoanAmount
-          : loanPrincipalInr(fullAccount)
-      const paid = loanTotalPaidInr(fullAccount)
-      if (total > 0 && paid != null) {
-        return { amount: Math.max(0, total - paid), label: "Remaining" }
-      }
-      return { amount: Math.max(0, loanOutFromFull), label: "Remaining" }
-    }
-
-    return { amount: 0, label: "Remaining" }
+    return { mode: "count", count, contextLabel: "EMIs left" }
   }
 
-  return { amount: preview.currentBalance }
+  const contextLabel = isAssetKind(preview.kind) ? "Value" : "Balance"
+  return {
+    mode: "currency",
+    amount: resolveBalanceInr(preview, fullAccount),
+    contextLabel,
+  }
 }

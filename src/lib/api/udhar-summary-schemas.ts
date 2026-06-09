@@ -1,4 +1,5 @@
 import { z } from "zod"
+import { parseInrFromUnknownStripSpaces } from "@/lib/money/parse-inr"
 
 /**
  * One row from GET /transactions/udhar-summary — must match server ledger rollups.
@@ -12,37 +13,8 @@ export type UdharAccountPersonBalance = {
   totalLent: number
   totalBorrowed: number
   net: number
-  /** receivableBalance ≈ total_lent − total_received — use for payment_received caps when set. */
   receivableRemaining?: number
-  /** payableBalance ≈ total_borrowed − total_paid — use for payment_made caps when set. */
   payableRemaining?: number
-}
-
-/** Max receivable that can be settled with `payment_received` (never negative). */
-export function getReceivablePaymentCap(row: UdharAccountPersonBalance | undefined): number {
-  if (!row) return 0
-  if (row.receivableRemaining !== undefined && Number.isFinite(row.receivableRemaining)) {
-    return Math.max(0, row.receivableRemaining)
-  }
-  return Math.max(0, row.totalLent)
-}
-
-/** Max payable that can be settled with `payment_made` (never negative). */
-export function getPayablePaymentCap(row: UdharAccountPersonBalance | undefined): number {
-  if (!row) return 0
-  if (row.payableRemaining !== undefined && Number.isFinite(row.payableRemaining)) {
-    return Math.max(0, row.payableRemaining)
-  }
-  return Math.max(0, row.totalBorrowed)
-}
-
-function parseNumish(v: unknown): number {
-  if (typeof v === "number" && Number.isFinite(v)) return v
-  if (typeof v === "string") {
-    const n = Number(v.replace(/,/g, "").replace(/\s/g, "").trim())
-    return Number.isFinite(n) ? n : 0
-  }
-  return 0
 }
 
 function normalizeBalanceRow(raw: Record<string, unknown>): UdharAccountPersonBalance | null {
@@ -50,8 +22,10 @@ function normalizeBalanceRow(raw: Record<string, unknown>): UdharAccountPersonBa
   const pid = typeof pidRaw === "string" ? pidRaw.trim() : ""
   if (!pid) return null
 
-  let totalLent = parseNumish(raw.totalLent ?? raw.totalGiven ?? raw.total_given ?? raw.givenTotal)
-  let totalBorrowed = parseNumish(
+  let totalLent = parseInrFromUnknownStripSpaces(
+    raw.totalLent ?? raw.totalGiven ?? raw.total_given ?? raw.givenTotal
+  )
+  let totalBorrowed = parseInrFromUnknownStripSpaces(
     raw.totalBorrowed ?? raw.totalTaken ?? raw.total_taken ?? raw.takenTotal
   )
 
@@ -71,7 +45,7 @@ function normalizeBalanceRow(raw: Record<string, unknown>): UdharAccountPersonBa
   }
 
   if (!hasLentBorrowed && hasNetField) {
-    const n = parseNumish(netFromApi)
+    const n = parseInrFromUnknownStripSpaces(netFromApi)
     if (n > 0) {
       totalLent = n
       totalBorrowed = 0
@@ -85,7 +59,7 @@ function normalizeBalanceRow(raw: Record<string, unknown>): UdharAccountPersonBa
     return { personId: pid, totalLent, totalBorrowed, net: totalLent - totalBorrowed }
   }
 
-  const net = hasNetField ? parseNumish(netFromApi) : totalLent - totalBorrowed
+  const net = hasNetField ? parseInrFromUnknownStripSpaces(netFromApi) : totalLent - totalBorrowed
 
   let receivableRemaining: number | undefined
   let payableRemaining: number | undefined
@@ -99,7 +73,7 @@ function normalizeBalanceRow(raw: Record<string, unknown>): UdharAccountPersonBa
     raw.remaining_receivable ??
     raw.outstandingReceivable
   if (explicitReceivable !== undefined && explicitReceivable !== null) {
-    receivableRemaining = parseNumish(explicitReceivable)
+    receivableRemaining = parseInrFromUnknownStripSpaces(explicitReceivable)
   }
 
   const explicitPayable =
@@ -111,7 +85,7 @@ function normalizeBalanceRow(raw: Record<string, unknown>): UdharAccountPersonBa
     raw.remaining_payable ??
     raw.outstandingPayable
   if (explicitPayable !== undefined && explicitPayable !== null) {
-    payableRemaining = parseNumish(explicitPayable)
+    payableRemaining = parseInrFromUnknownStripSpaces(explicitPayable)
   }
 
   const grossLent = raw.totalLentGross ?? raw.grossLent ?? raw.total_lent_gross ?? raw.gross_lent
@@ -123,7 +97,10 @@ function normalizeBalanceRow(raw: Record<string, unknown>): UdharAccountPersonBa
     totalReceived !== undefined &&
     totalReceived !== null
   ) {
-    receivableRemaining = Math.max(0, parseNumish(grossLent) - parseNumish(totalReceived))
+    receivableRemaining = Math.max(
+      0,
+      parseInrFromUnknownStripSpaces(grossLent) - parseInrFromUnknownStripSpaces(totalReceived)
+    )
   }
 
   const grossBorrowed =
@@ -136,7 +113,10 @@ function normalizeBalanceRow(raw: Record<string, unknown>): UdharAccountPersonBa
     totalPaid !== undefined &&
     totalPaid !== null
   ) {
-    payableRemaining = Math.max(0, parseNumish(grossBorrowed) - parseNumish(totalPaid))
+    payableRemaining = Math.max(
+      0,
+      parseInrFromUnknownStripSpaces(grossBorrowed) - parseInrFromUnknownStripSpaces(totalPaid)
+    )
   }
 
   const base: UdharAccountPersonBalance = { personId: pid, totalLent, totalBorrowed, net }

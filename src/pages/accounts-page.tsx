@@ -39,8 +39,9 @@ import type { Account } from "@/lib/api/account-schemas"
 import { getAccountDeleteWarning } from "@/lib/accounts/account-delete"
 import { accountSelectLabel, filterNormalAccounts } from "@/lib/api/account-schemas"
 import { getErrorMessage } from "@/lib/api/errors"
-import { handleAuthApiErrorIfNeeded } from "@/lib/auth/handle-auth-api-error"
-import { resolvePersonDeleteTarget } from "@/lib/people/person-delete"
+import { isAccountCreateApiDisabled } from "@/lib/feature-flags"
+import { handleFormApiError } from "@/lib/forms/form-api-errors"
+import { getPersonDeleteConfirmCopy, resolvePersonDeleteTarget } from "@/lib/people/person-delete"
 import { useAccountDeleteGuard } from "@/hooks/use-account-delete-guard"
 import { useDebouncedValue } from "@/hooks/use-debounced-value"
 import { useOrderedPeopleForUdhar } from "@/hooks/use-ordered-people-for-udhar"
@@ -72,7 +73,10 @@ const SEGMENT_ICONS: Record<AccountsSegmentId, typeof Users> = {
 const PEOPLE_ACCOUNT_ALL_VALUE = "__all_accounts__"
 const PEOPLE_SEARCH_DEBOUNCE_MS = 400
 
+const ACCOUNT_CREATE_DISABLED_BANNER = "Account creation is currently disabled."
+
 export default function AccountsPage() {
+  const accountCreateDisabled = isAccountCreateApiDisabled()
   const navigate = useNavigate()
   const location = useLocation()
   const dispatch = useAppDispatch()
@@ -129,6 +133,11 @@ export default function AccountsPage() {
 
   const pendingPersonDeleteGuard = usePersonDeleteGuard(pendingDeletePerson)
 
+  const pendingPersonDeleteCopy = useMemo(() => {
+    if (!pendingDeletePerson) return null
+    return getPersonDeleteConfirmCopy(pendingDeletePerson)
+  }, [pendingDeletePerson])
+
   const confirmDeleteFromList = useCallback(async () => {
     if (!pendingListDeleteAccount) return
     if (pendingListDeleteGuard.blocked) {
@@ -145,9 +154,9 @@ export default function AccountsPage() {
       toast.success(res.message ?? "Account deleted")
       setPendingListDeleteAccount(null)
     } catch (e) {
-      toast.error(getErrorMessage(e) || "Failed to delete")
+      handleFormApiError(e, dispatch)
     }
-  }, [deleteAccount, pendingListDeleteAccount, pendingListDeleteGuard])
+  }, [deleteAccount, dispatch, pendingListDeleteAccount, pendingListDeleteGuard])
 
   const confirmDeletePerson = useCallback(async () => {
     if (!pendingDeletePerson) return
@@ -170,11 +179,11 @@ export default function AccountsPage() {
       }
       setPendingDeletePerson(null)
     } catch (e) {
-      toast.error(getErrorMessage(e) || "Failed to delete")
+      handleFormApiError(e, dispatch)
     } finally {
       setIsConfirmingPersonDelete(false)
     }
-  }, [deleteAccount, deletePerson, pendingDeletePerson, pendingPersonDeleteGuard])
+  }, [deleteAccount, deletePerson, dispatch, pendingDeletePerson, pendingPersonDeleteGuard])
 
   const meta = ACCOUNTS_SEGMENT_META[segment]
   const user = useAppSelector((s) => s.auth.user)
@@ -205,12 +214,12 @@ export default function AccountsPage() {
 
   useEffect(() => {
     if (!creditCardsError || !creditCardsQueryError) return
-    handleAuthApiErrorIfNeeded(creditCardsQueryError, dispatch)
+    handleFormApiError(creditCardsQueryError, dispatch)
   }, [creditCardsError, creditCardsQueryError, dispatch])
 
   useEffect(() => {
     if (!loansError || !loansQueryError) return
-    handleAuthApiErrorIfNeeded(loansQueryError, dispatch)
+    handleFormApiError(loansQueryError, dispatch)
   }, [loansError, loansQueryError, dispatch])
 
   /** Deep link: `/accounts?loan=` / `?card=` / `?account=` → correct tab before paint. */
@@ -263,15 +272,17 @@ export default function AccountsPage() {
     if (seg && SEGMENT_ORDER.includes(seg)) {
       setSegment(seg)
     }
-    if (openAdd) {
+    if (openAdd && !accountCreateDisabled) {
       setSegment("accounts")
       setAddAccountOpen(true)
+    } else if (openAdd && accountCreateDisabled) {
+      setSegment("accounts")
     }
 
     if (seg || openAdd) {
       navigate(`${location.pathname}${location.search}`, { replace: true, state: {} })
     }
-  }, [location.pathname, location.search, location.state, navigate])
+  }, [location.pathname, location.search, location.state, navigate, accountCreateDisabled])
 
   const navigateToPersonView = useCallback(
     (person: Person) => {
@@ -372,8 +383,10 @@ export default function AccountsPage() {
     normalAccounts.length === 0
 
   function openHeaderAdd() {
-    if (segment === "accounts") setAddAccountOpen(true)
-    else if (segment === "people") openPeopleUdharSheet()
+    if (segment === "accounts") {
+      if (!accountCreateDisabled) setAddAccountOpen(true)
+      return
+    } else if (segment === "people") openPeopleUdharSheet()
     else if (segment === "loans") setLoanOpen(true)
     else if (segment === "cards") setCardOpen(true)
     else {
@@ -401,6 +414,7 @@ export default function AccountsPage() {
 
   const showHeaderAdd =
     (segment === "accounts" &&
+      !accountCreateDisabled &&
       !showAccountsLoading &&
       !showAccountsError &&
       normalAccounts.length > 0) ||
@@ -427,7 +441,8 @@ export default function AccountsPage() {
         onOpenChange={(v) => {
           if (!v) setPendingDeletePerson(null)
         }}
-        title="Delete"
+        title={pendingPersonDeleteCopy?.title ?? "Delete"}
+        message={pendingPersonDeleteCopy?.message}
         isDeleting={isConfirmingPersonDelete}
         onConfirm={confirmDeletePerson}
       />
@@ -446,7 +461,9 @@ export default function AccountsPage() {
         }}
         account={resolvedAdjustBalanceAccount}
       />
-      <AddAccountSheet open={addAccountOpen} onOpenChange={setAddAccountOpen} />
+      {!accountCreateDisabled ? (
+        <AddAccountSheet open={addAccountOpen} onOpenChange={setAddAccountOpen} />
+      ) : null}
       <AddUdharEntrySheet
         open={udharOpen}
         onOpenChange={handleUdharSheetOpenChange}
@@ -476,6 +493,7 @@ export default function AccountsPage() {
           }
         }}
         initialType="transfer"
+        accountCreateDisabled={accountCreateDisabled}
         transferPaymentPreset={transferPreset}
         accountsReturnPath="/accounts"
         successNavigateTo={
@@ -583,6 +601,16 @@ export default function AccountsPage() {
         </div>
 
         <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain [-ms-overflow-style:none] [scrollbar-gutter:stable] [scrollbar-width:thin]">
+          {accountCreateDisabled && segment === "accounts" ? (
+            <div
+              role="status"
+              className="mb-3 rounded-2xl border border-amber-500/40 bg-amber-500/12 px-4 py-3 text-sm text-foreground"
+            >
+              <p className="font-semibold text-amber-950 dark:text-amber-100">
+                {ACCOUNT_CREATE_DISABLED_BANNER}
+              </p>
+            </div>
+          ) : null}
           {showAccountsLoading ? (
             <div className="flex flex-col gap-3">
               <AccountCardSkeleton />
@@ -610,15 +638,19 @@ export default function AccountsPage() {
                 </div>
                 <p className="text-base font-bold text-primary">No accounts</p>
                 <p className="mt-1 max-w-xs text-sm text-muted-foreground">
-                  Add your bank accounts and wallets
+                  {accountCreateDisabled
+                    ? ACCOUNT_CREATE_DISABLED_BANNER
+                    : "Add your bank accounts and wallets"}
                 </p>
-                <Button
-                  type="button"
-                  className="mt-6 h-11 rounded-xl px-8 text-base font-semibold"
-                  onClick={() => setAddAccountOpen(true)}
-                >
-                  Add Account
-                </Button>
+                {!accountCreateDisabled ? (
+                  <Button
+                    type="button"
+                    className="mt-6 h-11 rounded-xl px-8 text-base font-semibold"
+                    onClick={() => setAddAccountOpen(true)}
+                  >
+                    Add Account
+                  </Button>
+                ) : null}
               </CardContent>
             </Card>
           ) : segment === "people" && accountsLoading ? (
@@ -651,15 +683,19 @@ export default function AccountsPage() {
                 </div>
                 <p className="text-base font-bold text-primary">No accounts for people</p>
                 <p className="mt-1 max-w-xs text-sm text-muted-foreground">
-                  Add a bank account or wallet to list people linked to it.
+                  {accountCreateDisabled
+                    ? ACCOUNT_CREATE_DISABLED_BANNER
+                    : "Add a bank account or wallet to list people linked to it."}
                 </p>
-                <Button
-                  type="button"
-                  className="mt-6 h-11 rounded-xl px-8 text-base font-semibold"
-                  onClick={() => setAddAccountOpen(true)}
-                >
-                  Add Account
-                </Button>
+                {!accountCreateDisabled ? (
+                  <Button
+                    type="button"
+                    className="mt-6 h-11 rounded-xl px-8 text-base font-semibold"
+                    onClick={() => setAddAccountOpen(true)}
+                  >
+                    Add Account
+                  </Button>
+                ) : null}
               </CardContent>
             </Card>
           ) : segment === "people" ? (

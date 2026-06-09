@@ -7,36 +7,7 @@
  * (per month) for grouped charts when the API provides them.
  */
 
-const CATEGORY_CHART_COLORS = [
-  "#1e3a8a",
-  "#10b981",
-  "#f59e0b",
-  "#ef4444",
-  "#8b5cf6",
-  "#06b6d4",
-  "#ec4899",
-  "#64748b",
-]
-
-const PAYMENT_BAR_CLASSES = [
-  "bg-blue-800",
-  "bg-emerald-500",
-  "bg-amber-500",
-  "bg-slate-400",
-  "bg-violet-600",
-  "bg-rose-500",
-]
-
-const TYPE_DOT_CLASSES = [
-  "bg-blue-800",
-  "bg-emerald-500",
-  "bg-amber-500",
-  "bg-red-500",
-  "bg-blue-400",
-  "bg-purple-500",
-  "bg-cyan-600",
-  "bg-orange-500",
-]
+import { analyticsChartPaletteColor } from "@/lib/analytics/chart-colors"
 
 function toNum(v: unknown): number {
   if (v === undefined || v === null) return 0
@@ -331,7 +302,7 @@ function mapTypeCounts(rows: unknown[]): DashboardAnalyticsView["transactionCoun
     out.push({
       name: name || "Type",
       count: count > 0 ? count : 0,
-      color: TYPE_DOT_CLASSES[i % TYPE_DOT_CLASSES.length],
+      color: analyticsChartPaletteColor(i),
     })
     i += 1
   }
@@ -434,7 +405,7 @@ function buildView(payload: Record<string, unknown>): DashboardAnalyticsView {
       ? categoryRows.map((c, i) => ({
           name: c.name,
           value: c.value,
-          color: CATEGORY_CHART_COLORS[i % CATEGORY_CHART_COLORS.length],
+          color: analyticsChartPaletteColor(i),
         }))
       : []
 
@@ -445,7 +416,7 @@ function buildView(payload: Record<string, unknown>): DashboardAnalyticsView {
     name: p.name,
     amount: p.amount,
     percentage: p.percentage,
-    color: PAYMENT_BAR_CLASSES[i % PAYMENT_BAR_CLASSES.length],
+    color: analyticsChartPaletteColor(i),
   }))
 
   const udharReceive = pickNum(payload, ["udharReceive", "udhar_receive"])

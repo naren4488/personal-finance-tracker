@@ -11,27 +11,13 @@ export const transactionSchema = z.object({
   category: z.string().optional(),
   accountId: z.string().optional(),
   accountName: z.string().optional(),
+  utr: z.string().optional(),
 })
 
 export const transactionListSchema = z.array(transactionSchema)
 
 export type Transaction = z.infer<typeof transactionSchema>
 export type TransactionType = z.infer<typeof transactionTypeSchema>
-
-/** Client form: amount as string for controlled `<input type="text" inputMode="decimal">`. */
-export const quickTransactionFormSchema = z.object({
-  title: z.string().min(1, "Add a short description").max(120),
-  amount: z
-    .string()
-    .min(1, "Enter amount")
-    .refine((s) => {
-      const n = Number(s.replace(/,/g, ""))
-      return !Number.isNaN(n) && n > 0
-    }, "Amount must be greater than zero"),
-  type: z.enum(["income", "expense"]),
-})
-
-export type QuickTransactionFormValues = z.infer<typeof quickTransactionFormSchema>
 
 /** Unified POST /transactions transfer routing (account→account, card bill, loan EMI). */
 export type TransferDestinationType = "account" | "credit_card_bill" | "loan_emi"
@@ -79,27 +65,6 @@ export type CreateTransactionPayload = {
    * both `accountId` and `creditCardAccountId` are not both needed for inference.
    */
   payFromAccountType?: string
-}
-
-export function toQuickTransactionPayload(
-  values: QuickTransactionFormValues,
-  defaultAccountId: string
-): CreateTransactionPayload {
-  const title = values.title.trim()
-  return {
-    type: values.type,
-    amount: Number(values.amount.replace(/,/g, "")),
-    category: "Other",
-    incomeSource: values.type === "income" ? "other" : undefined,
-    paymentMethod: "account",
-    sourceName: "Quick add",
-    feeAmount: "0",
-    paidOnBehalf: false,
-    scheduled: false,
-    date: new Date().toISOString().slice(0, 10),
-    note: title,
-    tags: [],
-    displayTitle: title,
-    accountId: defaultAccountId,
-  }
+  /** Bank / UPI / wallet transfer reference — sent as API `utr` when applicable. */
+  utr?: string
 }

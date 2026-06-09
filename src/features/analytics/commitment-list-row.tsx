@@ -7,12 +7,8 @@ import {
   resolveCommitmentRowAction,
   type EntityCatalog,
 } from "@/lib/commitments/commitment-kind-config"
+import { formatCurrency } from "@/lib/format"
 import { cn } from "@/lib/utils"
-
-function formatCommitmentInr(amount: string | number): string {
-  const n = Number(String(amount).replace(/,/g, "").trim())
-  return Number.isFinite(n) ? n.toLocaleString("en-IN") : String(amount)
-}
 
 type CommitmentListRowProps = {
   commitment: Commitment
@@ -34,7 +30,7 @@ export function CommitmentListRow({ commitment, catalog }: CommitmentListRowProp
           ) : null}
         </div>
         <span className="shrink-0 text-xs font-bold text-foreground tabular-nums">
-          ₹{formatCommitmentInr(commitment.amount)}
+          {formatCurrency(commitment.amount)}
         </span>
       </div>
       <div className="flex flex-wrap gap-x-2 gap-y-1 text-[10px] text-muted-foreground">

@@ -15,12 +15,13 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Skeleton } from "@/components/ui/skeleton"
 import { AddAccountSheet } from "@/features/accounts/add-account-sheet"
+import { isAccountCreateApiDisabled } from "@/lib/feature-flags"
 import { AddUdharEntrySheet } from "@/features/accounts/add-udhar-entry-sheet"
 import { AddTransactionModal } from "@/features/entries/add-transaction-modal"
 import { RecentTransactionRow } from "@/features/entries/recent-transaction-row"
-import { TransferTransactionRow } from "@/features/entries/transfer-transaction-row"
 import { useDeleteTransactionFlow } from "@/features/entries/use-delete-transaction-flow"
 import { useDebouncedValue } from "@/hooks/use-debounced-value"
+import { useTransactionEntityCatalog } from "@/hooks/use-transaction-entity-catalog"
 import { getErrorMessage } from "@/lib/api/errors"
 import { handleAuthApiErrorIfNeeded } from "@/lib/auth/handle-auth-api-error"
 import type { UdharEntryType } from "@/lib/api/udhar-schemas"
@@ -32,6 +33,7 @@ import {
   parseSignedAmountString,
   type RecentTransaction,
 } from "@/lib/api/transaction-schemas"
+import { formatYyyyMmDd, startOfLocalDay } from "@/lib/date/local-date"
 import { formatCurrency } from "@/lib/format"
 import { cn } from "@/lib/utils"
 import { useGetAccountsQuery, useGetRecentTransactionsQuery } from "@/store/api/base-api"
@@ -74,20 +76,6 @@ const ENTRIES_RECENT_DEFAULT_LIMIT = 200
 
 /** "All" range: `fromDate` fixed far past, `toDate` = today — still valid YYYY-MM-DD pair for API. */
 const ALL_DAYS_FROM = "2000-01-01"
-function startOfLocalDay(d: Date): Date {
-  const x = new Date(d)
-  x.setHours(0, 0, 0, 0)
-  return x
-}
-
-/** Backend accepts YYYY-MM-DD (or DD/MM/YYYY); we use ISO-like local YYYY-MM-DD. */
-function formatYyyyMmDd(d: Date): string {
-  const y = d.getFullYear()
-  const m = String(d.getMonth() + 1).padStart(2, "0")
-  const day = String(d.getDate()).padStart(2, "0")
-  return `${y}-${m}-${day}`
-}
-
 /**
  * `toDate` = today (local); `fromDate` = today minus `daysBack` calendar days (both YYYY-MM-DD).
  * `daysBack === 0` → Today only (fromDate === toDate).
@@ -181,6 +169,7 @@ function headerTotalLabel(
 }
 
 export default function EntriesPage() {
+  const accountCreateDisabled = isAccountCreateApiDisabled()
   const dispatch = useAppDispatch()
   const [searchParams, setSearchParams] = useSearchParams()
   const addQuery = searchParams.get(ENTRIES_ADD_SEARCH_PARAM)
@@ -399,6 +388,10 @@ export default function EntriesPage() {
     return !isLoading && !isError && displayList.length > 0
   }, [isLoading, isError, displayList.length])
 
+  const transactionCatalog = useTransactionEntityCatalog({
+    transactions: displayList.map((tx) => ({ id: tx.id })),
+  })
+
   const totalDisplay = headerTotalLabel(segment, displayList)
 
   function openTxModalWithType(initial: TransactionType) {
@@ -449,33 +442,50 @@ export default function EntriesPage() {
         updating && "opacity-[0.98]"
       )}
     >
-      <AddAccountSheet open={addAccountSheetOpen} onOpenChange={setAddAccountSheetOpen} />
+      {!accountCreateDisabled ? (
+        <AddAccountSheet open={addAccountSheetOpen} onOpenChange={setAddAccountSheetOpen} />
+      ) : null}
       <AddTransactionModal
         open={txModalOpen}
         onOpenChange={setTxModalOpen}
         initialType={txModalInitialType}
-        onOpenAddAccount={() => {
-          setTxModalOpen(false)
-          setAddAccountSheetOpen(true)
-        }}
+        accountCreateDisabled={accountCreateDisabled}
+        onOpenAddAccount={
+          accountCreateDisabled
+            ? undefined
+            : () => {
+                setTxModalOpen(false)
+                setAddAccountSheetOpen(true)
+              }
+        }
       />
       <AddTransactionModal
         open={expenseModalOpen}
         onOpenChange={setExpenseModalOpen}
         expenseFlow
-        onOpenAddAccount={() => {
-          setExpenseModalOpen(false)
-          setAddAccountSheetOpen(true)
-        }}
+        accountCreateDisabled={accountCreateDisabled}
+        onOpenAddAccount={
+          accountCreateDisabled
+            ? undefined
+            : () => {
+                setExpenseModalOpen(false)
+                setAddAccountSheetOpen(true)
+              }
+        }
       />
       <AddTransactionModal
         open={transferModalOpen}
         onOpenChange={setTransferModalOpen}
         transferFlow
-        onOpenAddAccount={() => {
-          setTransferModalOpen(false)
-          setAddAccountSheetOpen(true)
-        }}
+        accountCreateDisabled={accountCreateDisabled}
+        onOpenAddAccount={
+          accountCreateDisabled
+            ? undefined
+            : () => {
+                setTransferModalOpen(false)
+                setAddAccountSheetOpen(true)
+              }
+        }
       />
       <AddUdharEntrySheet
         open={udharSheetOpen}
@@ -758,7 +768,7 @@ export default function EntriesPage() {
                 </p>
                 <p className="mx-auto mt-2 max-w-xs text-sm text-muted-foreground">
                   {segment === "udhar"
-                    ? "No udhar entries in this range. Add an udhar entry to track money given or taken."
+                    ? "No udhar entries in this range. Add an udhar entry to track what you paid or received."
                     : segment === "transfer"
                       ? "No transfers in this range. Start by transferring money between accounts."
                       : "Try adjusting filters or date range."}
@@ -823,6 +833,7 @@ export default function EntriesPage() {
                     <RecentTransactionRow
                       tx={tx}
                       accounts={accounts}
+                      catalog={transactionCatalog}
                       onDelete={txDelete.requestDelete}
                     />
                   </li>
@@ -840,6 +851,7 @@ export default function EntriesPage() {
                     <RecentTransactionRow
                       tx={tx}
                       accounts={accounts}
+                      catalog={transactionCatalog}
                       onDelete={txDelete.requestDelete}
                     />
                   </li>
@@ -854,9 +866,10 @@ export default function EntriesPage() {
               >
                 {displayList.map((tx) => (
                   <li key={tx.id} className="shrink-0">
-                    <TransferTransactionRow
+                    <RecentTransactionRow
                       tx={tx}
                       accounts={accounts}
+                      catalog={transactionCatalog}
                       onDelete={txDelete.requestDelete}
                     />
                   </li>

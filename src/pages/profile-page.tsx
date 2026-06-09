@@ -9,7 +9,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Skeleton } from "@/components/ui/skeleton"
 import type { AuthUser } from "@/lib/api/auth-schemas"
-import { getErrorMessage, isFetchBaseQueryError } from "@/lib/api/errors"
+import { isFetchBaseQueryError } from "@/lib/api/errors"
 import {
   buildUpdateProfileBody,
   mergeAuthUserWithProfile,
@@ -116,7 +116,7 @@ function ProfileForm({
     setFieldErrors({})
     const trimmed = name.trim()
     if (!trimmed) {
-      toast.error("Name is required")
+      setFieldErrors({ name: "Name is required" })
       return
     }
     const body = buildUpdateProfileBody({
@@ -140,7 +140,6 @@ function ProfileForm({
         const fe = parseProfileFieldErrorsFromApiData(err.data)
         if (fe) setFieldErrors(fe)
       }
-      toast.error(getErrorMessage(err))
     }
   }
 
@@ -153,8 +152,7 @@ function ProfileForm({
     try {
       await logout().unwrap()
       clearSessionAndRedirect()
-    } catch (error) {
-      toast.error(getErrorMessage(error))
+    } catch {
       clearSessionAndRedirect()
     }
   }
@@ -171,8 +169,8 @@ function ProfileForm({
         endUserSession(dispatch)
         navigate("/login", { replace: true })
       })
-    } catch (err) {
-      toast.error(getErrorMessage(err))
+    } catch {
+      // Global mutation listener shows API error toast
     }
   }
 
@@ -219,7 +217,10 @@ function ProfileForm({
               <Input
                 id="profile-name"
                 value={name}
-                onChange={(e) => setName(e.target.value)}
+                onChange={(e) => {
+                  setName(e.target.value)
+                  if (fieldErrors.name) setFieldErrors((prev) => ({ ...prev, name: "" }))
+                }}
                 className={APP_FORM_FIELD_CLASS}
                 autoComplete="name"
                 aria-invalid={Boolean(fieldErrors.name)}
