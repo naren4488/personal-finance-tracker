@@ -64,41 +64,47 @@ export const TransactionListRow = memo(function TransactionListRow({
   const action = resolveTransactionRowAction(tx, catalog, { currentPath: location.pathname })
   const isNavigable = action.type !== "none"
 
-  const rowBody = (
+  const amountBlock =
+    amountStyle === "udhar-ledger" ? (
+      <p
+        className={cn(
+          "text-right text-base font-bold tabular-nums tracking-tight",
+          absAmt === 0 ? "text-muted-foreground" : udharEffectTextClassName(udharEffect!)
+        )}
+      >
+        {formatCurrency(absAmt)}
+      </p>
+    ) : (
+      <span
+        className={cn(
+          "text-right text-base font-bold tabular-nums tracking-tight",
+          isIncome && "text-income",
+          isExpense && "text-destructive",
+          !isIncome &&
+            !isExpense &&
+            (n < 0 ? "text-destructive" : n > 0 ? "text-income" : "text-muted-foreground")
+        )}
+      >
+        {formatSignedInrDisplay(tx.signedAmount)}
+      </span>
+    )
+
+  const rowContent = (
     <div className="flex items-start justify-between gap-3 px-4 py-3.5">
       <div className="min-w-0 flex-1 space-y-0.5">
         {lines.map((row, index) => (
           <LabeledDetailLine key={`${row.label}-${index}`} label={row.label} value={row.value} />
         ))}
       </div>
-      <div className={cn(ACTION_GROUP_ROW_TX, "shrink-0")}>
-        {showDelete ? <TransactionEntryDeleteButton onClick={() => onDelete?.(tx)} /> : null}
-        {amountStyle === "udhar-ledger" ? (
-          <p
-            className={cn(
-              "text-right text-base font-bold tabular-nums tracking-tight",
-              absAmt === 0 ? "text-muted-foreground" : udharEffectTextClassName(udharEffect!)
-            )}
-          >
-            {formatCurrency(absAmt)}
-          </p>
-        ) : (
-          <span
-            className={cn(
-              "text-right text-base font-bold tabular-nums tracking-tight",
-              isIncome && "text-income",
-              isExpense && "text-destructive",
-              !isIncome &&
-                !isExpense &&
-                (n < 0 ? "text-destructive" : n > 0 ? "text-income" : "text-muted-foreground")
-            )}
-          >
-            {formatSignedInrDisplay(tx.signedAmount)}
-          </span>
-        )}
-      </div>
+      <div className={cn(ACTION_GROUP_ROW_TX, "shrink-0")}>{amountBlock}</div>
     </div>
   )
+
+  const deleteControl = showDelete ? (
+    <div className="flex shrink-0 items-start px-3 pb-3.5 pt-1">
+      <TransactionEntryDeleteButton onClick={() => onDelete?.(tx)} />
+    </div>
+  ) : null
 
   function handleClick() {
     if (action.type === "navigate") {
@@ -111,7 +117,25 @@ export const TransactionListRow = memo(function TransactionListRow({
   }
 
   if (!isNavigable) {
-    return <div className={cn(cardShellClass, className)}>{rowBody}</div>
+    return (
+      <div className={cn(cardShellClass, className)}>
+        <div className="flex items-start justify-between gap-3 px-4 py-3.5">
+          <div className="min-w-0 flex-1 space-y-0.5">
+            {lines.map((row, index) => (
+              <LabeledDetailLine
+                key={`${row.label}-${index}`}
+                label={row.label}
+                value={row.value}
+              />
+            ))}
+          </div>
+          <div className={cn(ACTION_GROUP_ROW_TX, "shrink-0")}>
+            {showDelete ? <TransactionEntryDeleteButton onClick={() => onDelete?.(tx)} /> : null}
+            {amountBlock}
+          </div>
+        </div>
+      </div>
+    )
   }
 
   const primaryLine = lines[0]?.value ?? "Transaction"
@@ -121,25 +145,31 @@ export const TransactionListRow = memo(function TransactionListRow({
       : `${primaryLine}, linked entity unavailable`
 
   return (
-    <button
-      type="button"
+    <div
       className={cn(
         cardShellClass,
-        "w-full text-left transition-colors hover:bg-muted/30 active:bg-muted/50",
-        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
+        "flex w-full items-stretch transition-colors hover:bg-muted/30",
         className
       )}
-      onClick={handleClick}
-      aria-label={ariaLabel}
     >
-      <div className="flex items-start gap-1">
-        <div className="min-w-0 flex-1">{rowBody}</div>
+      <button
+        type="button"
+        className={cn(
+          "flex min-w-0 flex-1 items-start gap-1 text-left",
+          "active:bg-muted/50",
+          "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+        )}
+        onClick={handleClick}
+        aria-label={ariaLabel}
+      >
+        <div className="min-w-0 flex-1">{rowContent}</div>
         <ChevronRight
           className="mr-3 mt-4 size-4 shrink-0 text-muted-foreground"
           strokeWidth={2}
           aria-hidden
         />
-      </div>
-    </button>
+      </button>
+      {deleteControl}
+    </div>
   )
 })

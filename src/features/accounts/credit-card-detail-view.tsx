@@ -25,10 +25,13 @@ import {
   billGenerationDayNumber,
   creditCardLimitInr,
   creditCardOutstandingInr,
+  creditCardRateFieldsForApi,
   dayOfMonthOrdinal,
   interestRatePercentFromAccount,
   mapAccountToCreditCardView,
   maskedCardNumberDisplay,
+  minDueFloorInrFromAccount,
+  minDuePercentFromAccount,
   paymentDueDayNumber,
 } from "@/lib/api/credit-card-map"
 import { getAccountDeleteWarning } from "@/lib/accounts/account-delete"
@@ -265,6 +268,12 @@ export function CreditCardDetailView({
     if (bg != null) rec.billGenerationDay = String(bg)
     const pd = paymentDueDayNumber(account)
     if (pd != null) rec.paymentDueDay = String(pd)
+    const rate = interestRatePercentFromAccount(account)
+    if (rate != null) rec.cardInterestRate = String(rate)
+    const minPct = minDuePercentFromAccount(account)
+    if (minPct != null) rec.minDuePercent = String(minPct)
+    const minFloor = minDueFloorInrFromAccount(account)
+    if (minFloor != null) rec.minDueFloor = String(Math.round(minFloor))
     setDraft(d)
     setIsEditing(true)
   }, [account])
@@ -316,6 +325,12 @@ export function CreditCardDetailView({
 
     const isActive = typeof rec.isActive === "boolean" ? rec.isActive : true
 
+    const rateFields = creditCardRateFieldsForApi(
+      rec.cardInterestRate,
+      rec.minDuePercent,
+      rec.minDueFloor
+    )
+
     const payload: Record<string, unknown> = {
       name,
       bankName,
@@ -325,6 +340,7 @@ export function CreditCardDetailView({
       billGenerationDay: String(billDay),
       paymentDueDay: String(payDay),
       isActive,
+      ...rateFields,
     }
 
     const next = {
@@ -337,6 +353,7 @@ export function CreditCardDetailView({
       billGenerationDay: String(billDay),
       paymentDueDay: String(payDay),
       isActive,
+      ...rateFields,
     } as Account
 
     try {
@@ -738,6 +755,47 @@ export function CreditCardDetailView({
                     </div>
                     <AppFieldError message={editFieldErrors.paymentDueDay} />
                   </div>
+                </div>
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  <div>
+                    <Label className={labelSm}>Interest Rate (%)</Label>
+                    <Input
+                      inputMode="decimal"
+                      placeholder="3.5"
+                      value={String(asRec(draft).cardInterestRate ?? "")}
+                      onChange={(e) =>
+                        patchDraft({ cardInterestRate: e.target.value.replace(/[^\d.]/g, "") })
+                      }
+                      className={cn(fieldIn, "h-10 text-left tabular-nums")}
+                    />
+                  </div>
+                  <div>
+                    <Label className={labelSm}>Min Due (%)</Label>
+                    <Input
+                      inputMode="decimal"
+                      placeholder="5"
+                      value={String(asRec(draft).minDuePercent ?? "")}
+                      onChange={(e) =>
+                        patchDraft({ minDuePercent: e.target.value.replace(/[^\d.]/g, "") })
+                      }
+                      className={cn(fieldIn, "h-10 text-left tabular-nums")}
+                    />
+                  </div>
+                </div>
+                <div>
+                  <Label className={labelSm}>Minimum Due Floor (₹)</Label>
+                  <Input
+                    inputMode="numeric"
+                    placeholder="3000"
+                    value={String(asRec(draft).minDueFloor ?? "").replace(/\D/g, "")}
+                    onChange={(e) =>
+                      patchDraft({ minDueFloor: e.target.value.replace(/[^\d]/g, "") })
+                    }
+                    className={cn(fieldIn, "h-10 text-left tabular-nums")}
+                  />
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    Minimum fixed rupee amount payable as card minimum due.
+                  </p>
                 </div>
               </div>
               <div className="mt-4 flex flex-wrap items-center justify-center gap-2">

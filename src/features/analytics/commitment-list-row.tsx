@@ -1,6 +1,7 @@
 import { ChevronRight } from "lucide-react"
 import { useNavigate } from "react-router-dom"
 import { toast } from "sonner"
+import { TransactionEntryDeleteButton } from "@/features/entries/transaction-entry-delete-button"
 import type { Commitment } from "@/lib/api/commitment-schemas"
 import {
   commitmentEntityLinkLabel,
@@ -13,9 +14,16 @@ import { cn } from "@/lib/utils"
 type CommitmentListRowProps = {
   commitment: Commitment
   catalog?: EntityCatalog
+  onDelete?: (commitment: Commitment) => void
+  deleteDisabled?: boolean
 }
 
-export function CommitmentListRow({ commitment, catalog }: CommitmentListRowProps) {
+export function CommitmentListRow({
+  commitment,
+  catalog,
+  onDelete,
+  deleteDisabled,
+}: CommitmentListRowProps) {
   const navigate = useNavigate()
   const action = resolveCommitmentRowAction(commitment, catalog)
   const linkLabel = catalog ? commitmentEntityLinkLabel(commitment, catalog) : null
@@ -50,8 +58,14 @@ export function CommitmentListRow({ commitment, catalog }: CommitmentListRowProp
 
   if (action.type === "none") {
     return (
-      <div className="flex flex-col gap-1 border-b border-border/40 py-3 last:border-0">
-        {inner}
+      <div className="flex items-start gap-2 border-b border-border/40 py-3 last:border-0">
+        <div className="min-w-0 flex-1 flex flex-col gap-1">{inner}</div>
+        {onDelete ? (
+          <TransactionEntryDeleteButton
+            onClick={() => onDelete(commitment)}
+            disabled={deleteDisabled}
+          />
+        ) : null}
       </div>
     )
   }
@@ -72,22 +86,30 @@ export function CommitmentListRow({ commitment, catalog }: CommitmentListRowProp
       : `${commitment.title}, linked entity unavailable`
 
   return (
-    <button
-      type="button"
-      className={cn(
-        "flex w-full gap-2 border-b border-border/40 py-3 text-left last:border-0",
-        "transition-colors hover:bg-muted/40 active:bg-muted/60",
-        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-      )}
-      onClick={handleClick}
-      aria-label={ariaLabel}
-    >
-      <div className="min-w-0 flex-1 flex flex-col gap-1">{inner}</div>
-      <ChevronRight
-        className="mt-0.5 size-4 shrink-0 text-muted-foreground"
-        strokeWidth={2}
-        aria-hidden
-      />
-    </button>
+    <div className="flex items-start gap-2 border-b border-border/40 py-3 last:border-0">
+      <button
+        type="button"
+        className={cn(
+          "flex min-w-0 flex-1 gap-2 text-left",
+          "transition-colors hover:bg-muted/40 active:bg-muted/60",
+          "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+        )}
+        onClick={handleClick}
+        aria-label={ariaLabel}
+      >
+        <div className="min-w-0 flex-1 flex flex-col gap-1">{inner}</div>
+        <ChevronRight
+          className="mt-0.5 size-4 shrink-0 text-muted-foreground"
+          strokeWidth={2}
+          aria-hidden
+        />
+      </button>
+      {onDelete ? (
+        <TransactionEntryDeleteButton
+          onClick={() => onDelete(commitment)}
+          disabled={deleteDisabled}
+        />
+      ) : null}
+    </div>
   )
 }

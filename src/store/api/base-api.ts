@@ -72,6 +72,7 @@ import {
 } from "@/lib/api/dashboard-home-schemas"
 import {
   filterCommitmentsAfterAccountDelete,
+  filterCommitmentsAfterDelete,
   filterCommitmentsAfterPersonDelete,
   parseCreateCommitmentSuccess,
   parseGetCommitmentsSuccess,
@@ -506,13 +507,28 @@ export const baseApi = createApi({
             },
           }
         }
-        const postBody = buildCreateAccountPostBody(body)
+        let postBody: Record<string, unknown>
+        try {
+          postBody = buildCreateAccountPostBody(body)
+        } catch (buildErr) {
+          const message =
+            buildErr instanceof Error ? buildErr.message : "Invalid account request payload"
+          return { error: { status: 422, data: message } }
+        }
+
+        if (import.meta.env.DEV) {
+          console.info("[POST /accounts] payload:", JSON.stringify(postBody, null, 2))
+        }
+
         const res = await baseQuery({
           url: ACCOUNT_PATHS.create,
           method: "POST",
           body: postBody,
         })
         if (res.error) {
+          if (import.meta.env.DEV) {
+            console.error("[POST /accounts] error response:", res.error)
+          }
           return { error: normalizeFetchError(res.error) }
         }
         const failMsg = parseApiFailureMessage(res.data)
@@ -1195,6 +1211,55 @@ export const baseApi = createApi({
       },
     }),
 
+    deleteCommitment: build.mutation<{ message?: string }, string>({
+      async queryFn(commitmentId, _api, _extraOptions, baseQuery) {
+        const id = commitmentId.trim()
+        if (!id) {
+          return { error: { status: 422, data: "Commitment id is required" } }
+        }
+        const res = await baseQuery({
+          url: `${COMMITMENT_PATHS.root}/${encodeURIComponent(id)}`,
+          method: "DELETE",
+        })
+        if (res.error) {
+          return { error: normalizeFetchError(res.error) }
+        }
+        if (res.data === undefined || res.data === null || res.data === "") {
+          return { data: { message: "Deleted" } }
+        }
+        const failMsg = parseApiFailureMessage(res.data)
+        if (failMsg) {
+          return { error: { status: 400, data: failMsg } }
+        }
+        const parsed = parseDeleteAccountApiSuccess(res.data)
+        if (!parsed.ok) {
+          return { error: { status: 400, data: parsed.error } }
+        }
+        return { data: { message: parsed.message } }
+      },
+      invalidatesTags: [
+        { type: "Commitment", id: "LIST" },
+        "Dashboard",
+        { type: "Dashboard", id: "HOME" },
+        "DashboardAnalytics",
+        { type: "DashboardAnalytics", id: "LIST" },
+      ],
+      async onQueryStarted(commitmentId, { dispatch, queryFulfilled }) {
+        const id = commitmentId.trim()
+        const patch = dispatch(
+          baseApi.util.updateQueryData("getCommitments", {}, (draft) =>
+            filterCommitmentsAfterDelete(draft, id)
+          )
+        )
+        try {
+          await queryFulfilled
+          refetchCommitmentsList(dispatch)
+        } catch {
+          patch.undo()
+        }
+      },
+    }),
+
     /** Deletes any transaction by id; invalidates accounts + recent tx so balances and lists stay consistent. */
     deleteTransaction: build.mutation<{ message?: string }, string>({
       async queryFn(transactionId, _api, _extraOptions, baseQuery) {
@@ -1381,6 +1446,7 @@ export const {
   useGetDashboardAnalyticsQuery,
   useGetCommitmentsQuery,
   useCreateCommitmentMutation,
+  useDeleteCommitmentMutation,
   useGetMeQuery,
   useUpdateMeMutation,
   useDeleteMeMutation,

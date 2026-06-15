@@ -237,6 +237,10 @@ export type CreateAccountRequest = {
   creditLimitInr?: number
   billGenerationDay?: number
   paymentDueDay?: number
+  /** Credit card APR / monthly rate (sent as `cardInterestRate`). */
+  cardInterestRate?: number
+  minDuePercent?: number
+  minDueFloor?: number
   /** `kind === "loan"` — API slug, e.g. `personal`, `home` */
   loanType?: string
   /** `kind === "loan"` — required by API (same as bank/lender in UI) */
@@ -311,39 +315,93 @@ export function formatOpeningBalanceForApi(balanceInr: number): string {
   return rounded.toFixed(2)
 }
 
+/** Parse optional decimal form input; empty → `undefined` (omit from API payload). */
+export function parseOptionalFormDecimal(value: string | undefined): number | undefined {
+  const s = (value ?? "").trim().replace(/[^\d.]/g, "")
+  if (!s) return undefined
+  const n = parseFloat(s)
+  return Number.isFinite(n) ? n : undefined
+}
+
+/** Parse optional integer form input; empty → `undefined` (omit from API payload). */
+export function parseOptionalFormInt(value: string | undefined): number | undefined {
+  const digits = (value ?? "").replace(/\D/g, "")
+  if (!digits) return undefined
+  const n = Number(digits)
+  return Number.isFinite(n) ? n : undefined
+}
+
+function appendCreditCardOptionalRateFields(
+  postBody: Record<string, unknown>,
+  body: Pick<CreateAccountRequest, "cardInterestRate" | "minDuePercent" | "minDueFloor">
+): void {
+  if (body.cardInterestRate !== undefined && Number.isFinite(body.cardInterestRate)) {
+    postBody.cardInterestRate = String(body.cardInterestRate)
+  }
+  if (body.minDuePercent !== undefined && Number.isFinite(body.minDuePercent)) {
+    postBody.minDuePercent = String(body.minDuePercent)
+  }
+  if (body.minDueFloor !== undefined && Number.isFinite(body.minDueFloor)) {
+    postBody.minDueFloor = formatOpeningBalanceForApi(body.minDueFloor)
+  }
+}
+
+/**
+ * POST /api/v1/accounts — credit card body (matches PUT /accounts wire format).
+ */
+export function buildCreateCreditCardPostBody(body: CreateAccountRequest): Record<string, unknown> {
+  const network = body.cardNetwork?.trim().toLowerCase()
+  const last4 = body.last4Digits?.replace(/\D/g, "")
+  const limit = Number.isFinite(body.creditLimitInr) ? Math.max(0, body.creditLimitInr ?? 0) : 0
+  const billDay = Number.isFinite(body.billGenerationDay)
+    ? Math.trunc(body.billGenerationDay ?? 0)
+    : 0
+  const dueDay = Number.isFinite(body.paymentDueDay) ? Math.trunc(body.paymentDueDay ?? 0) : 0
+  const outstanding = Number.isFinite(body.balanceInr) ? Math.max(0, body.balanceInr) : 0
+
+  if (!body.name.trim()) throw new Error("name is required for credit cards")
+  if (!body.bankName.trim()) throw new Error("bankName is required for credit cards")
+  if (!network) throw new Error("cardNetwork is required for credit cards")
+  if (!last4 || last4.length !== 4) throw new Error("last4Digits must be exactly 4 digits")
+  if (!Number.isFinite(limit) || limit <= 0) throw new Error("creditLimit must be a positive value")
+  if (billDay < 1 || billDay > 31) throw new Error("billGenerationDay must be between 1 and 31")
+  if (dueDay < 1 || dueDay > 31) throw new Error("paymentDueDay must be between 1 and 31")
+  if (outstanding > limit) {
+    throw new Error("Current outstanding cannot exceed credit limit")
+  }
+
+  const postBody: Record<string, unknown> = {
+    kind: "credit_card",
+    name: body.name.trim(),
+    bankName: body.bankName.trim(),
+    cardNetwork: network,
+    last4Digits: last4,
+    openingBalance: formatOpeningBalanceForApi(outstanding),
+    isActive: body.isActive,
+    creditLimit: formatOpeningBalanceForApi(limit),
+    billGenerationDay: String(billDay),
+    paymentDueDay: String(dueDay),
+  }
+
+  appendCreditCardOptionalRateFields(postBody, body)
+
+  return postBody
+}
+
 /**
  * JSON body for POST /api/v1/accounts — keys must match backend exactly.
  */
 export function buildCreateAccountPostBody(body: CreateAccountRequest): Record<string, unknown> {
+  if (body.kind === "credit_card") {
+    return buildCreateCreditCardPostBody(body)
+  }
+
   const base: Record<string, unknown> = {
     name: body.name.trim(),
     kind: body.kind,
     openingBalance: formatOpeningBalanceForApi(body.balanceInr),
     bankName: body.bankName.trim(),
     isActive: body.isActive,
-  }
-
-  if (body.kind === "credit_card") {
-    const network = body.cardNetwork?.trim().toLowerCase()
-    const last4 = body.last4Digits?.replace(/\D/g, "")
-    const limit = Number.isFinite(body.creditLimitInr) ? Math.max(0, body.creditLimitInr ?? 0) : 0
-    const billDay = Number.isFinite(body.billGenerationDay)
-      ? Math.trunc(body.billGenerationDay ?? 0)
-      : 0
-    const dueDay = Number.isFinite(body.paymentDueDay) ? Math.trunc(body.paymentDueDay ?? 0) : 0
-
-    if (!network) throw new Error("cardNetwork is required for credit cards")
-    if (!last4 || last4.length !== 4) throw new Error("last4Digits must be exactly 4 digits")
-    if (!Number.isFinite(limit) || limit <= 0)
-      throw new Error("creditLimit must be a positive value")
-    if (billDay < 1 || billDay > 31) throw new Error("billGenerationDay must be between 1 and 31")
-    if (dueDay < 1 || dueDay > 31) throw new Error("paymentDueDay must be between 1 and 31")
-
-    base.cardNetwork = network
-    base.last4Digits = last4
-    base.creditLimit = formatOpeningBalanceForApi(limit)
-    base.billGenerationDay = String(billDay)
-    base.paymentDueDay = String(dueDay)
   }
 
   if (body.kind === "loan") {

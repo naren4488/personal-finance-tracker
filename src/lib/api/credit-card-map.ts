@@ -1,5 +1,5 @@
 import type { Account } from "@/lib/api/account-schemas"
-import { accountBalanceInrFromApi } from "@/lib/api/account-schemas"
+import { accountBalanceInrFromApi, formatOpeningBalanceForApi } from "@/lib/api/account-schemas"
 import { formatDate } from "@/lib/format"
 import { parseInrFromUnknown } from "@/lib/money/parse-inr"
 
@@ -188,7 +188,14 @@ export function maskedCardNumberDisplay(last4Digits: string | undefined): string
 
 export function interestRatePercentFromAccount(a: Account): number | null {
   const r = asRec(a)
-  const keys = ["interestRate", "apr", "interestRatePercent", "rate"] as const
+  const keys = [
+    "cardInterestRate",
+    "card_interest_rate",
+    "interestRate",
+    "apr",
+    "interestRatePercent",
+    "rate",
+  ] as const
   for (const k of keys) {
     const v = r[k]
     if (v === undefined || v === null) continue
@@ -196,6 +203,68 @@ export function interestRatePercentFromAccount(a: Account): number | null {
     if (Number.isFinite(n) && n >= 0) return n
   }
   return null
+}
+
+export function minDuePercentFromAccount(a: Account): number | null {
+  const r = asRec(a)
+  const keys = [
+    "minDuePercent",
+    "min_due_percent",
+    "minimumDuePercent",
+    "minimumDuePercentage",
+    "minDuePct",
+  ] as const
+  for (const k of keys) {
+    const v = r[k]
+    if (v === undefined || v === null) continue
+    const n = typeof v === "number" ? v : parseFloat(String(v).replace(/%/g, "").trim())
+    if (Number.isFinite(n) && n >= 0) return n
+  }
+  return null
+}
+
+export function minDueFloorInrFromAccount(a: Account): number | null {
+  const r = asRec(a)
+  const keys = ["minDueFloor", "min_due_floor", "minimumDueFloor"] as const
+  for (const k of keys) {
+    const v = r[k]
+    if (v === undefined || v === null) continue
+    const n = parseInrFromUnknown(v)
+    if (Number.isFinite(n) && n >= 0) return n
+  }
+  return null
+}
+
+export function creditCardRateFieldsForApi(
+  cardInterestRate: unknown,
+  minDuePercent: unknown,
+  minDueFloor: unknown
+): Record<string, string> {
+  const out: Record<string, string> = {}
+
+  const rateRaw = String(cardInterestRate ?? "")
+    .trim()
+    .replace(/[^\d.]/g, "")
+  if (rateRaw) {
+    const rate = parseFloat(rateRaw)
+    if (Number.isFinite(rate)) out.cardInterestRate = String(rate)
+  }
+
+  const pctRaw = String(minDuePercent ?? "")
+    .trim()
+    .replace(/[^\d.]/g, "")
+  if (pctRaw) {
+    const pct = parseFloat(pctRaw)
+    if (Number.isFinite(pct)) out.minDuePercent = String(pct)
+  }
+
+  const floorDigits = String(minDueFloor ?? "").replace(/\D/g, "")
+  if (floorDigits) {
+    const floor = Number(floorDigits)
+    if (Number.isFinite(floor)) out.minDueFloor = formatOpeningBalanceForApi(floor)
+  }
+
+  return out
 }
 
 export function accountStatusLabel(a: Account): string | null {

@@ -12,8 +12,9 @@ export const creditCardCreateFormSchema = z.object({
   outstanding: z.string(),
   billDay: z.string(),
   dueDay: z.string(),
-  interestRate: z.string(),
+  cardInterestRate: z.string(),
   minDuePercent: z.string(),
+  minDueFloor: z.string(),
 })
 
 export type CreditCardCreateFormValues = z.infer<typeof creditCardCreateFormSchema>
@@ -27,6 +28,7 @@ export const creditCardCreateDefaultValues: CreditCardCreateFormValues = {
   outstanding: "",
   billDay: "1",
   dueDay: "5",
-  interestRate: "3.5",
+  cardInterestRate: "3.5",
   minDuePercent: "5",
+  minDueFloor: "",
 }

@@ -15,13 +15,18 @@ import {
 } from "@/components/ui/form"
 import { Input } from "@/components/ui/input"
 import { BILLING_DAY_OPTIONS } from "@/lib/billing-day-options"
-import { type CreateAccountRequest } from "@/lib/api/account-schemas"
+import {
+  type CreateAccountRequest,
+  parseOptionalFormDecimal,
+  parseOptionalFormInt,
+} from "@/lib/api/account-schemas"
+import { getErrorMessage } from "@/lib/api/errors"
 import {
   creditCardCreateDefaultValues,
   creditCardCreateFormSchema,
   type CreditCardCreateFormValues,
 } from "@/lib/forms/credit-card-create-schema"
-import { handleFormApiError } from "@/lib/forms/form-api-errors"
+import { handleAuthApiErrorIfNeeded } from "@/lib/auth/handle-auth-api-error"
 import {
   APP_FORM_FIELD_CLASS,
   APP_FORM_HEADER_CLASS,
@@ -83,23 +88,77 @@ function AddCreditCardSheetMounted({ open, onOpenChange }: MountedProps) {
     onOpenChange(false)
   }, [onOpenChange])
 
+  const showSubmitError = useCallback(
+    (message: string) => {
+      const msg = message.trim() || "Unable to create credit card."
+      form.setError("root", { type: "server", message: msg })
+      toast.error(msg)
+    },
+    [form]
+  )
+
   const onSubmit = form.handleSubmit(async (values) => {
+    form.clearErrors("root")
+
     const name = values.cardName.trim()
     const bank = values.bankName.trim()
+    const network = values.cardNetwork.trim().toLowerCase()
     const l4 = values.last4.replace(/\D/g, "")
     const limitDigits = values.creditLimit.replace(/\D/g, "")
+    const limit = Number(limitDigits)
+    const billDay = Number(values.billDay)
+    const dueDay = Number(values.dueDay)
+
+    if (!name) {
+      form.setError("cardName", { message: "Enter card name" })
+      return
+    }
+    if (!bank) {
+      form.setError("bankName", { message: "Enter bank name" })
+      return
+    }
+    if (!network) {
+      form.setError("cardNetwork", { message: "Select card network" })
+      return
+    }
+    if (l4.length !== 4) {
+      form.setError("last4", { message: "Enter last 4 digits" })
+      return
+    }
+    if (!Number.isFinite(limit) || limit <= 0) {
+      form.setError("creditLimit", { message: "Enter valid credit limit" })
+      return
+    }
+    if (!Number.isFinite(billDay) || billDay < 1 || billDay > 31) {
+      form.setError("billDay", { message: "Select bill generation day" })
+      return
+    }
+    if (!Number.isFinite(dueDay) || dueDay < 1 || dueDay > 31) {
+      form.setError("dueDay", { message: "Select payment due day" })
+      return
+    }
+
+    const outstanding = Number(values.outstanding.replace(/\D/g, "")) || 0
+
+    if (outstanding > limit) {
+      form.setError("outstanding", { message: "Outstanding cannot exceed credit limit" })
+      return
+    }
 
     const payload: CreateAccountRequest = {
       name,
       kind: "credit_card",
-      balanceInr: Number(values.outstanding.replace(/\D/g, "")) || 0,
+      balanceInr: outstanding,
       bankName: bank,
       isActive: true,
-      cardNetwork: values.cardNetwork,
+      cardNetwork: network,
       last4Digits: l4,
-      creditLimitInr: Number(limitDigits),
-      billGenerationDay: Number(values.billDay),
-      paymentDueDay: Number(values.dueDay),
+      creditLimitInr: limit,
+      billGenerationDay: billDay,
+      paymentDueDay: dueDay,
+      cardInterestRate: parseOptionalFormDecimal(values.cardInterestRate),
+      minDuePercent: parseOptionalFormDecimal(values.minDuePercent),
+      minDueFloor: parseOptionalFormInt(values.minDueFloor),
     }
 
     try {
@@ -108,7 +167,8 @@ function AddCreditCardSheetMounted({ open, onOpenChange }: MountedProps) {
       form.reset(creditCardCreateDefaultValues)
       dismiss()
     } catch (err) {
-      handleFormApiError(err, dispatch, { onDismiss: dismiss })
+      if (handleAuthApiErrorIfNeeded(err, dispatch, { onDismiss: dismiss })) return
+      showSubmitError(getErrorMessage(err))
     }
   })
 
@@ -143,6 +203,11 @@ function AddCreditCardSheetMounted({ open, onOpenChange }: MountedProps) {
     >
       <Form {...form}>
         <div className={cn(APP_FORM_STACK_CLASS, "min-w-0")} aria-live="polite">
+          {form.formState.errors.root?.message ? (
+            <p className="rounded-xl border border-destructive/30 bg-destructive/5 px-3 py-2 text-sm text-destructive">
+              {form.formState.errors.root.message}
+            </p>
+          ) : null}
           <FormField
             control={form.control}
             name="cardName"
@@ -351,7 +416,7 @@ function AddCreditCardSheetMounted({ open, onOpenChange }: MountedProps) {
           <div className={APP_FORM_TWO_COL_GRID_CLASS}>
             <FormField
               control={form.control}
-              name="interestRate"
+              name="cardInterestRate"
               render={({ field }) => (
                 <FormItem className="min-w-0">
                   <FormLabel className={APP_FORM_LABEL_CLASS}>Interest Rate (%)</FormLabel>
@@ -395,6 +460,32 @@ function AddCreditCardSheetMounted({ open, onOpenChange }: MountedProps) {
               )}
             />
           </div>
+
+          <FormField
+            control={form.control}
+            name="minDueFloor"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel className={APP_FORM_LABEL_CLASS}>Minimum Due Floor (₹)</FormLabel>
+                <FormControl>
+                  <Input
+                    inputMode="numeric"
+                    placeholder="3000"
+                    className={APP_FORM_FIELD_CLASS}
+                    name={field.name}
+                    onBlur={field.onBlur}
+                    ref={field.ref}
+                    value={field.value ?? ""}
+                    onChange={(e) => field.onChange(e.target.value.replace(/[^\d]/g, ""))}
+                  />
+                </FormControl>
+                <p className="text-xs text-muted-foreground">
+                  Minimum fixed rupee amount payable as card minimum due.
+                </p>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
         </div>
       </Form>
     </FormDialog>

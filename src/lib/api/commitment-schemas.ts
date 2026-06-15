@@ -103,6 +103,16 @@ export function filterCommitmentsAfterPersonDelete(
   return commitments.filter((c) => getCommitmentLinkedIds(c).personId !== id)
 }
 
+/** Drop a single commitment after DELETE /commitments/:id. */
+export function filterCommitmentsAfterDelete(
+  commitments: Commitment[],
+  commitmentId: string
+): Commitment[] {
+  const id = commitmentId.trim()
+  if (!id) return commitments
+  return commitments.filter((c) => String(c.id) !== id)
+}
+
 const commitmentCoreSchema = z
   .object({
     id: z.coerce.string(),
