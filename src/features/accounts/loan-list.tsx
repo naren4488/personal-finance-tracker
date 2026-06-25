@@ -3,7 +3,11 @@ import { CalendarDays, ChevronRight, Landmark } from "lucide-react"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Button } from "@/components/ui/button"
 import type { Account } from "@/lib/api/account-schemas"
-import { mapAccountToLoanView, type LoanViewModel } from "@/lib/api/loan-account-map"
+import {
+  loanPaidEmiListLabel,
+  mapAccountToLoanView,
+  type LoanViewModel,
+} from "@/lib/api/loan-account-map"
 import { formatCurrency } from "@/lib/format"
 import { cn } from "@/lib/utils"
 
@@ -104,11 +108,13 @@ function LoanTileEntries({
               </span>
             </p>
           ) : null}
-          {model.tenure > 0 ? (
+          {model.tenure > 0 || model.paid > 0 ? (
             <p className="text-muted-foreground">
-              Paid:{" "}
               <span className="font-semibold tabular-nums text-foreground">
-                {model.paid}/{model.tenure}
+                {loanPaidEmiListLabel(
+                  model.paid,
+                  model.tenure > 0 ? model.remainingTenure : undefined
+                )}
               </span>
             </p>
           ) : null}

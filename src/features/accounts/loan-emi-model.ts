@@ -11,6 +11,8 @@ export type LoanEmiFormModel = {
   dueCycle: DueCycle
   overrideEmi: boolean
   overrideEmiAmount: string
+  /** Repayment source account id (bank/cash/UPI/wallet). */
+  linkedRepaymentAccountId: string
   overdue: boolean
   overdueAmount: string
 }
@@ -58,6 +60,7 @@ export function createInitialLoanEmiModel(): LoanEmiFormModel {
     dueCycle: "fixed",
     overrideEmi: false,
     overrideEmiAmount: "",
+    linkedRepaymentAccountId: "",
     overdue: false,
     overdueAmount: "",
   }

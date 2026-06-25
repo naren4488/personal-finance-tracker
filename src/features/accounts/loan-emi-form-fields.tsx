@@ -4,6 +4,8 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
 import { calendarDayFromIsoDate, type LoanEmiFormModel } from "@/features/accounts/loan-emi-model"
+import type { Account } from "@/lib/api/account-schemas"
+import { accountSelectLabel } from "@/lib/api/account-schemas"
 import { formatCurrency } from "@/lib/format"
 import {
   computeReducingBalanceMonthlyEmi,
@@ -32,6 +34,8 @@ export function LoanEmiFormFields({
   value,
   onChange,
   showOverdue = false,
+  repaymentAccounts = [],
+  repaymentAccountsLoading = false,
 }: {
   value: LoanEmiFormModel
   onChange: (patch: Partial<LoanEmiFormModel>) => void
@@ -40,6 +44,9 @@ export function LoanEmiFormFields({
   showOverdue?: boolean
   /** @deprecated Kept for call-site compatibility; unused. */
   loanSheetDense?: boolean
+  /** Bank/cash/UPI/wallet accounts for `linkedRepaymentAccountId`. */
+  repaymentAccounts?: Account[]
+  repaymentAccountsLoading?: boolean
 }) {
   const overdueAmountId = useId()
 
@@ -277,6 +284,40 @@ export function LoanEmiFormFields({
             Rolling 30-Day Cycle
           </button>
         </div>
+      </section>
+
+      {/* Repayment source account */}
+      <section>
+        <Label htmlFor="emi-repayment-account" className={APP_FORM_LABEL_CLASS}>
+          Pay EMI from account
+        </Label>
+        <div className="relative">
+          <select
+            id="emi-repayment-account"
+            value={value.linkedRepaymentAccountId}
+            onChange={(e) => onChange({ linkedRepaymentAccountId: e.target.value })}
+            disabled={repaymentAccountsLoading}
+            className={cn(APP_FORM_SELECT_CLASS, "focus:border-primary")}
+          >
+            <option value="">
+              {repaymentAccountsLoading
+                ? "Loading accounts…"
+                : repaymentAccounts.length === 0
+                  ? "No accounts available"
+                  : "Select account (optional)"}
+            </option>
+            {repaymentAccounts.map((a) => (
+              <option key={String(a.id)} value={String(a.id)}>
+                {accountSelectLabel(a)}
+              </option>
+            ))}
+          </select>
+          <SelectChevron />
+        </div>
+        <p className="mt-1 text-[11px] leading-snug text-muted-foreground">
+          Saved as <span className="font-mono text-[10px]">linkedRepaymentAccountId</span> on the
+          loan. EMI is deducted automatically on each due date from this account.
+        </p>
       </section>
 
       {/* Override EMI Amount */}

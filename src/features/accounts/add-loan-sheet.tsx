@@ -1,4 +1,4 @@
-import { useCallback, useId, useState } from "react"
+import { useCallback, useId, useMemo, useState } from "react"
 import { useNavigate } from "react-router-dom"
 import { ChevronDown, X } from "lucide-react"
 import { toast } from "sonner"
@@ -6,7 +6,11 @@ import { FormDialog } from "@/components/form-dialog"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { loanTypeLabelToApiSlug, type CreateAccountRequest } from "@/lib/api/account-schemas"
+import {
+  filterRepaymentSourceAccounts,
+  loanTypeLabelToApiSlug,
+  type CreateAccountRequest,
+} from "@/lib/api/account-schemas"
 import { getErrorMessage } from "@/lib/api/errors"
 import { endUserSession } from "@/lib/auth/end-session"
 import { LoanEmiFormFields } from "@/features/accounts/loan-emi-form-fields"
@@ -25,8 +29,8 @@ import {
   APP_FORM_TITLE_CLASS,
 } from "@/lib/ui/app-form-styles"
 import { cn } from "@/lib/utils"
-import { useCreateAccountMutation } from "@/store/api/base-api"
-import { useAppDispatch } from "@/store/hooks"
+import { useCreateAccountMutation, useGetAccountsQuery } from "@/store/api/base-api"
+import { useAppDispatch, useAppSelector } from "@/store/hooks"
 
 const LOAN_TYPES = [
   "Personal Loan",
@@ -67,6 +71,11 @@ function AddLoanSheetMounted({ open, onOpenChange }: MountedProps) {
   const [loanName, setLoanName] = useState("")
   const [emi, setEmi] = useState<LoanEmiFormModel>(() => createInitialLoanEmiModel())
   const [createAccount, { isLoading: isSubmitting }] = useCreateAccountMutation()
+  const user = useAppSelector((s) => s.auth.user)
+  const { data: accountsRaw = [], isLoading: accountsLoading } = useGetAccountsQuery(undefined, {
+    skip: !user || !open,
+  })
+  const repaymentAccounts = useMemo(() => filterRepaymentSourceAccounts(accountsRaw), [accountsRaw])
 
   const dismiss = useCallback(() => {
     onOpenChange(false)
@@ -129,6 +138,8 @@ function AddLoanSheetMounted({ open, onOpenChange }: MountedProps) {
       }
     }
 
+    const linkedRepaymentId = emi.linkedRepaymentAccountId.trim()
+
     const principalDigits = Number(p)
     const balanceInr = principalDigits
 
@@ -149,6 +160,7 @@ function AddLoanSheetMounted({ open, onOpenChange }: MountedProps) {
       dueDateCycle: emi.dueCycle,
       overrideEmiAmountOn: emi.overrideEmi,
       ...(emi.overrideEmi ? { overrideEmiAmountInr: overrideEmiDigits } : {}),
+      ...(linkedRepaymentId ? { linkedRepaymentAccountId: linkedRepaymentId } : {}),
     }
 
     try {
@@ -233,7 +245,13 @@ function AddLoanSheetMounted({ open, onOpenChange }: MountedProps) {
           />
         </section>
 
-        <LoanEmiFormFields value={emi} onChange={patchEmi} showOverdue={false} />
+        <LoanEmiFormFields
+          value={emi}
+          onChange={patchEmi}
+          showOverdue={false}
+          repaymentAccounts={repaymentAccounts}
+          repaymentAccountsLoading={accountsLoading}
+        />
       </div>
     </FormDialog>
   )

@@ -143,6 +143,27 @@ export function filterNormalAccounts(accounts: Account[]): Account[] {
   })
 }
 
+/** Active accounts that can fund loan EMI (same set as manual loan payment “from” account). */
+export function filterRepaymentSourceAccounts(accounts: Account[]): Account[] {
+  return filterActiveAccounts(filterNormalAccounts(accounts))
+}
+
+/** `linkedRepaymentAccountId` from GET/POST account payload. */
+export function linkedRepaymentAccountIdFromAccount(account: Account): string | null {
+  const r = account as Record<string, unknown>
+  const raw = r.linkedRepaymentAccountId ?? r.linked_repayment_account_id
+  if (typeof raw !== "string") return null
+  const id = raw.trim()
+  return id.length > 0 ? id : null
+}
+
+export function repaymentAccountLabelForLoan(loan: Account, accounts: Account[]): string | null {
+  const id = linkedRepaymentAccountIdFromAccount(loan)
+  if (!id) return null
+  const match = accounts.find((a) => String(a.id) === id)
+  return match ? accountSelectLabel(match) : null
+}
+
 export type AccountEmiLoanPayload = {
   bankLender?: string
   loanAccountNo?: string
@@ -185,6 +206,8 @@ export type CreateAccountRequest = {
   overrideEmiAmountOn?: boolean
   /** Required when `overrideEmiAmountOn` is true — sent as `overrideEmiAmount` (MoneyValue). */
   overrideEmiAmountInr?: number
+  /** Bank/cash/UPI/wallet account debited for EMI (API UUID). */
+  linkedRepaymentAccountId?: string
 }
 
 /** Map UI loan type label to POST `loanType` slug. */
@@ -326,6 +349,11 @@ export function buildCreateAccountPostBody(body: CreateAccountRequest): Record<s
     /** Some APIs expect both `openingBalance` (set in base) and `balance` for loan accounts. */
     const loanOpening = formatOpeningBalanceForApi(body.balanceInr)
     base.balance = loanOpening
+
+    const repaymentId = body.linkedRepaymentAccountId?.trim()
+    if (repaymentId) {
+      base.linkedRepaymentAccountId = repaymentId
+    }
   }
 
   return base

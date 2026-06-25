@@ -8,7 +8,11 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Skeleton } from "@/components/ui/skeleton"
 import type { Account } from "@/lib/api/account-schemas"
-import { accountSelectLabel, filterActiveAccounts } from "@/lib/api/account-schemas"
+import {
+  accountSelectLabel,
+  filterActiveAccounts,
+  linkedRepaymentAccountIdFromAccount,
+} from "@/lib/api/account-schemas"
 import { getErrorMessage } from "@/lib/api/errors"
 import type { CreateTransactionPayload } from "@/lib/api/schemas"
 import { endUserSession } from "@/lib/auth/end-session"
@@ -101,12 +105,20 @@ export type RecordLoanPaymentSheetProps = {
   mode: LoanPaymentMode
 }
 
-export function RecordLoanPaymentSheet({
+export function RecordLoanPaymentSheet(props: RecordLoanPaymentSheetProps) {
+  const { open, account, mode } = props
+  if (!open || !account) return null
+  return (
+    <RecordLoanPaymentSheetMounted key={`${account.id}:${mode}`} {...props} account={account} />
+  )
+}
+
+function RecordLoanPaymentSheetMounted({
   open,
   onOpenChange,
   account,
   mode,
-}: RecordLoanPaymentSheetProps) {
+}: RecordLoanPaymentSheetProps & { account: Account }) {
   const navigate = useNavigate()
   const dispatch = useAppDispatch()
   const user = useAppSelector((s) => s.auth.user)
@@ -125,11 +137,23 @@ export function RecordLoanPaymentSheet({
     return filterActiveAccounts(accountsRaw).filter((a) => !isLoanAccount(a))
   }, [accountsRaw])
 
+  const linkedFromAccountId = useMemo(() => {
+    if (!account) return ""
+    const linked = linkedRepaymentAccountIdFromAccount(account)
+    if (!linked) return ""
+    return payingAccounts.some((a) => String(a.id) === linked) ? linked : ""
+  }, [account, payingAccounts])
+
   const [addTransaction, { isLoading: isSubmitting }] = useAddTransactionMutation()
 
   const [amount, setAmount] = useState(() => defaultAmountForMode(mode, account))
   const [paymentType, setPaymentType] = useState<string>("regular_emi")
-  const [fromAccountId, setFromAccountId] = useState("")
+  const [pickerFromAccountId, setPickerFromAccountId] = useState("")
+  const [fromAccountTouched, setFromAccountTouched] = useState(false)
+
+  const fromAccountId = fromAccountTouched
+    ? pickerFromAccountId
+    : pickerFromAccountId || linkedFromAccountId
   const [date, setDate] = useState(todayIsoDate)
   const [note, setNote] = useState("")
   const [tags, setTags] = useState<string[]>([])
@@ -237,8 +261,6 @@ export function RecordLoanPaymentSheet({
       toast.error(msg)
     }
   }
-
-  if (!open || !account) return null
 
   const emi = resolveLoanEmiAmount(account)
   const rate = interestRatePercentFromAccount(account)
@@ -404,7 +426,10 @@ export function RecordLoanPaymentSheet({
             <div className="relative">
               <select
                 value={fromAccountId}
-                onChange={(e) => setFromAccountId(e.target.value)}
+                onChange={(e) => {
+                  setFromAccountTouched(true)
+                  setPickerFromAccountId(e.target.value)
+                }}
                 className={cn(
                   APP_FORM_SELECT_CLASS,
                   "pr-8",

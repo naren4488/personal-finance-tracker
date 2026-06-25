@@ -16,7 +16,14 @@ import { ConfirmDeleteDialog } from "@/components/confirm-delete-dialog"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { normalizeLoanDueDateCycleForApi, type Account } from "@/lib/api/account-schemas"
+import {
+  accountSelectLabel,
+  filterRepaymentSourceAccounts,
+  linkedRepaymentAccountIdFromAccount,
+  normalizeLoanDueDateCycleForApi,
+  repaymentAccountLabelForLoan,
+  type Account,
+} from "@/lib/api/account-schemas"
 import { dayOfMonthOrdinal, interestRatePercentFromAccount } from "@/lib/api/credit-card-map"
 import {
   loanAccountDisplayTail,
@@ -24,7 +31,6 @@ import {
   loanOutstandingInr,
   loanPrincipalInr,
   loanRepaymentProgressPercent,
-  loanTotalPaidInr,
   mapAccountToLoanView,
   resolveLoanEmiAmount,
 } from "@/lib/api/loan-account-map"
@@ -102,6 +108,7 @@ export function LoanDetailView({
   const [isEditing, setIsEditing] = useState(false)
   const [draft, setDraft] = useState<Account | null>(null)
   const { data: allAccounts = [] } = useGetAccountsQuery(undefined, { skip: !account })
+  const repaymentAccounts = useMemo(() => filterRepaymentSourceAccounts(allAccounts), [allAccounts])
   const {
     data: ledgerTransactions = [],
     isFetching: txsFetching,
@@ -244,6 +251,11 @@ export function LoanDetailView({
       payload.overrideEmiAmount = rec.emiAmount
     }
 
+    const linkedRepayment = linkedRepaymentAccountIdFromAccount(draft)
+    if (linkedRepayment) {
+      payload.linkedRepaymentAccountId = linkedRepayment
+    }
+
     try {
       console.log("[loan] saving to backend", {
         method: "PUT",
@@ -321,14 +333,20 @@ export function LoanDetailView({
   const model = mapAccountToLoanView(working)
   const principal = loanPrincipalInr(working)
   const outstanding = loanOutstandingInr(working)
-  const emi = resolveLoanEmiAmount(working)
-  const totalPaid = loanTotalPaidInr(working)
+  const emi = model.emiAmount
+  const totalPaid = model.totalPaidInr
   const progressPct = loanRepaymentProgressPercent(working)
   const rate = interestRatePercentFromAccount(working)
   const headerSub = loanHeaderSubtitle(working)
   const acctTail = loanAccountDisplayTail(working)
   const lenderLine =
     [model.lenderName, acctTail].filter(Boolean).join(acctTail ? " · " : "") || null
+  const repaymentAccountLabel = repaymentAccountLabelForLoan(working, allAccounts)
+  const emiHistoryMismatch =
+    !isEditing &&
+    model.paid > 0 &&
+    loanLedgerForUi.length > 0 &&
+    loanLedgerForUi.length !== model.paid
 
   const showUpcomingBanner = Boolean(model.emiDueDateLabel || emi != null)
 
@@ -397,6 +415,11 @@ export function LoanDetailView({
               </h1>
               {headerSub ? (
                 <p className="mt-1 text-sm font-medium text-muted-foreground">{headerSub}</p>
+              ) : null}
+              {model.emiProgressLabel ? (
+                <p className="mt-1 text-sm font-semibold tabular-nums text-foreground">
+                  {model.emiProgressLabel}
+                </p>
               ) : null}
             </div>
             <div className="flex shrink-0 flex-col items-end gap-2 sm:flex-row sm:items-start">
@@ -541,6 +564,36 @@ export function LoanDetailView({
                     placeholder="Account number"
                   />
                 </div>
+                <div>
+                  <Label htmlFor="loan-edit-repayment-account" className={labelSm}>
+                    Pay EMI from account
+                  </Label>
+                  <div className="relative mt-1">
+                    <select
+                      id="loan-edit-repayment-account"
+                      value={linkedRepaymentAccountIdFromAccount(draft) ?? ""}
+                      onChange={(e) =>
+                        patchDraft({ linkedRepaymentAccountId: e.target.value || undefined })
+                      }
+                      className={cn(
+                        fieldIn,
+                        "h-10 w-full appearance-none bg-background pl-2 pr-9 text-left text-sm font-semibold"
+                      )}
+                    >
+                      <option value="">None</option>
+                      {repaymentAccounts.map((a) => (
+                        <option key={String(a.id)} value={String(a.id)}>
+                          {accountSelectLabel(a)}
+                        </option>
+                      ))}
+                    </select>
+                    <ChevronDown
+                      className="pointer-events-none absolute right-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground"
+                      strokeWidth={2}
+                      aria-hidden
+                    />
+                  </div>
+                </div>
               </div>
               <div className="mt-4 flex gap-2">
                 <Button
@@ -589,6 +642,14 @@ export function LoanDetailView({
             </div>
           ) : null}
 
+          {repaymentAccountLabel ? (
+            <p className="mt-3 text-sm text-muted-foreground">
+              <span className="font-medium text-foreground">EMI paid from:</span>{" "}
+              {repaymentAccountLabel}
+              <span className="text-muted-foreground"> — deducted automatically on due date</span>
+            </p>
+          ) : null}
+
           {lenderLine ? (
             <div className="mt-4 flex items-center gap-2 text-sm font-medium text-foreground">
               <Building2
@@ -600,10 +661,23 @@ export function LoanDetailView({
             </div>
           ) : null}
 
-          {progressPct != null ? (
+          {model.tenure > 0 ? (
+            <p className="mt-2 text-xs text-muted-foreground tabular-nums">
+              {model.remainingTenure} EMI{model.remainingTenure === 1 ? "" : "s"} remaining
+            </p>
+          ) : null}
+
+          {model.tenure > 0 && progressPct != null ? (
             <div className="mt-4">
               <div className="mb-2 flex items-baseline justify-between gap-2 text-sm">
-                <span className="font-medium text-muted-foreground">Progress</span>
+                <span className="font-medium text-muted-foreground">
+                  Repayment progress
+                  {model.emiProgressLabel ? (
+                    <span className="ml-1 font-normal text-muted-foreground">
+                      ({model.emiProgressLabel})
+                    </span>
+                  ) : null}
+                </span>
                 <span className="font-semibold tabular-nums text-foreground">{progressPct}%</span>
               </div>
               <div className="h-2 overflow-hidden rounded-full bg-muted">
@@ -633,28 +707,65 @@ export function LoanDetailView({
             ) : null}
             {emi != null ? (
               <div className={statTileClass}>
-                <p className={labelSm}>EMI</p>
+                <p className={labelSm}>Monthly EMI</p>
                 <p className="mt-1 text-sm font-bold tabular-nums text-foreground sm:text-base">
                   {formatCurrency(emi)}
                 </p>
               </div>
             ) : null}
-            {totalPaid != null ? (
+            {model.tenure > 0 || model.paid > 0 ? (
               <div className={statTileClass}>
-                <p className={labelSm}>
-                  Total Paid{model.tenure > 0 ? ` (${model.paid} EMIs)` : ""}
+                <p className={labelSm}>EMIs paid</p>
+                <p className="mt-1 text-sm font-bold tabular-nums text-income sm:text-base">
+                  {model.paid}
+                  {model.tenure > 0 ? (
+                    <span className="text-xs font-medium text-muted-foreground">
+                      {" "}
+                      / {model.tenure}
+                    </span>
+                  ) : null}
                 </p>
+              </div>
+            ) : null}
+            {model.tenure > 0 ? (
+              <div className={statTileClass}>
+                <p className={labelSm}>Remaining EMIs</p>
+                <p className="mt-1 text-sm font-bold tabular-nums text-foreground sm:text-base">
+                  {model.remainingTenure}
+                </p>
+              </div>
+            ) : null}
+            <div className={statTileClass}>
+              <p className={labelSm}>Outstanding</p>
+              <p className="mt-1 text-sm font-bold tabular-nums text-destructive sm:text-base">
+                {formatCurrency(outstanding)}
+              </p>
+            </div>
+            {totalPaid != null && totalPaid > 0 ? (
+              <div className={statTileClass}>
+                <p className={labelSm}>Total repaid</p>
                 <p className="mt-1 text-sm font-bold tabular-nums text-income sm:text-base">
                   {formatCurrency(totalPaid)}
                 </p>
               </div>
             ) : null}
-            <div className={statTileClass}>
-              <p className={labelSm}>Remaining</p>
-              <p className="mt-1 text-sm font-bold tabular-nums text-destructive sm:text-base">
-                {formatCurrency(outstanding)}
-              </p>
-            </div>
+            {model.monthlyPrincipalInr != null || model.monthlyInterestInr != null ? (
+              <div className={cn(statTileClass, "col-span-2 text-left")}>
+                <p className={labelSm}>Next EMI split</p>
+                <p className="mt-1 text-xs leading-relaxed text-muted-foreground sm:text-sm">
+                  {model.monthlyPrincipalInr != null ? (
+                    <span className="mr-3 tabular-nums">
+                      Principal {formatCurrency(model.monthlyPrincipalInr)}
+                    </span>
+                  ) : null}
+                  {model.monthlyInterestInr != null ? (
+                    <span className="tabular-nums">
+                      Interest {formatCurrency(model.monthlyInterestInr)}
+                    </span>
+                  ) : null}
+                </p>
+              </div>
+            ) : null}
             {rate != null ? (
               <div className={statTileClass}>
                 <p className={labelSm}>Interest Rate</p>
@@ -717,7 +828,21 @@ export function LoanDetailView({
           ) : null}
 
           <div className="mt-8 rounded-2xl bg-inherit p-4 sm:p-5">
-            <h2 className="text-base font-bold text-foreground">Transactions</h2>
+            <div className="flex flex-wrap items-baseline justify-between gap-2">
+              <h2 className="text-base font-bold text-foreground">EMI history</h2>
+              {model.paid > 0 ? (
+                <p className="text-xs font-medium tabular-nums text-muted-foreground">
+                  {model.paid} paid
+                  {loanLedgerForUi.length > 0 ? ` · ${loanLedgerForUi.length} in ledger` : ""}
+                </p>
+              ) : null}
+            </div>
+            {emiHistoryMismatch ? (
+              <p className="mt-2 text-xs text-amber-700 dark:text-amber-400">
+                Backend reports {model.paid} paid EMIs but {loanLedgerForUi.length} transaction
+                {loanLedgerForUi.length === 1 ? "" : "s"} in history.
+              </p>
+            ) : null}
             {txsError ? (
               <p className="mt-6 text-center text-sm text-destructive">
                 Unable to load transactions
@@ -725,9 +850,11 @@ export function LoanDetailView({
             ) : txsFetching ? (
               <p className="mt-6 text-center text-sm text-muted-foreground">Loading...</p>
             ) : loanLedgerForUi.length === 0 ? (
-              <p className="mt-6 text-center text-sm text-muted-foreground">No transactions yet</p>
+              <p className="mt-6 text-center text-sm text-muted-foreground">
+                No EMI payments recorded yet
+              </p>
             ) : (
-              <ul className="mt-4 flex list-none flex-col gap-2.5" aria-label="Loan transactions">
+              <ul className="mt-4 flex list-none flex-col gap-2.5" aria-label="Loan EMI history">
                 {loanLedgerForUi.map((tx) => (
                   <li key={tx.id}>
                     <RecentTransactionRow

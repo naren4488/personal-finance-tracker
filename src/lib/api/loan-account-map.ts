@@ -5,7 +5,7 @@ import {
   interestRatePercentFromAccount,
   nextDueDateFromDay,
 } from "@/lib/api/credit-card-map"
-import { formatDate } from "@/lib/format"
+import { formatCurrency, formatDate } from "@/lib/format"
 
 function parseMoney(v: unknown): number {
   if (v === undefined || v === null) return 0
@@ -46,12 +46,17 @@ export function loanPrincipalInr(a: Account): number {
   return 0
 }
 
-function paidInstallments(a: Account): number {
+function paidInstallmentsFromAccount(a: Account): number {
   const r = asRec(a)
   const p = r.paidInstallments
   if (p === undefined || p === null) return 0
   const n = typeof p === "number" ? p : Number(String(p).replace(/\D/g, ""))
   return Number.isFinite(n) ? Math.max(0, Math.trunc(n)) : 0
+}
+
+/** Paid EMI count from API (`paidInstallments`). */
+export function loanPaidInstallments(a: Account): number {
+  return paidInstallmentsFromAccount(a)
 }
 
 function tenureMonths(a: Account): number {
@@ -62,16 +67,21 @@ function tenureMonths(a: Account): number {
   return Number.isFinite(n) ? Math.max(0, Math.trunc(n)) : 0
 }
 
-function remainingInstallments(a: Account): number {
+function remainingInstallmentsFromAccount(a: Account): number {
   const r = asRec(a)
   const rem = r.remainingInstallments
   if (rem !== undefined && rem !== null) {
     const n = typeof rem === "number" ? rem : Number(String(rem).replace(/\D/g, ""))
     if (Number.isFinite(n)) return Math.max(0, Math.trunc(n))
   }
-  const paid = paidInstallments(a)
+  const paid = paidInstallmentsFromAccount(a)
   const ten = tenureMonths(a)
   return ten > 0 ? Math.max(0, ten - paid) : 0
+}
+
+/** Remaining EMI count from API (`remainingInstallments` or tenure − paid). */
+export function loanRemainingInstallments(a: Account): number {
+  return remainingInstallmentsFromAccount(a)
 }
 
 /** EMI calendar day 1–31 from `emiDueDay`. */
@@ -167,6 +177,8 @@ export function formatLoanTypeDisplay(loanType: unknown): string {
 function parseOptionalEmiAmount(a: Account): number | null {
   const r = asRec(a)
   const keys = [
+    "monthlyEmiAmount",
+    "monthly_emi_amount",
     "emiAmount",
     "monthlyEmi",
     "emi",
@@ -253,6 +265,8 @@ function parseOptionalMoneyField(a: Account, keys: readonly string[]): number | 
 /** Interest slice of next EMI when API exposes it. */
 export function loanNextEmiInterestInr(a: Account): number | null {
   return parseOptionalMoneyField(a, [
+    "monthlyInterestAmount",
+    "monthly_interest_amount",
     "nextEmiInterest",
     "emiInterest",
     "interestComponent",
@@ -268,6 +282,8 @@ export function loanNextEmiInterestInr(a: Account): number | null {
  */
 export function loanNextEmiPrincipalInr(a: Account): number | null {
   const direct = parseOptionalMoneyField(a, [
+    "monthlyPrincipalAmount",
+    "monthly_principal_amount",
     "nextEmiPrincipal",
     "emiPrincipal",
     "principalComponent",
@@ -336,6 +352,10 @@ export type LoanViewModel = {
   paid: number
   tenure: number
   remainingTenure: number
+  emiProgressLabel: string | null
+  totalPaidInr: number | null
+  monthlyInterestInr: number | null
+  monthlyPrincipalInr: number | null
   statusLabel: string
   isActive: boolean
   emiAmount: number | null
@@ -376,7 +396,7 @@ export function loanHeaderSubtitle(a: Account): string {
   return parts.join(" • ")
 }
 
-/** Total principal repaid: API field or estimated as paid EMIs × EMI when possible. */
+/** Total amount repaid — prefer API money fields; fallback to paidInstallments × EMI only when no total. */
 export function loanTotalPaidInr(a: Account): number | null {
   const r = asRec(a)
   const keys = [
@@ -386,6 +406,7 @@ export function loanTotalPaidInr(a: Account): number | null {
     "principalRepaid",
     "totalPaidAmount",
     "totalPaidInr",
+    "totalPrincipalRepaid",
   ] as const
   for (const k of keys) {
     const v = r[k]
@@ -393,19 +414,40 @@ export function loanTotalPaidInr(a: Account): number | null {
     const n = parseMoney(v)
     if (Number.isFinite(n) && n >= 0) return n
   }
-  const paid = paidInstallments(a)
+  const paid = paidInstallmentsFromAccount(a)
   if (paid === 0) return 0
   const emi = resolveLoanEmiAmount(a)
-  if (emi != null && paid > 0) return Math.round(emi * paid)
+  if (emi != null && paid > 0) return Math.round(emi * paid * 100) / 100
   return null
 }
 
-/** Repayment progress 0–100 from paid vs tenure EMIs. */
+/** Human label for EMI repayment progress from backend counts. */
+export function loanEmiProgressLabel(a: Account): string | null {
+  const paid = paidInstallmentsFromAccount(a)
+  const tenure = tenureMonths(a)
+  if (tenure <= 0 && paid <= 0) return null
+  if (tenure > 0) return `${paid} of ${tenure} EMIs paid`
+  if (paid > 0) return `${paid} EMIs paid`
+  return null
+}
+
+/** Repayment progress 0–100 from API `paidInstallments` / `tenureMonths`. */
 export function loanRepaymentProgressPercent(a: Account): number | null {
-  const paid = paidInstallments(a)
+  const paid = paidInstallmentsFromAccount(a)
   const ten = tenureMonths(a)
   if (ten <= 0) return null
   return Math.min(100, Math.max(0, Math.round((100 * paid) / ten)))
+}
+
+/** Compact label for list cards: paid count from API (`paidInstallments`). */
+export function loanPaidEmiListLabel(paid: number, remaining?: number): string {
+  const n = Math.max(0, Math.trunc(paid))
+  const base = n === 1 ? "1 EMI paid" : `${n} EMIs paid`
+  if (remaining != null && remaining > 0) {
+    const left = Math.trunc(remaining)
+    return `${base} · ${left} left`
+  }
+  return base
 }
 
 export function mapAccountToLoanView(a: Account): LoanViewModel {
@@ -419,9 +461,14 @@ export function mapAccountToLoanView(a: Account): LoanViewModel {
 
   const principal = loanPrincipalInr(a)
   const outstanding = loanOutstandingInr(a)
-  const paid = paidInstallments(a)
+  const paid = paidInstallmentsFromAccount(a)
   const tenure = tenureMonths(a)
-  const remaining = remainingInstallments(a)
+  const remaining = remainingInstallmentsFromAccount(a)
+  const emiAmount = resolveLoanEmiAmount(a)
+  const totalPaidInr = loanTotalPaidInr(a)
+  const monthlyInterestInr = loanNextEmiInterestInr(a)
+  const monthlyPrincipalInr = loanNextEmiPrincipalInr(a)
+  const emiProgressLabel = loanEmiProgressLabel(a)
 
   const pct =
     principal > 0
@@ -446,9 +493,12 @@ export function mapAccountToLoanView(a: Account): LoanViewModel {
   const emiDueDateLabel = loanOrPaymentDueDateLabel(a)
 
   const metaParts: string[] = []
-  if (tenure > 0) metaParts.push(`${paid}/${tenure} EMIs`)
+  if (paid > 0 || tenure > 0) {
+    metaParts.push(loanPaidEmiListLabel(paid, tenure > 0 ? remaining : undefined))
+  }
   metaParts.push(statusLabel)
   if (emiDueDateLabel) metaParts.push(`Due: ${emiDueDateLabel}`)
+  if (emiAmount != null) metaParts.push(`${formatCurrency(emiAmount)}/mo`)
 
   return {
     id: a.id,
@@ -463,9 +513,13 @@ export function mapAccountToLoanView(a: Account): LoanViewModel {
     paid,
     tenure,
     remainingTenure: remaining,
+    emiProgressLabel,
+    totalPaidInr,
+    monthlyInterestInr,
+    monthlyPrincipalInr,
     statusLabel,
     isActive,
-    emiAmount: resolveLoanEmiAmount(a),
+    emiAmount,
     emiDueDateLabel,
     accountsRowMeta: metaParts.join(" · "),
   }
